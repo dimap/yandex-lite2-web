@@ -12,6 +12,14 @@ from plum_sdk.auth import CredentialsStore
 from plum_sdk.render import DISPLAY_CHANNELS
 
 
+def _validate_visual_options(ttl: int, brightness: float, operation: str) -> None:
+    if type(ttl) is not int or not 1 <= ttl <= 30:
+        raise ValueError(f"{operation} TTL must be an integer from 1 to 30 seconds")
+    if (isinstance(brightness, bool) or not isinstance(brightness, (int, float))
+            or not math.isfinite(brightness) or not 0 < brightness <= 0.15):
+        raise ValueError(f"{operation} brightness must be greater than 0 and no more than 0.15")
+
+
 class StationAdapter:
     def __init__(self, station: Station | None = None, credentials: CredentialsStore | None = None):
         self.station = station or Station()
@@ -115,10 +123,7 @@ class StationAdapter:
             raise ValueError("only temporary static frames are supported")
         ttl = data.get("ttl", 5)
         brightness = data.get("brightness", 0.1)
-        if type(ttl) is not int or not 1 <= ttl <= 30:
-            raise ValueError("display TTL must be an integer from 1 to 30 seconds")
-        if isinstance(brightness, bool) or not isinstance(brightness, (int, float)) or not math.isfinite(brightness) or not 0 < brightness <= 0.15:
-            raise ValueError("display brightness must be greater than 0 and no more than 0.15")
+        _validate_visual_options(ttl, brightness, "display")
         values = data.get("v", ())
         if isinstance(values, dict):
             if set(values) != set(DISPLAY_CHANNELS):
@@ -138,10 +143,7 @@ class StationAdapter:
     def ring(self, data: dict[str, Any]) -> dict[str, Any]:
         ttl = data.get("ttl", 5)
         brightness = data.get("brightness", 0.1)
-        if type(ttl) is not int or not 1 <= ttl <= 30:
-            raise ValueError("ring TTL must be an integer from 1 to 30 seconds")
-        if isinstance(brightness, bool) or not isinstance(brightness, (int, float)) or not math.isfinite(brightness) or not 0 < brightness <= 0.15:
-            raise ValueError("ring brightness must be greater than 0 and no more than 0.15")
+        _validate_visual_options(ttl, brightness, "ring")
         color = tuple(data.get(channel, 0) for channel in ("red", "green", "blue"))
         return self.station.led.frame((color,) * 3, brightness=brightness, ttl=ttl)
 
