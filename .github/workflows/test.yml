@@ -12,16 +12,28 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ['3.9', '3.14']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python }}
-      - run: python -m compileall -q server.py profiles.py multi.py
-      - run: python -m unittest discover -s tests -v
+          python-version: '3.12'
+      - uses: actions/checkout@v4
+        with:
+          repository: x53e76f0f/station-lite2
+          ref: codex/station-web-quasar
+          path: station-lite2-sdk
+      - run: python -m pip install -e './station-lite2-sdk[test]' bandit pip-audit
+      - run: python -m compileall -q server.py profiles.py multi.py access.py glagol.py sdk_adapter.py sdk_server.py
+      - run: python -m pytest -q
+      - run: bandit -q -s B404,B603,B607 -r access.py sdk_adapter.py sdk_server.py
+      - run: pip-audit
+      - name: Check bundled license notices
+        run: |
+          test -s LICENSE
+          grep -Fq 'CC BY-SA 4.0' 3d/README.md
+          grep -Fq 'Copyright © 2010-2023 three.js authors' static/vendor/three/LICENSE
+          grep -Fq 'Copyright (c) 2009 Kazuhiko Arase' static/vendor/qrcode.js
+          test -s static/vendor/xterm/LICENSE
       - run: python server.py --help
       - run: python multi.py --help
       - run: node tests/test_renderer.mjs

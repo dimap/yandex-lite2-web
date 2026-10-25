@@ -22,6 +22,6 @@ SOFTWARE.
 
 Third-party files keep their own licenses:
 - 3d/: "Yandex Station Lite 2" by vanyabeat, CC BY-SA 4.0 (see 3d/README.md)
-- static/vendor/three: three.js, MIT
+- static/vendor/three: three.js, MIT (see static/vendor/three/LICENSE)
 - static/vendor/xterm: xterm.js, MIT (see static/vendor/xterm/LICENSE)
 - static/vendor/qrcode.js: QR Code Generator by Kazuhiko Arase, MIT

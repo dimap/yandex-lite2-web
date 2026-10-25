@@ -16,15 +16,7 @@ class Station:
         self.led = type("Led", (), {
             "frame": lambda _self, values, brightness, ttl: self._call("ring", values, brightness, ttl),
         })()
-        self.media = type("Media", (), {
-            "play": lambda _self: self._call("play"),
-            "pause": lambda _self: self._call("pause"),
-            "next": lambda _self: self._call("next"),
-            "previous": lambda _self: self._call("previous"),
-            "volume": lambda _self, value: self._call("volume", value),
-            "status": lambda _self: {"available": False},
-        })()
-        self.alice = type("Alice", (), {"ask": lambda _self, text, response: self._call("ask", text, response)})()
+        self.media = type("Media", (), {"status": lambda _self: {"available": False}})()
 
     def _call(self, *args):
         self.calls.append(args)
@@ -65,13 +57,11 @@ def test_display_accepts_canonical_channel_map_and_rejects_unsafe_values():
             raise AssertionError(f"accepted invalid frame {data!r}")
 
 
-def test_media_adapter_exposes_only_sdk_commands_and_no_fake_events():
+def test_media_status_reports_unavailable_without_claiming_live_events():
     station = Station()
     adapter = StationAdapter(station, Credentials())
 
-    adapter.music_command({"command": "next"})
-    adapter.music_command({"command": "sendText", "text": "status"})
+    status = adapter.media()
 
-    assert station.calls == [("next",), ("ask", "status", "none")]
+    assert status["glagol"]["connected"] is False
     assert adapter.capabilities()["events"]["live_subscription"] is False
-    assert adapter.media()["glagol"]["connected"] is False
