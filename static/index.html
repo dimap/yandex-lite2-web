@@ -26,7 +26,7 @@
       s.setProperty('--accent-ink', `color-mix(in srgb, ${ac} 72%, var(--text))`);
       s.setProperty('--accent-soft', `color-mix(in srgb, ${ac} 15%, var(--card))`);
     }
-    window.__vizOff = localStorage.getItem('ui.viz') === '0';
+    window.__vizOff = localStorage.getItem('ui.viz') !== '1';
   } catch {}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -213,6 +213,10 @@
   .extras { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13.5px; font-weight: 600; color: var(--text-2); }
   .extras label { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; }
   .extras input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .channel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
+  .channel-grid label { display: grid; grid-template-columns: 1fr auto; gap: 3px 6px; font: 12px var(--mono); color: var(--text-2); }
+  .channel-grid input { grid-column: 1 / -1; width: 100%; }
+  #display-raw { min-height: 112px; resize: none; }
 
   /* настраиваемый «Обзор» */
   .wzone { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -630,16 +634,7 @@
     <nav class="side" aria-label="Разделы">
       <a href="#overview" data-tab="overview"><svg width="20" height="20" aria-hidden="true"><use href="#i-grid"/></svg>Обзор</a>
       <a href="#player" data-tab="player"><svg width="20" height="20" aria-hidden="true"><use href="#i-music"/></svg>Плеер</a>
-      <div class="nav-group" role="presentation">Колонка</div>
-      <a href="#alarm" data-tab="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
-      <a href="#boot" data-tab="boot"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Запуск</a>
-      <a href="#apps" data-tab="apps"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Приложения</a>
-      <a href="#files" data-tab="files"><svg width="20" height="20" aria-hidden="true"><use href="#i-folder"/></svg>Файлы</a>
-      <a href="#console" data-tab="console"><svg width="20" height="20" aria-hidden="true"><use href="#i-term"/></svg>Консоль</a>
-      <div class="nav-group" role="presentation">Состояние</div>
       <a href="#charts" data-tab="charts"><svg width="20" height="20" aria-hidden="true"><use href="#i-chart"/></svg>Графики</a>
-      <a href="#logs" data-tab="logs"><svg width="20" height="20" aria-hidden="true"><use href="#i-log"/></svg>Логи</a>
-      <div class="nav-sep" role="presentation"></div>
       <a href="#settings" data-tab="settings"><svg width="20" height="20" aria-hidden="true"><use href="#i-gear"/></svg>Настройки</a>
     </nav>
     <div class="conn" id="conn-box" hidden>
@@ -677,8 +672,6 @@
       </div>
       <div class="actions">
         <button class="btn" id="ov-edit" aria-pressed="false"><svg width="18" height="18" aria-hidden="true"><use href="#i-edit"/></svg><span>Настроить</span></button>
-        <button class="btn" id="q-restart"><svg width="18" height="18" aria-hidden="true"><use href="#i-refresh"/></svg>Перезапустить Алису</button>
-        <button class="btn danger" id="reboot"><svg width="18" height="18" aria-hidden="true"><use href="#i-power"/></svg>Перезагрузить</button>
       </div>
     </header>
 
@@ -688,7 +681,7 @@
         <div class="actions"><button class="btn sm" id="ov-reset">Виджеты по умолчанию</button><button class="btn sm primary" id="ov-done">Готово</button></div>
       </div>
       <div class="ov-opts">
-        <label class="set-item"><div class="set-label"><b>Визуализатор за 3D-моделью</b><small>Спектр из символов за моделью, пока колонка играет музыку (нужен вход в Яндекс)</small></div>
+        <label class="set-item"><div class="set-label"><b>Визуализатор за 3D-моделью</b><small>Декоративная анимация за моделью; не отражает состояние колонки</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz"></div></label>
         <div id="model-settings" hidden></div>
         <div class="set-item set-top"><div class="set-label"><b>Виджеты</b><small>Перетаскивайте за ⠿ или двигайте стрелками. Убранные можно вернуть отсюда.
@@ -709,7 +702,7 @@
     <div class="cols">
       <div class="col wzone" id="wz-left">
         <!-- 3D-модель -->
-        <div class="model-view" id="model-view" data-widget="model" data-title="3D-модель" role="img" aria-label="3D-модель колонки: дисплей и кольцо повторяют настоящие"><canvas id="model-viz" aria-hidden="true"></canvas></div>
+        <div class="model-view" id="model-view" data-widget="model" data-title="3D-модель" role="img" aria-label="3D-модель колонки"><canvas id="model-viz" aria-hidden="true"></canvas></div>
 
         <!-- громкость -->
         <section class="card" data-widget="volume" data-title="Громкость">
@@ -722,7 +715,7 @@
             <button class="pill" data-level="10">Тихо</button><button class="pill" data-level="30">30</button>
             <button class="pill" data-level="50">50</button><button class="pill" data-level="70">70</button>
           </div>
-          <p class="hint">Шкала как на колонке: 0–100 с шагом 5. Если вы вошли в Яндекс, громкость ставит сама Алиса; иначе она пересчитывается по таблице Quasar и пишется прямо в микшер.</p>
+          <p class="hint">Громкость управляется через SDK по шкале 0–100. Состояние громкости показывается, если его вернуло устройство.</p>
         </section>
 
         <!-- подсветка -->
@@ -742,28 +735,24 @@
                 <button class="sw white" style="--c:#FFFFFF" data-hex="#FFFFFF" aria-label="Белый"></button>
                 <label class="sw-custom" title="Свой цвет"><svg width="14" height="14" aria-hidden="true"><use href="#i-plus"/></svg><input type="color" id="ring-color" value="#6c47ff" aria-label="Свой цвет"></label>
               </div>
-              <div class="row"><button class="btn sm primary" id="ring-set">Включить</button><button class="btn sm" id="ring-off">Выключить</button><button class="btn sm" id="ring-reset" title="Отдать кольцо Алисе: погасить цвет и остановить анимации панели">Сбросить</button></div>
+              <div class="row"><button class="btn sm primary" id="ring-set">Показать 5 секунд</button><button class="btn sm" id="ring-off">Погасить на 5 секунд</button></div>
+              <label class="meta" for="ring-brightness">Яркость до 15% · <span id="ring-brightness-value">10%</span></label>
+              <input type="range" id="ring-brightness" min="0.01" max="0.15" step="0.01" value="0.10">
+              <label class="meta" for="ring-ttl">Время, секунд</label>
+              <input type="number" id="ring-ttl" class="field mono" value="5" min="1" max="30" style="width:76px">
             </div>
           </div>
-          <div class="card-head">
-            <div class="seg" id="pat-kind" role="group" aria-label="Анимации"><button data-k="ring" class="active">Кольцо</button><button data-k="clock">Часы</button></div>
-            <div class="row" style="gap:6px">
-              <label for="pat-sec" class="meta">длительность</label>
-              <input type="number" id="pat-sec" class="field mono" value="5" min="1" max="600" style="width:64px;min-height:36px;padding:0 8px"><span class="meta">с</span>
-              <button class="btn sm icon danger" id="pat-stop" aria-label="Остановить анимации"><svg width="14" height="14" aria-hidden="true"><use href="#i-stop"/></svg></button>
-            </div>
-          </div>
-          <div class="pat-list" id="patterns"></div>
-          <p class="hint">Цвет пишется в /sys/class/leds — любая анимация Алисы его перезапишет. Анимации часов показываются и на предпросмотре дисплея.</p>
+          <p class="hint">Анимации и снимок состояния недоступны через SDK.</p>
+          <p class="hint">Цвет записывается на 5 секунд, затем SDK восстанавливает захваченное состояние. Снимок состояния недоступен.</p>
         </section>
 
         <!-- часы -->
         <section class="card" data-widget="clock" data-title="Дисплей часов">
           <div class="card-head"><h2>Дисплей часов</h2>
-            <div class="row" style="gap:6px"><span class="badge" id="disp-badge" hidden></span><button class="btn sm" id="disp-stop">Вернуть часы</button></div></div>
+            <div class="row" style="gap:6px"><span class="badge" id="disp-badge" role="status" aria-live="polite" hidden></span></div></div>
           <div class="display" id="clock-preview"></div>
           <div class="seg" id="disp-mode" role="group" aria-label="Что показывать">
-            <button data-m="text" class="active">Текст</button><button data-m="date">Дата</button><button data-m="temp">Температура</button><button data-m="timer">Таймер</button>
+            <button data-m="text" class="active">Текст</button><button data-m="date">Дата</button><button data-m="temp">Температура</button>
           </div>
           <div class="col" id="dm-text" style="gap:10px">
             <input type="text" id="clock-text" class="field mono" maxlength="10" placeholder="12:34" aria-label="Текст на дисплее">
@@ -774,16 +763,30 @@
               <label><input type="checkbox" id="x-degree"> °</label>
             </div>
           </div>
-          <div class="row" id="dm-timer" hidden style="gap:8px">
-            <input type="text" id="timer-val" class="field mono" value="05:00" maxlength="5" aria-label="Время таймера, мм:сс" style="width:90px">
-            <div class="chips"><button class="pill" data-t="60">1 мин</button><button class="pill" data-t="300">5 мин</button><button class="pill" data-t="600">10 мин</button><button class="pill" data-t="1500">25 мин</button></div>
-          </div>
-          <div class="row"><label for="clock-br" style="min-width:64px">Яркость</label><input type="range" id="clock-br" min="1" max="255" value="160" style="flex:1;width:auto"><span class="mono meta" id="clock-br-v" style="min-width:32px;text-align:right">160</span></div>
           <div class="row" style="gap:8px">
-            <button class="btn primary" id="disp-pin" style="min-height:42px">Закрепить</button>
-            <button class="btn" id="clock-set" style="min-height:42px">Показать один раз</button>
+            <label for="display-brightness">Яркость до 15% · <span id="display-brightness-value">10%</span></label>
+            <input type="range" id="display-brightness" min="0.01" max="0.15" step="0.01" value="0.10">
           </div>
-          <p class="hint" id="disp-hint">Закреплённое держится, пока не нажать «Вернуть часы»: колонка сама перерисовывает дисплей, и Quasar его не затирает. «Один раз» — до смены минуты. По окончании таймера играет его штатный звонок.</p>
+          <details>
+            <summary>Все 36 каналов и raw frame</summary>
+            <p class="hint">Имена каналов задаёт схема SDK. Числа — базовая яркость 0–255; общий уровень ограничен 15%.</p>
+            <div class="channel-grid" id="display-channels"></div>
+            <label class="meta" for="display-raw">JSON по каноническим именам каналов</label>
+            <textarea class="field mono" id="display-raw" rows="5" spellcheck="false"></textarea>
+            <div class="row"><button class="btn sm" id="display-raw-apply" type="button">Применить raw frame</button>
+              <button class="btn sm" id="display-import" type="button">Импорт кадров для предпросмотра</button>
+              <input type="file" id="display-import-file" accept="application/json,.json" hidden></div>
+            <div class="row"><button class="btn sm" id="display-import-prev" type="button" disabled>Предыдущий кадр</button>
+              <span class="meta" id="display-import-count">Нет импорта</span>
+              <button class="btn sm" id="display-import-next" type="button" disabled>Следующий кадр</button></div>
+            <p class="hint" id="display-import-status">Импортированные анимации доступны для предпросмотра; нативное воспроизведение Quasar пока не подтверждено.</p>
+          </details>
+          <div class="row" style="gap:8px">
+            <label for="display-ttl">Показать, секунд</label>
+            <input type="number" id="display-ttl" class="field mono" value="5" min="1" max="30" style="width:76px">
+            <button class="btn primary" id="disp-pin" style="min-height:42px">Показать временно</button>
+          </div>
+          <p class="hint" id="disp-hint">Временный кадр на 1–30 секунд. После TTL SDK сообщает только один итоговый замер; Quasar может перезаписать кадр раньше.</p>
         </section>
       </div>
 
@@ -791,13 +794,13 @@
         <!-- музыка -->
         <section class="card" id="music-card" data-widget="music" data-title="Сейчас играет">
           <div class="card-head"><h2>Сейчас играет</h2>
-            <div class="row" style="gap:6px"><span class="meta" id="mu-account"></span><button class="btn sm ghost" id="mu-logout" hidden>Выйти</button></div></div>
+            <div class="row" style="gap:6px"><span class="badge" id="glagol-state">Glagol —</span><span class="meta" id="mu-account"></span><button class="btn sm ghost" id="mu-logout" hidden>Выйти</button></div></div>
           <div id="mu-login" hidden>
             <div class="login-grid">
-              <div class="qr" id="mu-qr"><div class="empty">QR-код…</div></div>
+              <div class="qr" id="mu-qr"><div class="empty">Вход на X230</div></div>
               <div class="col" style="gap:8px">
                 <b>Войдите в Яндекс, чтобы видеть и переключать музыку</b>
-                <p class="hint">Отсканируйте QR-код камерой телефона, на котором выполнен вход в Яндекс, и подтвердите вход.</p>
+                <p class="hint">Для авторизации запустите `station auth login` на X230. Веб-панель не получает токен Яндекса.</p>
                 <span class="meta" id="mu-qr-status"></span>
               </div>
             </div>
@@ -831,7 +834,7 @@
         </section>
 
         <!-- звуки -->
-        <section class="card" data-widget="sounds" data-title="Звуки">
+        <section class="card" data-widget="sounds" data-title="Звуки" hidden>
           <div class="card-head"><h2>Звуки</h2>
             <button class="btn sm danger-soft" id="stop-sound"><svg width="14" height="14" aria-hidden="true"><use href="#i-stop"/></svg>Стоп</button></div>
           <div class="folders" id="snd-folders" role="group" aria-label="Папка"></div>
@@ -843,7 +846,7 @@
           <p class="hint" id="ffmpeg-hint"></p>
         </section>
 
-        <section class="card" data-widget="bt" data-title="Bluetooth">
+        <section class="card" data-widget="bt" data-title="Bluetooth" hidden>
           <div class="card-head"><h2>Bluetooth</h2><span class="badge" id="bt-badge">—</span></div>
           <div class="bt-pair">
             <div class="info"><b id="bt-pair-text">Скрыта</b><span class="meta" id="bt-pair-hint">—</span></div>
@@ -851,7 +854,7 @@
             <button class="btn sm" id="bt-pair-btn">Сделать видимой</button>
           </div>
           <div class="bt-list" id="bt-list"><div class="empty">Загрузка…</div></div>
-          <div class="vol-bt"><label for="vol-bt">Громкость</label><input type="range" id="vol-bt" min="0" max="255"><span id="vol-bt-v">—</span></div>
+          <p class="hint">Bluetooth управление недоступно через SDK.</p>
         </section>
 
         <section class="card" data-widget="device" data-title="Об устройстве">
@@ -897,7 +900,7 @@
         <form class="set-form" id="pw-form" hidden>
           <input type="text" name="username" value="panel" autocomplete="username" hidden>
           <input type="password" class="field" id="pw-cur" autocomplete="current-password" placeholder="Текущий пароль" aria-label="Текущий пароль">
-          <input type="password" class="field" id="pw-new" autocomplete="new-password" placeholder="Новый пароль" aria-label="Новый пароль" minlength="4">
+          <input type="password" class="field" id="pw-new" autocomplete="new-password" placeholder="Новый пароль (не короче 12 символов)" aria-label="Новый пароль" minlength="12">
           <input type="password" class="field" id="pw-new2" autocomplete="new-password" placeholder="Ещё раз" aria-label="Повторите пароль">
           <div class="actions"><button class="btn sm primary" id="pw-save">Сохранить</button><button type="button" class="btn sm" id="pw-cancel">Отмена</button></div>
         </form>
@@ -1312,7 +1315,6 @@
   <div class="mb-track">
     <a class="mb-cover mu-cover" href="#player" title="Открыть плеер"><svg width="22" height="22" aria-hidden="true"><use href="#i-music"/></svg></a>
     <a class="mb-text" href="#player" title="Открыть плеер"><b class="mu-title">—</b><span class="mu-artist"></span></a>
-    <button class="cbtn" data-mu="like" aria-label="Лайк"><svg width="18" height="18" aria-hidden="true"><use href="#i-like"/></svg></button>
   </div>
   <div class="mb-center">
     <div class="controls" data-mu-controls="bar"></div>
@@ -1399,18 +1401,19 @@ async function refreshStatus() {
     const s = status = await api('/api/status');
     lastOk = Date.now();
     $('#conn').className = 'dot on';
-    $('#conn-text').textContent = 'Подключено по adb';
+    $('#conn-text').textContent = 'Подключено по SSH';
     $('#conn-ip').innerHTML = secret('ip', s.ip_address);
 
     const temp = s.temp ? s.temp / 1000 : null;
     $('#st-temp').textContent = temp === null ? '—' : temp.toFixed(0);
     $('#st-temp-bar').style.width = temp === null ? '0' : clamp(temp / 85 * 100, 0, 100) + '%';
 
-    const used = (s.mem_total - s.mem_avail) / 1024, total = s.mem_total / 1024;
-    $('#st-mem').textContent = Math.round(used);
-    $('#st-mem-u').textContent = `из ${Math.round(total)} МБ`;
-    $('#st-mem-bar').style.width = (used / total * 100).toFixed(0) + '%';
-    $('#st-mem-n').textContent = `свободно ${Math.round(s.mem_avail / 1024)} МБ`;
+    const used = s.mem_total != null && s.mem_avail != null ? (s.mem_total - s.mem_avail) / 1024 : null;
+    const total = s.mem_total != null ? s.mem_total / 1024 : null;
+    $('#st-mem').textContent = used == null ? '—' : Math.round(used);
+    $('#st-mem-u').textContent = total == null ? '' : `из ${Math.round(total)} МБ`;
+    $('#st-mem-bar').style.width = total ? (used / total * 100).toFixed(0) + '%' : '0';
+    $('#st-mem-n').textContent = s.mem_avail == null ? '—' : `свободно ${Math.round(s.mem_avail / 1024)} МБ`;
 
     const rssi = +s.RSSI;
     $('#st-rssi').textContent = s.RSSI ? String(rssi).replace('-', '−') : '—';
@@ -1418,26 +1421,22 @@ async function refreshStatus() {
     $('#st-wifi-n').textContent = [s.ssid, s.freq && (s.freq / 1000).toFixed(1).replace('.', ',') + ' ГГц', s.LINKSPEED && s.LINKSPEED + ' Мбит/с']
       .filter(Boolean).join(' · ') || '—';
 
-    const [uv, uu] = splitUptime(s.uptime);
+    const [uv, uu] = s.uptime == null ? ['—', ''] : splitUptime(s.uptime);
     $('#st-up').textContent = uv; $('#st-up-u').textContent = uu;
-    const la = (s.load || '').split(' ');
-    $('#st-load-bar').style.width = clamp(+la[0] / 4 * 100, 0, 100) + '%';
-    $('#st-load-n').textContent = 'нагрузка ' + la.map(x => x.replace('.', ',')).join(' · ');
+    const la = (s.load || '').split(' ').filter(Boolean);
+    $('#st-load-bar').style.width = la.length ? clamp(+la[0] / 4 * 100, 0, 100) + '%' : '0';
+    $('#st-load-n').textContent = la.length ? 'нагрузка ' + la.map(x => x.replace('.', ',')).join(' · ') : 'нагрузка недоступна';
 
     if (!volDragging) {
-      const [m, b] = [+s.vol_level || 0, +s.vol_bt || 0];
-      showLevel(m);
-      $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b);
+      if (s.vol_level != null) showLevel(+s.vol_level);
     }
-    $('#ffmpeg-hint').textContent = s.ffmpeg ? 'ffmpeg найден — подходят любые форматы.' : 'ffmpeg не найден — подходят только WAV.';
+    $('#ffmpeg-hint').textContent = 'Аудиофайлы не передаются через панель.';
 
 
-    window.__deviceColor = s.color;
-    window.modelColor?.(s.color);
     $('#dev-info').innerHTML = [
-      ['Quasar', s.quasar === 'running' ? 'работает' : 'остановлен'],
-      ['Версия', s.quasar_version], ['Device ID', { html: secret('id', s.device_id) }], ['Хост', s.hostname],
-      ['Ядро', s.kernel], ['MAC', { html: secret('mac', s.address) }], ['Время', s.date],
+      ['SSH', 'доступен'], ['Quasar', s.quasar], ['CPU', s.cpu_usage_percent == null ? 'ожидает второго замера' : `${s.cpu_usage_percent.toFixed(1)}%`],
+      ['Версия прошивки', s.firmware], ['Аптайм, секунды', s.uptime], ['Хост', s.hostname],
+      ['Ядро', s.kernel], ['Модель', s.hardware_model],
     ].map(([k, v]) => `<dt>${k}</dt><dd>${v?.html ?? esc(v ?? '—')}</dd>`).join('');
     updateSub();
   } catch {}   // о потере связи расскажет экран подключения
@@ -1445,26 +1444,22 @@ async function refreshStatus() {
 function updateSub() {
   if (!status) return;
   const ago = Math.round((Date.now() - lastOk) / 1000);
-  const ver = (status.quasar_version || '').split('.').slice(0, 4).join('.');
-  const alive = status.quasar === 'running';
-  $('#ov-sub').innerHTML = `<span class="dot ${alive ? 'on' : 'off'}" title="${alive ? 'Алиса работает' : 'Алиса остановлена'}" style="display:inline-block;margin-right:6px;vertical-align:1px"></span>`
-    + esc(`${status.hostname} · Quasar ${ver} · ${ago} с назад`);
+  $('#ov-sub').textContent = `${status.hostname || 'Станция'} · SSH · обновлено ${ago} с назад`;
 }
 setInterval(updateSub, 1000);
 
 // ---------- громкость ----------
-// Динамик — в уровнях Алисы 0–10 (как на колонке), Bluetooth — сырой микшер 0–255.
+// Громкость динамика задаётся SDK в процентах.
 function showLevel(level) {
   $('#vol-master').value = Math.round(level);
   $('#vol-big').textContent = Math.round(level);
 }
 let volTimer;
-for (const [id, key] of [['#vol-master', 'level'], ['#vol-bt', 'bt']]) {
+for (const [id, key] of [['#vol-master', 'level']]) {
   const el = $(id);
   el.addEventListener('input', () => {
     volDragging = true;
-    if (key === 'level') showLevel(+el.value);
-    else $('#vol-bt-v').textContent = pct(el.value);
+    showLevel(+el.value);
     clearTimeout(volTimer);
     volTimer = setTimeout(() => act(null, () => api('/api/volume', { [key]: +el.value })), 150);
   });
@@ -1609,62 +1604,6 @@ function animate(el, frames, { seconds = 10, onFrame } = {}) {
   step();
 }
 
-// ---------- анимации ----------
-let patterns = {}, patKind = 'ring';
-// Человекочитаемые названия анимаций; системное имя остаётся сбоку.
-const PAT_NAMES = {
-  alice_listening: 'Алиса слушает', alice_speaking: 'Алиса говорит', alice_thinking: 'Алиса думает',
-  alice_pro_listening: 'Алиса Про слушает', alice_pro_speaking: 'Алиса Про говорит', alice_pro_thinking: 'Алиса Про думает',
-  intonation_spotting: 'Распознала интонацию',
-  player_continue: 'Продолжить', player_pause: 'Пауза', player_next_track: 'Следующий трек', player_previous_track: 'Предыдущий трек',
-  volume: 'Громкость', bluetooth_on: 'Bluetooth включён', bluetooth_connected: 'Bluetooth подключён', bluetooth_playing: 'Музыка по Bluetooth',
-  call_incoming: 'Входящий звонок', call_outgoing: 'Исходящий звонок', call_connecting: 'Соединяю', call_connected: 'Разговор',
-  call_connected_nanny: 'Разговор (радионяня)', call_ended: 'Звонок завершён', ringing: 'Звонок',
-  timer: 'Таймер', notification_available: 'Есть уведомление', notification_passive: 'Тихое уведомление',
-  iot_discovery: 'Поиск устройств умного дома', boot: 'Загрузка', configure: 'Настройка', configuring: 'Настройка',
-  connecting_to_network: 'Подключение к сети', clock_sync_1: 'Синхронизация часов 1', clock_sync_2: 'Синхронизация часов 2',
-  update_downloading: 'Скачивание обновления', update_applying: 'Установка обновления', confirm_data_reset: 'Подтвердите сброс',
-  error: 'Ошибка', progress: 'Прогресс', soundinit: 'Инициализация звука', qc: 'Заводской тест',
-  battery_cold: 'Батарея замёрзла', battery_hot: 'Батарея перегрелась', low_battery: 'Низкий заряд', blink: 'Моргание',
-};
-const PAT_GROUPS = [
-  ['Алиса', /^(alice_|intonation)/], ['Плеер и звук', /^(player_|volume|bluetooth_)/], ['Звонки', /^(call_|ringing)/],
-  ['Уведомления и таймер', /^(timer|notification_|iot_)/], ['Система', /^(boot|configur|connecting|clock_sync|update_|confirm_|error|progress|soundinit|qc|battery_|low_battery)/],
-];
-const patBase = n => n.replace(/\.(bin)?s?cled(\.zst)?$|\.led$/, '');
-function renderPatterns() {
-  const list = patterns[patKind] || [];
-  const groups = PAT_GROUPS.map(([title, re]) => [title, list.filter(n => re.test(patBase(n)))]);
-  const rest = list.filter(n => !PAT_GROUPS.some(([, re]) => re.test(patBase(n))));
-  if (rest.length) groups.push(['Прочее', rest]);
-  $('#patterns').innerHTML = groups.filter(([, items]) => items.length).map(([title, items]) =>
-    `<div class="pat-group">${esc(title)}</div>` + items.map(n => {
-      const base = patBase(n);
-      return `<button class="pat" data-p="${esc(n)}"><span class="pat-play">${icon('i-play', 11)}</span>
-        <span class="pat-name">${esc(PAT_NAMES[base] || base.replace(/_/g, ' '))}</span><span class="pat-sys">${esc(base)}</span></button>`;
-    }).join('')).join('');
-  $$('#patterns .pat').forEach(b => b.onclick = () => act(b, async () => {
-    const seconds = +$('#pat-sec').value || 5;
-    await api('/api/pattern', { kind: patKind, name: b.dataset.p, seconds });
-    if (patKind === 'ring') animateRing(await api('/api/ring/frames?name=' + encodeURIComponent(b.dataset.p)), seconds);
-    if (patKind === 'clock') {
-      const frames = await api('/api/clock/frames?name=' + encodeURIComponent(b.dataset.p));
-      const el = $('#clock-preview');
-      el._animDone = clockPreview;
-      animate(el, frames, { seconds });
-    }
-  }, '✦ ' + b.querySelector('.pat-name').textContent));
-}
-$$('#pat-kind button').forEach(b => b.onclick = () => {
-  $$('#pat-kind button').forEach(x => x.classList.toggle('active', x === b));
-  patKind = b.dataset.k; renderPatterns();
-});
-$('#pat-stop').onclick = e => act(e.currentTarget, async () => {
-  await api('/api/pattern/stop', {});
-  clearTimeout($('#clock-preview')._anim); clockPreview();
-  clearTimeout(ringTimer); ringAnimUntil = 0;
-}, 'Анимации остановлены');
-
 // ---------- кольцо ----------
 const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 let ringHex = '#6C47FF';
@@ -1674,161 +1613,143 @@ function pickColor(hex) {
   $$('#swatches .sw').forEach(s => s.classList.toggle('sel', s.dataset.hex === ringHex));
 }
 const setRing = (btn, rgb, on) => act(btn, async () => {
-  await api('/api/ring', { red: rgb[0], green: rgb[1], blue: rgb[2] });
+  const ttl = Math.min(30, Math.max(1, Number($('#ring-ttl').value) || 5));
+  $('#ring-ttl').value = ttl;
+  await api('/api/ring', { red: rgb[0], green: rgb[1], blue: rgb[2], ttl, brightness: Number($('#ring-brightness').value) });
   $('#ring-preview').classList.toggle('off', !on);
-  toRing([rgb, rgb, rgb]);
 });
 $$('#swatches .sw').forEach(b => b.onclick = () => { pickColor(b.dataset.hex); setRing(b, hex2rgb(ringHex), true); });
 $('#ring-color').oninput = e => pickColor(e.target.value);
 $('#ring-color').onchange = e => setRing(null, hex2rgb(e.target.value), true);
 $('#ring-set').onclick = e => setRing(e.currentTarget, hex2rgb(ringHex), true);
 $('#ring-off').onclick = e => setRing(e.currentTarget, [0, 0, 0], false);
-$('#ring-reset').onclick = e => act(e.currentTarget, async () => {
-  const r = await api('/api/ring/reset', {});
-  toRing(r.leds);
-  $('#ring-preview').classList.toggle('off', r.leds.every(c => c.every(x => !x)));
-}, 'Кольцо снова у Алисы');
 pickColor(ringHex);
 
-// ---------- часы: режимы и закрепление ----------
-// «Закрепить» запускает на колонке скрипт, который сам перерисовывает дисплей раз в полсекунды
-// (Quasar обновляет часы раз в минуту и иначе затирает наш вывод). «Один раз» — просто запись.
+// ---------- временный дисплей ----------
 const pad2 = n => String(n).padStart(2, '0');
 const pcTime = () => { const d = new Date(); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
 const clockExtras = () => ({ dh: $('#x-dh').checked, dl: $('#x-dl').checked, dm: $('#x-dm').checked, degree: $('#x-degree').checked });
-let dispMode = 'text', dispState = { mode: null }, dispStateAt = 0;
-const DISP_NAMES = { frame: 'текст', date: 'дата', temp: 'температура', timer: 'таймер' };
-function timerSeconds() {
-  const m = ($('#timer-val').value || '').match(/^(\d{1,2})(?::(\d{1,2}))?$/);
-  return m ? (+m[1]) * 60 + (+(m[2] || 0)) : 0;
-}
+let dispMode = 'text';
+let displayChannels = [], rawFrame = {}, importedFrames = [], importedFrame = 0;
 function clockFrame() {
-  const br = +$('#clock-br').value;
-  if (dispMode === 'date') {   // 24.10 — разделитель как у колонки: нижняя точка двоеточия
-    const d = new Date(), v = textToFrame(`${pad2(d.getDate())}${pad2(d.getMonth() + 1)}`, br);
-    v[X_DL] = br;
+  if (dispMode === 'raw') {
+    const frame = blankFrame();
+    for (let digit = 0; digit < 4; digit++) {
+      for (const [index, segment] of [...'ABCDEFG'].entries()) frame[digit * 8 + index] = rawFrame[segment + digit] || 0;
+      frame[digit * 8 + 7] = rawFrame['H' + digit] || 0;
+    }
+    frame[X_DH] = rawFrame.DH || 0; frame[X_DL] = rawFrame.DL || 0;
+    frame[X_DM] = rawFrame.DM || 0; frame[X_DEG] = rawFrame.DEGREE || 0;
+    return frame;
+  }
+  if (dispMode === 'date') {
+    const d = new Date(), v = textToFrame(`${pad2(d.getDate())}${pad2(d.getMonth() + 1)}`);
+    v[X_DL] = 255;
     return v;
   }
-  if (dispMode === 'temp') return textToFrame(String(Math.round((status?.temp || 0) / 1000)).padStart(4, ' '), br, { degree: true });
-  if (dispMode === 'timer') { const s = timerSeconds(); return textToFrame(`${pad2(Math.min(99, Math.floor(s / 60)))}:${pad2(s % 60)}`, br); }
-  return textToFrame($('#clock-text').value || pcTime(), br, clockExtras());
+  if (dispMode === 'temp') return textToFrame(status?.temp == null ? '    ' : String(Math.round(status.temp / 1000)).padStart(4, ' '), 255, { degree: status?.temp != null });
+  return textToFrame($('#clock-text').value || pcTime(), 255, clockExtras());
 }
-function clockPreview() { const el = $('#clock-preview'); clearTimeout(el._anim); el._until = 0; el.innerHTML = clockSVG(clockFrame()); }
-['#clock-text', '#x-dh', '#x-dl', '#x-dm', '#x-degree', '#timer-val'].forEach(s => $(s).addEventListener('input', clockPreview));
-$('#clock-br').oninput = e => { $('#clock-br-v').textContent = e.target.value; clockPreview(); };
-$$('#disp-mode button').forEach(b => b.onclick = () => {
-  dispMode = b.dataset.m;
-  $$('#disp-mode button').forEach(x => x.classList.toggle('active', x === b));
+function clockPreview() {
+  const brightness = Number($('#display-brightness')?.value || 0.1);
+  const frame = clockFrame().map(value => Math.round(value * brightness));
+  $('#clock-preview').innerHTML = clockSVG(frame);
+  toModel(frame);
+}
+function canonicalFrame(frame) {
+  const values = {};
+  for (let digit = 0; digit < 4; digit++) {
+    for (const [index, segment] of [...'ABCDEFG'].entries()) values[segment + digit] = frame[digit * 8 + index];
+    values['H' + digit] = frame[digit * 8 + 7];
+  }
+  Object.assign(values, { DH: frame[X_DH], DL: frame[X_DL], DM: frame[X_DM], DEGREE: frame[X_DEG] });
+  return values;
+}
+['#clock-text', '#x-dh', '#x-dl', '#x-dm', '#x-degree'].forEach(selector => $(selector).addEventListener('input', clockPreview));
+$('#display-brightness').oninput = e => {
+  $('#display-brightness-value').textContent = `${Math.round(+e.target.value * 100)}%`;
+  clockPreview();
+};
+$('#ring-brightness').oninput = e => $('#ring-brightness-value').textContent = `${Math.round(+e.target.value * 100)}%`;
+function setRawFrame(frame, activate = true) {
+  if (!displayChannels.length || !frame || typeof frame !== 'object'
+      || displayChannels.some(channel => !Number.isInteger(frame[channel]) || frame[channel] < 0 || frame[channel] > 255))
+    throw new Error('Кадр должен содержать все каналы схемы SDK со значениями 0–255');
+  rawFrame = Object.fromEntries(displayChannels.map(channel => [channel, frame[channel]]));
+  $('#display-raw').value = JSON.stringify(rawFrame, null, 2);
+  $('#display-channels').innerHTML = displayChannels.map(channel =>
+    `<label>${esc(channel)}<output>${rawFrame[channel]}</output><input type="range" min="0" max="255" step="1" value="${rawFrame[channel]}" data-channel="${esc(channel)}" aria-label="Канал ${esc(channel)}"></label>`).join('');
+  $$('#display-channels input').forEach(input => input.oninput = () => {
+    rawFrame[input.dataset.channel] = Number(input.value);
+    input.parentElement.querySelector('output').value = input.value;
+    $('#display-raw').value = JSON.stringify(rawFrame, null, 2);
+    dispMode = 'raw'; clockPreview();
+  });
+  if (activate) dispMode = 'raw';
+  clockPreview();
+}
+$('#display-raw-apply').onclick = () => {
+  try { setRawFrame(JSON.parse($('#display-raw').value)); }
+  catch (error) { toast(error.message, true); }
+};
+$('#display-import').onclick = () => $('#display-import-file').click();
+$('#display-import-file').onchange = async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if (!file) return;
+  try {
+    if (file.size > 2_000_000) throw new Error('Файл больше 2 МБ');
+    const parsed = JSON.parse(await file.text());
+    const rows = Array.isArray(parsed) ? parsed : (parsed.frames || [parsed]);
+    importedFrames = rows.map(row => {
+      const values = row.v || row.display;
+      if (Array.isArray(values)) {
+        if (values.length !== displayChannels.length || values.some(value => !Number.isInteger(value) || value < 0 || value > 255)) throw new Error('В кадре нужны 36 целых значений 0–255 в порядке SDK');
+        return Object.fromEntries(displayChannels.map((channel, index) => [channel, values[index]]));
+      }
+      return values || row;
+    });
+    if (!importedFrames.length || importedFrames.length > 300) throw new Error('Файл должен содержать от 1 до 300 кадров');
+    importedFrame = 0;
+    showImportedFrame();
+    const duration = rows.reduce((sum, row) => sum + (Number.isFinite(row.ms) ? row.ms : 0), 0);
+    $('#display-import-status').textContent = `${file.name}: ${importedFrames.length} кадров загружено для локального предпросмотра${duration ? ` · ${duration} мс` : ''}. На устройство ничего не отправлено.`;
+  } catch (error) { toast(`Не удалось импортировать: ${error.message}`, true); }
+};
+function showImportedFrame() {
+  setRawFrame(importedFrames[importedFrame]);
+  $('#display-import-count').textContent = `${importedFrame + 1} / ${importedFrames.length}`;
+  $('#display-import-prev').disabled = importedFrame === 0;
+  $('#display-import-next').disabled = importedFrame >= importedFrames.length - 1;
+}
+$('#display-import-prev').onclick = () => { importedFrame--; showImportedFrame(); };
+$('#display-import-next').onclick = () => { importedFrame++; showImportedFrame(); };
+api('/api/display/schema').then(schema => {
+  displayChannels = schema.channels;
+  setRawFrame(Object.fromEntries(displayChannels.map(channel => [channel, 0])), false);
+}).catch(error => { $('#display-import-status').textContent = `Схема SDK недоступна: ${error.message}`; });
+$$('#disp-mode button').forEach(button => button.onclick = () => {
+  dispMode = button.dataset.m;
+  $$('#disp-mode button').forEach(item => item.classList.toggle('active', item === button));
   $('#dm-text').hidden = dispMode !== 'text';
-  $('#dm-timer').hidden = dispMode !== 'timer';
-  $('#clock-set').hidden = dispMode !== 'text';
-  $('#disp-pin').textContent = dispMode === 'timer' ? 'Запустить таймер' : 'Закрепить';
   clockPreview();
 });
-$$('#dm-timer [data-t]').forEach(b => b.onclick = () => { const s = +b.dataset.t; $('#timer-val').value = `${pad2(s / 60 | 0)}:${pad2(s % 60)}`; clockPreview(); });
-
-function renderDispState() {
-  const st = dispState, on = !!st.mode;
-  $('#disp-badge').hidden = !on;
-  if (!on) return;
-  let text = 'закреплено: ' + (DISP_NAMES[st.mode] || st.mode);
-  if (st.mode === 'timer' && st.left != null) {
-    const left = Math.max(0, st.left - Math.round((Date.now() - dispStateAt) / 1000));
-    text = `таймер ${pad2(left / 60 | 0)}:${pad2(left % 60)}`;
-  }
-  $('#disp-badge').textContent = text;
-  $('#disp-badge').className = 'badge ok';
-}
-async function loadDispState() {
-  if (document.hidden || $('#tab-overview').hidden) return;
-  try { dispState = await api('/api/display'); dispStateAt = Date.now(); renderDispState(); } catch {}
-}
-setInterval(loadDispState, 5000);
-setInterval(() => dispState.mode === 'timer' && renderDispState(), 1000);
-
 $('#disp-pin').onclick = e => act(e.currentTarget, async () => {
-  const body = { mode: dispMode === 'text' ? 'frame' : dispMode, brightness: +$('#clock-br').value };
-  if (dispMode === 'text') body.v = clockFrame();
-  if (dispMode === 'timer') {
-    body.seconds = timerSeconds();
-    if (!body.seconds) throw new Error('Время таймера — в виде мм:сс, например 05:00');
-  }
-  dispState = await api('/api/display', body);
-  dispStateAt = Date.now();
-  renderDispState();
-}, dispMode === 'timer' ? 'Таймер запущен' : 'Закреплено');
-$('#disp-stop').onclick = e => act(e.currentTarget, async () => {
-  dispState = await api('/api/display/stop', {});
-  await api('/api/pattern/stop', {}).catch(() => {});   // и анимацию часов, если идёт
-  renderDispState();
-  $('#clock-text').value = '';
-  clockPreview();
-}, 'Дисплей снова показывает часы');
-function sendClock(btn) {
-  const text = $('#clock-text').value || pcTime();
-  clockPreview();
-  return act(btn, async () => { await api('/api/clock', { v: clockFrame() }); toModel(clockFrame()); dispState = { mode: null }; renderDispState(); },
-             'На дисплее: ' + text);
-}
-$('#clock-set').onclick = e => sendClock(e.currentTarget);
-$('#clock-text').onkeydown = e => { if (e.key === 'Enter') sendClock(null); };
+  const ttl = Math.min(30, Math.max(1, Number($('#display-ttl').value) || 5));
+  $('#display-ttl').value = ttl;
+  const result = await api('/api/display', { mode: 'frame', v: canonicalFrame(clockFrame()), ttl, brightness: Number($('#display-brightness').value) });
+  $('#disp-badge').hidden = false;
+  const visibility = {
+    matches_at_end: 'совпал в конце', overwritten_at_end: 'перезаписан к концу',
+    partial_frame_at_end: 'частичный кадр в конце', not_sent: 'не отправлен',
+  }[result.visibility_status];
+  $('#disp-badge').textContent = `кадр ${ttl} с${visibility ? ' · ' + visibility : ''}`;
+  $('#disp-badge').className = 'badge' + (result.visibility_status === 'matches_at_end' ? ' ok' : '');
+    const restore = result.restore_completed ? 'Состояние SDK восстановил.' : 'Статус восстановления не подтверждён.';
+    const duration = Number.isFinite(result.total_duration_ms) ? ` Время операции: ${Math.round(result.total_duration_ms)} мс.` : '';
+    const frames = Number.isFinite(result.frames_written) ? ` Кадров: ${result.frames_written}; пропущено: ${result.dropped_frames || 0}.` : '';
+    $('#disp-hint').textContent = `${restore}${duration}${frames} Итоговая видимость: ${result.visibility_status || 'неизвестна'}.`;
+  }, 'Кадр отправлен с TTL');
 clockPreview();
-setInterval(() => (dispMode !== 'text' || !$('#clock-text').value) && Date.now() > ($('#clock-preview')._until || 0) && clockPreview(), 15000);
-
-// Живое состояние дисплея и кольца для модели, пока «Обзор» на экране. Локальные анимации
-// (запущенные из панели) рисуются по кадрам сами, опрос их не перебивает.
-let ringAnimUntil = 0, ringLit = false, ringTimer;
-async function pollLeds() {
-  try {
-    if (!document.hidden && !$('#tab-overview').hidden) {
-      const s = await api('/api/clock/state');
-      if (Date.now() >= ($('#clock-preview')._until || 0)) toModel(s.v);
-      if (Date.now() >= ringAnimUntil) toRing(s.ring);
-      ringLit = s.ring.some(c => c.some(x => x > 0));
-    }
-  } catch {}
-  setTimeout(pollLeds, ringLit ? 400 : 1500);   // пока кольцо светится (например, Алиса слушает), чаще
-}
-pollLeds();
-// Быстрый поток — только пока «Обзор» на экране, визуализатор включён и музыка играет.
-// Пока играет музыка, Quasar рисует на часах эквалайзер: 4 цифры — 4 полосы, в каждой столбик из D, G, A.
-const isSpectrum = v => [0, 1, 2, 3].every(p => !v[p * 8 + 1] && !v[p * 8 + 2] && !v[p * 8 + 4] && !v[p * 8 + 5] && !v[p * 8 + 7])
-  && !v[X_DEG] && !v[X_DH] && !v[X_DL] && !v[X_DM];
-async function liveLeds() {
-  const want = online && !document.hidden && !$('#tab-overview').hidden && !window.__vizOff && !!muState()?.playing;
-  if (want) {
-    try {
-      const r = await api('/api/leds/live');
-      if (r.v) {
-        const v = r.v;
-        if (isSpectrum(v)) window.__spectrum = { bands: [0, 1, 2, 3].map(p => (v[p * 8] + v[p * 8 + 3] + v[p * 8 + 6]) / 756), t: performance.now() };
-        if (Date.now() >= ($('#clock-preview')._until || 0)) toModel(v);
-        if (Date.now() >= ringAnimUntil) toRing(r.ring);
-      }
-    } catch {}
-  }
-  // Эквалайзер Quasar держит на часах ~15 с после старта трека, потом снова часы: пока он есть — 10 раз
-  // в секунду, без него — реже, только чтобы не пропустить следующий.
-  const spectrumNow = window.__spectrum && performance.now() - window.__spectrum.t < 2500;
-  setTimeout(liveLeds, want ? (spectrumNow ? 100 : 700) : 500);
-}
-setTimeout(liveLeds, 1000);   // первый запуск — когда весь скрипт уже загружен
-function animateRing({ frames, loop }, seconds) {
-  clearTimeout(ringTimer);
-  if (!frames.length) return;
-  const until = ringAnimUntil = Date.now() + seconds * 1000;
-  let i = 0;
-  const step = () => {
-    if (Date.now() > until) { ringAnimUntil = 0; return; }
-    if (i >= frames.length) {
-      if (!loop) { ringAnimUntil = 0; return; }
-      i = 0;
-    }
-    toRing(frames[i].c);
-    ringTimer = setTimeout(step, Math.max(16, frames[i++].ms));
-  };
-  step();
-}
 
 // ---------- заставка при загрузке ----------
 const boot = { frames: [], sel: 0, def: [], status: null };
@@ -1994,13 +1915,6 @@ $('#bt-list').onclick = e => {
   if (a === 'connect') toast('Подключаемся… устройство должно быть рядом и с включённым Bluetooth');
   btDo(b, { action: a, mac: row.dataset.mac }, { connect: 'Подключено', disconnect: 'Отключено', remove: 'Устройство забыто' }[a]);
 };
-loadBt();
-
-// ---------- система ----------
-$('#q-restart').onclick = e => confirm('Перезапустить Quasar? Алиса будет недоступна ~30 с.') &&
-  act(e.currentTarget, () => api('/api/system', { action: 'quasar_restart' }), 'Quasar перезапускается…');
-$('#reboot').onclick = e => confirm('Перезагрузить колонку?') &&
-  act(e.currentTarget, () => api('/api/system', { action: 'reboot' }), 'Перезагрузка…');
 
 // ---------- логи ----------
 let logText = '';
@@ -2099,7 +2013,7 @@ const store = {
   get: k => { try { return localStorage.getItem(PanelContext.storageKey(k)); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(PanelContext.storageKey(k), v); } catch {} },
 };
-const TABS = ['overview', 'player', 'alarm', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
+const TABS = ['overview', 'player', 'charts', 'settings'];
 let bootLoaded = false;
 let logsLoaded = false;
 let shownTab = null;
@@ -2126,9 +2040,8 @@ function showTab() {
   if (tab === 'apps') loadYam();
   if (tab === 'alarm') loadAlarms();
   if (tab === 'charts') loadCharts();
-  if (tab === 'settings') { loadAccess(); loadFootprint(); loadPanelVersion(); loadPanelModel(); }
-  if (tab === 'overview') loadBt();
-  if (tab === 'player') { renderMusic(); loadPlayerExtras(); loadMusic(); }
+  if (tab === 'settings') loadAccess();
+  if (tab === 'player') { renderMusic(); loadMusic(); }
   updateMinibar();
 }
 window.addEventListener('hashchange', showTab);
@@ -2151,10 +2064,9 @@ const muCmd = (btn, payload, msg) => act(btn, async () => {
 }, msg);
 
 // кнопки управления — одинаковые везде
-const MU_BTNS = { dislike: ['i-dislike', 18, 'Дизлайк'], shuffle: ['i-shuffle', 18, 'Перемешать'], prev: ['i-prev', 20, 'Предыдущий'],
-                  play: ['i-play', 24, 'Играть'], next: ['i-next', 20, 'Следующий'], repeat: ['i-repeat', 18, 'Повтор'], like: ['i-like', 18, 'Лайк'] };
+const MU_BTNS = { prev: ['i-prev', 20, 'Предыдущий'], play: ['i-play', 24, 'Играть'], next: ['i-next', 20, 'Следующий'] };
 $$('[data-mu-controls]').forEach(el => {
-  const set = el.dataset.muControls === 'bar' ? ['shuffle', 'prev', 'play', 'next', 'repeat'] : Object.keys(MU_BTNS);
+  const set = Object.keys(MU_BTNS);
   el.innerHTML = set.map(k => `<button class="cbtn${k === 'play' ? ' big' : ''}" data-mu="${k}" aria-label="${MU_BTNS[k][2]}">${icon(MU_BTNS[k][0], MU_BTNS[k][1])}</button>`).join('');
 });
 
@@ -2165,6 +2077,7 @@ function updateMinibar() {
 }
 
 async function loadMusic() {
+  if (!accessInfo || (accessInfo.enabled && !accessInfo.authed)) return;
   const need = !$('#tab-overview').hidden || !$('#tab-player').hidden || (minibarOn() && mu.info?.auth?.logged_in !== false);
   if (document.hidden || !online || !need) return;
   try { mu.info = await api('/api/music'); } catch { return; }
@@ -2203,8 +2116,11 @@ function renderMusic() {
   updateMinibar();
   $('#mu-login').hidden = logged;
   $('#mu-player').hidden = !logged;
-  $('#mu-logout').hidden = !logged;
+  $('#mu-logout').hidden = true;
   $('#mu-account').textContent = logged && i.auth.login ? i.auth.login : '';
+  $('#glagol-state').textContent = i.glagol.connected ? 'Glagol доступен' : 'Glagol недоступен';
+  $('#glagol-state').className = 'badge' + (i.glagol.connected ? ' ok' : '');
+  if (!volDragging && typeof i.glagol.state?.volume === 'number') showLevel(i.glagol.state.volume * 100);
   $('#pl-login').hidden = logged;
   $('#pl-body').hidden = !logged;
   if (!logged) { if (!mu.qr && !$('#tab-overview').hidden) startQr(); return; }
@@ -2234,23 +2150,15 @@ function renderMusic() {
     if (e.firstElementChild) e.firstElementChild.style.display = url ? 'none' : '';
   });
 
-  const playing = !!s?.playing, rep = p?.entityInfo?.repeatMode || 'None';
+  const playing = !!s?.playing;
   $$('[data-mu="play"]').forEach(b => { b.innerHTML = icon(playing ? 'i-pause' : 'i-play', 24); b.setAttribute('aria-label', playing ? 'Пауза' : 'Играть'); });
   $$('[data-mu="prev"]').forEach(b => b.disabled = !p?.hasPrev);
   $$('[data-mu="next"]').forEach(b => b.disabled = !p?.hasNext);
-  $$('[data-mu="repeat"]').forEach(b => {
-    b.classList.toggle('on', rep !== 'None');
-    b.innerHTML = icon('i-repeat', 18) + (rep === 'One' ? '<span class="one">1</span>' : '');
-    b.setAttribute('aria-label', { None: 'Повтор выключен', All: 'Повтор всех', One: 'Повтор трека' }[rep]);
-  });
-  $$('[data-mu="shuffle"]').forEach(b => b.classList.toggle('on', !!p?.entityInfo?.shuffled));
-  $$('[data-mu="like"]').forEach(b => { b.classList.toggle('liked', !!mu.track?.liked); b.setAttribute('aria-label', mu.track?.liked ? 'Убрать лайк' : 'Лайк'); });
-  $$('[data-mu="shuffle"], [data-mu="repeat"], [data-mu="like"], [data-mu="dislike"]').forEach(b => b.disabled = !has);
   const pos = musicPos();
   $$('input.mu-seek').forEach(r => {
     // по Bluetooth позиция приходит верная, но перематывать колонка не умеет — только на телефоне
-    r.disabled = !p?.duration || isBt;
-    r.title = isBt ? 'По Bluetooth перематывать можно только на телефоне' : '';
+    r.disabled = true;
+    r.title = 'Перемотка недоступна через SDK';
     if (!mu.seeking) { r.max = Math.round(p?.duration || 100); r.value = Math.round(pos); }
   });
   if (!mu.seeking) $$('.mu-pos').forEach(e => e.textContent = fmtDur(pos));
@@ -2262,8 +2170,8 @@ function renderMusic() {
 
   if (p?.id && p.id !== mu.trackId) {   // сменился трек — подробности и всё для вкладки «Плеер»
     mu.trackId = p.id; mu.track = null; mu.extras = {};
-    if (!isBt) api('/api/music/info?id=' + encodeURIComponent(p.id)).then(t => { if (mu.trackId === p.id) { mu.track = t; renderMusic(); } }).catch(() => {});
-    if (!$('#tab-player').hidden) loadPlayerExtras();
+    $('#pl-lyrics').innerHTML = '<div class="empty">Дополнительные сведения недоступны через SDK.</div>';
+    if (!$('#tab-player').hidden) renderPlayerTab();
   }
   if (!$('#tab-player').hidden) renderPlayerTab();
 }
@@ -2272,110 +2180,14 @@ setInterval(() => muState()?.playing && !mu.seeking && renderMusic(), 250);   //
 // ----- вкладка «Плеер» -----
 const PL_TYPES = { Radio: 'Радио', Album: 'Альбом', Playlist: 'Плейлист', Artist: 'Исполнитель', Track: 'Трек', FmRadio: 'FM-радио' };
 function renderPlayerTab() {
-  const s = muState(), p = muPlayer(), t = mu.track;
-  const q = mu.extras.queue;
-  const src = q?.title || (p?.playlistId === 'user:onyourwave' ? 'Моя волна' : p?.playlistDescription);
-  const isBt = p?.playerType === 'bluetooth';
-  const srcPath = !isBt && muHas() ? ymSourcePath(p) : null;
-  setHtml($('#pl-source'), isBt ? 'Bluetooth · звук с телефона или компьютера'
-    : muHas() ? esc(PL_TYPES[p.playlistType] || p.playlistType || '') + (src ? ' · ' + (srcPath ? ymA(srcPath, src) : esc(src)) : '') : 'Ничего не играет');
-  $('#pl-kind').textContent = p ? (isBt ? 'Bluetooth' : PL_TYPES[p.type] || p.type || 'Трек') + (s?.playing ? ' · играет' : ' · пауза') : '—';
-  const meta = [];
-  if (t) {
-    if (t.album?.title) meta.push(t.album.id ? ymA(`/album/${t.album.id}`, `Альбом «${t.album.title}»`, 'badge') : `<span class="badge">${esc(`Альбом «${t.album.title}»`)}</span>`);
-    for (const m of [t.album?.year, t.album?.genre, t.album?.label, t.album?.trackCount && `${t.album.trackCount} треков в альбоме`, t.explicit && '18+'])
-      if (m) meta.push(`<span class="badge">${esc(m)}</span>`);
-  }
-  setHtml($('#pl-meta'), meta.join(''));
-  // текст: если есть синхронизация — подсвечиваем текущую строку
-  const ly = mu.extras.lyrics;
-  if (ly?.sync) {
-    const pos = musicPos(), idx = ly.sync.reduce((k, l, j) => l[0] <= pos ? j : k, -1);
-    if (idx !== mu.extras.lyIdx) {
-      mu.extras.lyIdx = idx;
-      $$('#pl-lyrics .ln').forEach((el, j) => el.classList.toggle('cur', j === idx));
-      // Прокручиваем только сам блок текста (не страницу) и не мешаем, если его недавно крутили рукой.
-      const box = $('#pl-lyrics'), line = $(`#pl-lyrics .ln:nth-child(${idx + 1})`);
-      if (line && Date.now() - (box._userScroll || 0) > 6000) {
-        box._auto = Date.now();
-        box.scrollTo({ top: line.offsetTop - box.clientHeight / 2 + line.offsetHeight / 2, behavior: 'smooth' });   // offsetTop — от самого блока (position: relative)
-      }
-    }
-  }
-  if ($('#pl-raw-box').open) renderRaw();
-}
-function renderRaw() {
-  const out = [], walk = (o, pre) => Object.entries(o || {}).forEach(([k, v]) =>
-    v && typeof v === 'object' && !Array.isArray(v) ? walk(v, pre + k + '.') : out.push([pre + k, Array.isArray(v) ? `[${v.length}]` : String(v)]));
-  walk(muState(), '');
-  $('#pl-raw').innerHTML = out.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v.length > 140 ? v.slice(0, 140) + '…' : v)}</dd>`).join('');
-}
-$('#pl-raw-box').addEventListener('toggle', renderRaw);
-// ручная прокрутка текста (колесо, тач, перетаскивание полосы) — ставит автопрокрутку на паузу
-['wheel', 'touchmove', 'pointerdown'].forEach(ev => $('#pl-lyrics').addEventListener(ev, () => { $('#pl-lyrics')._userScroll = Date.now(); }, { passive: true }));
-const trackRow = (t, cur, tag) => `<button class="trow${cur ? ' cur' : ''}" data-play="${esc(t.id)}" ${t.available === false ? 'disabled' : ''}>
-  ${t.cover ? `<img src="${esc(t.cover)}" alt="" loading="lazy">` : '<span class="ph"></span>'}
-  <span class="tt"><b>${esc(t.title)}</b><span>${esc(t.artists)}</span></span>
-  ${tag ? `<span class="badge${cur ? ' ok' : ''}">${tag}</span>` : ''}<span class="td">${t.durationMs ? fmtDur(t.durationMs / 1000) : ''}</span></button>`;
-async function loadPlayerExtras() {
-  const id = mu.trackId;
-  if (!id || mu.extras.for === id) return;
-  mu.extras = { for: id };
-  $('#pl-lyrics').innerHTML = $('#pl-queue').innerHTML = $('#pl-similar').innerHTML = '<div class="empty">Загрузка…</div>';
-  const p = muPlayer(), isBt = p?.playerType === 'bluetooth';
-  // По Bluetooth у трека нет id Яндекса: текст ищем в LRCLIB по названию, очередь и похожие не нужны.
-  const lyUrl = isBt ? '/api/music/lyrics?' + new URLSearchParams({ title: p.title || '', artist: p.subtitle || '', album: p.extra?.album || '', duration: p.duration || 0 })
-                     : '/api/music/lyrics?id=' + id;
-  const none = Promise.reject(new Error('—'));
-  none.catch(() => {});
-  const [ly, q, sim] = await Promise.allSettled([api(lyUrl), isBt ? none : api('/api/music/queue'), isBt ? none : api('/api/music/similar?id=' + id)]);
-  if (mu.trackId !== id) return;
-  const L = ly.status === 'fulfilled' ? ly.value : {};
-  if (L.text) {
-    mu.extras.lyrics = L;
-    $('#pl-lyrics').innerHTML = L.sync
-      ? L.sync.map(l => `<span class="ln">${esc(l[1]) || '&nbsp;'}</span>`).join('')
-      : esc(L.text);
-    $('#pl-ly-meta').textContent = L.sync ? 'идёт вместе с песней' : '';
-  } else {
-    $('#pl-lyrics').innerHTML = `<div class="empty">${L.instrumental ? 'Инструментальный трек — без слов' : 'Текст не нашёлся ни в Яндекс Музыке, ни в LRCLIB'}</div>`;
-    $('#pl-ly-meta').textContent = '';
-  }
-  // откуда текст
-  const SRC = { 'Яндекс Музыка': 'Текст: Яндекс Музыка', 'LRCLIB': 'Текст: <a href="https://lrclib.net" target="_blank" rel="noopener">LRCLIB</a> — открытая база текстов песен' };
-  $('#pl-ly-src').hidden = !L.source;
-  $('#pl-ly-src').innerHTML = SRC[L.source] || '';
-  if (q.status === 'fulfilled') {
-    mu.extras.queue = q.value;
-    $('#pl-q-title').textContent = q.value.title ? `Очередь · ${q.value.title}` : 'Очередь';
-    $('#pl-q-count').textContent = q.value.tracks.length > 3 ? `${q.value.tracks.length} треков` : '';
-    const cur = q.value.current, tagOf = k => cur == null ? '' : k === cur ? 'сейчас' : k === cur + 1 ? 'далее' : k === cur - 1 ? 'было' : '';
-    $('#pl-queue').innerHTML = q.value.tracks.map((t, k) => trackRow(t, k === cur, tagOf(k))).join('') || '<div class="empty">Пусто</div>';
-    $('#pl-queue .trow.cur')?.scrollIntoView({ block: 'nearest' });
-  } else $('#pl-queue').innerHTML = `<div class="empty">${esc(q.reason?.message || 'Не удалось')}</div>`;
-  $('#pl-similar').innerHTML = sim.status === 'fulfilled' && sim.value.length ? sim.value.map(t => trackRow(t)).join('') : '<div class="empty">Нет</div>';
-  if (isBt) return;
-  // исполнитель — когда приедут подробности о треке
-  const waitTrack = async () => { for (let k = 0; k < 20 && !mu.track && mu.trackId === id; k++) await new Promise(r => setTimeout(r, 300)); };
-  await waitTrack();
-  const aid = mu.track?.artistList?.[0]?.id;
-  if (!aid) { $('#pl-artist').innerHTML = '<div class="empty">—</div>'; return; }
-  try {
-    const a = await api('/api/music/artist?id=' + aid);
-    if (mu.trackId !== id) return;
-    $('#pl-artist').innerHTML = `<div class="artist-grid">
-      ${a.cover ? `<img src="${esc(a.cover)}" alt="">` : '<span></span>'}
-      <div class="col" style="gap:8px">
-        <div style="font-size:22px;font-weight:800">${ymA(`/artist/${a.id}`, a.name)}</div>
-        <div class="pl-meta">${(a.genres || []).map(g => `<span class="badge">${esc(g)}</span>`).join('')}
-          ${a.likes ? `<span class="badge">♥ ${a.likes.toLocaleString('ru')}</span>` : ''}
-          ${a.tracks ? `<span class="badge">${a.tracks} треков</span>` : ''}${a.albums ? `<span class="badge">${a.albums} альбомов</span>` : ''}</div>
-        ${a.description ? `<p class="hint" style="font-size:14px">${esc(a.description)}</p>` : ''}
-        ${a.similar?.length ? `<div class="meta">Похожие: ${a.similar.map(x => x.id ? ymA(`/artist/${x.id}`, x.name) : esc(x.name)).join(', ')}</div>` : ''}
-        <div><a class="btn sm" href="${YM}/artist/${esc(a.id)}" target="_blank" rel="noopener">Открыть в Яндекс Музыке ↗</a></div>
-        ${a.popular?.length ? `<b style="margin-top:6px">Популярное</b><div class="tlist">${a.popular.map(t => trackRow(t)).join('')}</div>` : ''}
-      </div></div>`;
-  } catch (e) { $('#pl-artist').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  const player = muPlayer(), playing = !!muState()?.playing;
+  $('#pl-source').textContent = player?.playerType || 'Состояние плеера';
+  $('#pl-kind').textContent = player ? `${PL_TYPES[player.type] || 'Плеер'} · ${playing ? 'играет' : 'пауза'}` : '—';
+  $('#pl-meta').textContent = '';
+  $('#pl-lyrics').innerHTML = '<div class="empty">Дополнительные сведения недоступны через SDK.</div>';
+  $('#pl-queue').innerHTML = '<div class="empty">Очередь недоступна через SDK.</div>';
+  $('#pl-similar').innerHTML = '<div class="empty">Недоступно через SDK.</div>';
+  $('#pl-artist').innerHTML = '<div class="empty">Недоступно через SDK.</div>';
 }
 
 // ----- управление (общие обработчики) -----
@@ -2387,30 +2199,19 @@ function musicAction(a, btn) {
     return muCmd(btn, { command: 'play' });
   }
   if (a === 'prev' || a === 'next') return muCmd(btn, { command: a });
-  if (a === 'shuffle') return muCmd(btn, { command: 'shuffle', enable: !p?.entityInfo?.shuffled });
-  if (a === 'repeat') return muCmd(btn, { command: 'repeat', mode: { None: 'All', All: 'One', One: 'None' }[p?.entityInfo?.repeatMode || 'None'] });
-  if (!p?.id) return;
-  if (a === 'like') return act(btn, async () => {
-    const r = await api('/api/music/like', { id: p.id, like: !mu.track?.liked });
-    if (mu.track) mu.track.liked = r.liked;
-    renderMusic();
-    toast(r.liked ? '♥ В «Мне нравится»' : 'Лайк убран');
-  });
-  if (a === 'dislike') return act(btn, () => api('/api/music/dislike', { id: p.id }), 'Дизлайк — дальше');
+
+
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-mu]');
   if (b) return musicAction(b.dataset.mu, b);
-  const r = e.target.closest('[data-play]');
-  if (r) act(r, () => api('/api/music/play', { id: r.dataset.play, type: 'track' }), 'Включаю');
 });
 document.addEventListener('input', e => {
   if (e.target.matches('input.mu-seek')) { mu.seeking = true; $$('.mu-pos').forEach(x => x.textContent = fmtDur(+e.target.value)); }
   if (e.target.matches('input.mu-vol')) { mu.volSet = Date.now(); $$('.mu-vol-v').forEach(x => x.textContent = e.target.value); }
 });
 document.addEventListener('change', e => {
-  if (e.target.matches('input.mu-seek'))
-    muCmd(null, { command: 'rewind', position: +e.target.value }).finally(() => setTimeout(() => mu.seeking = false, 800));
+  if (e.target.matches('input.mu-seek')) mu.seeking = false;
   if (e.target.matches('input.mu-vol')) { mu.volSet = Date.now(); act(null, () => api('/api/volume', { level: +e.target.value })); }
 });
 document.addEventListener('submit', e => {
@@ -2420,56 +2221,15 @@ document.addEventListener('submit', e => {
   if (!text) return;
   muCmd(e.submitter, { command: 'sendText', text }, 'Алиса: «' + text + '»').then(() => input.value = '');
 });
-$('#mu-logout').onclick = e => confirm('Выйти из аккаунта Яндекса? Токен будет удалён с этого компьютера.') &&
-  act(e.currentTarget, async () => { await api('/api/auth/logout', {}); mu.qr = null; await loadMusic(); }, 'Вы вышли из аккаунта');
-
 // вход по QR: показываем код и раз в 2 с спрашиваем, подтвердили ли вход на телефоне
 async function startQr() {
-  mu.qr = 'pending';
-  $('#mu-qr').innerHTML = '<div class="empty">QR-код…</div>';
-  $('#mu-qr-status').textContent = '';
-  try {
-    const [r, a] = await Promise.all([api('/api/auth/qr', {}), api('/api/auth')]);
-    mu.qr = r.link;
-    $('#mu-oauth').href = a.oauth_url;
-    const q = qrcode(0, 'M');
-    q.addData(r.link);
-    q.make();
-    $('#mu-qr').innerHTML = q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
-    $('#mu-qr-status').textContent = 'Ждём подтверждения на телефоне…';
-    clearInterval(mu.qrTimer);
-    mu.qrTimer = setInterval(pollQr, 2000);
-  } catch (e) {
-    mu.qr = 'failed';
-    $('#mu-qr').innerHTML = '<div class="empty">QR недоступен</div>';
-    $('#mu-qr-status').textContent = e.offline ? '' : e.message + ' — войдите через Яндекс ниже.';
-    api('/api/auth').then(a => $('#mu-oauth').href = a.oauth_url).catch(() => {});
-  }
+  mu.qr = 'cli';
+  $('#mu-qr').innerHTML = '<div class="empty">Вход на X230</div>';
+  $('#mu-qr-status').textContent = 'Запустите station auth login на X230.';
 }
 function stopQr() { clearInterval(mu.qrTimer); mu.qrTimer = null; mu.qr = null; }
-async function pollQr() {
-  try {
-    const r = await api('/api/auth/qr');
-    if (r.state === 'done') { stopQr(); toast('Вход выполнен' + (r.login ? ': ' + r.login : '')); loadMusic(); }
-    else if (r.state === 'expired' || r.state === 'none') {
-      clearInterval(mu.qrTimer);
-      $('#mu-qr-status').innerHTML = 'QR-код устарел. <button class="btn sm" id="mu-qr-new">Новый код</button>';
-      $('#mu-qr-new').onclick = () => startQr();
-    }
-  } catch (e) { if (!e.offline) $('#mu-qr-status').textContent = e.message; }
-}
-$('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
-  const r = await api('/api/auth/oauth', { url: $('#mu-oauth-url').value });
-  $('#mu-oauth-url').value = '';
-  stopQr();
-  await loadMusic();
-  return r;
-}, 'Вход выполнен');
-
-// ---------- ASCII-визуализатор за моделью ----------
-// Звука у панели нет, но пока играет музыка, Quasar сам рисует на часах эквалайзер из 4 полос — его мы
-// получаем потоком (liveLeds) и раскладываем по кругу. Без него — синтетика: лучи пульсируют в темпе.
-// Цвет — акцент темы.
+// ---------- декоративный ASCII-визуализатор за моделью ----------
+// Эффект локальный и по умолчанию выключен; он не отражает состояние устройства.
 (() => {
   const cv = $('#model-viz'), ctx = cv.getContext('2d');
   const RAMP = ' .·:-=+*%#@', FS = 13;
@@ -2979,7 +2739,7 @@ function applyUI() {
   for (const [k, v] of [['--accent', accent], ['--accent-ink', accent && `color-mix(in srgb, ${accent} 72%, var(--text))`],
                         ['--accent-soft', accent && `color-mix(in srgb, ${accent} 15%, var(--card))`]])
     v ? root.style.setProperty(k, v) : root.style.removeProperty(k);
-  window.__vizOff = store.get('ui.viz') === '0';
+  window.__vizOff = store.get('ui.viz') !== '1';
   $$('#set-theme button').forEach(b => b.classList.toggle('active', b.dataset.v === theme));
   $$('#set-accent .sw').forEach(b => b.classList.toggle('sel', b.dataset.v === accent));
   $('#set-viz').checked = !window.__vizOff;
@@ -3043,7 +2803,7 @@ $('#pw-form').onsubmit = e => {
     await loadAccess();
   }, off ? 'Пароль убран' : 'Пароль сохранён, другие входы завершены');
 };
-$('#pw-logout').onclick = e => act(e.currentTarget, async () => { await authPost('/api/panel-auth/logout'); await connCheck(); });
+$('#pw-logout').onclick = e => act(e.currentTarget, async () => { await authPost('/api/panel-auth/logout'); await loadAccess(); await connCheck(); });
 $('#pw-others').onclick = e => act(e.currentTarget, async () => {
   const r = await authPost('/api/panel-auth/logout-others'); await loadAccess(); return r;
 }, 'Другие входы завершены');
@@ -3136,11 +2896,11 @@ loadAccess();
 // ---------- графики ----------
 // Каждая метрика — свой график с одной осью; наведение двигает перекрестие сразу на всех.
 const CHARTS = [
-  { k: 'cpu', name: 'Процессор', unit: '%', min: 0, max: 100, fmt: v => Math.round(v) },
+  { k: 'cpu', name: 'Процессор', unit: '%', min: 0, max: 100, fmt: v => Math.round(v), note: 'CPU usage из /proc/stat' },
   { k: 'temp', name: 'Температура', unit: '°C', pad: 2, fmt: v => v.toFixed(1) },
   { k: 'mem', name: 'Память занята', unit: 'МБ', min: 0, total: true, fmt: v => Math.round(v) },
   { k: 'rssi', name: 'Сигнал Wi‑Fi', unit: 'дБм', pad: 3, fmt: v => Math.round(v), note: 'ближе к нулю — лучше' },
-  { k: 'disk', name: 'Диск /data занят', unit: 'МБ', min: 0, total: true, fmt: v => v.toFixed(1) },
+  { k: 'disk', name: 'Диск занят', unit: 'МБ', min: 0, total: true, fmt: v => v.toFixed(1), note: 'Недоступно через SDK' },
   { k: 'load', name: 'Средняя нагрузка', unit: '', min: 0, fmt: v => v.toFixed(2), note: 'load average за минуту' },
 ];
 const EV_TEXT = { reboot: '⟲', offline: '⨯', online: '✓', alarm: '⏰' };
@@ -3218,8 +2978,8 @@ function renderCharts() {
     + xTicks.map(t => `<text class="axis" x="${xOf(pg, t)}" y="${pg.H - 3}" text-anchor="middle">${hm(t)}</text>`).join('')
     + `<g class="hover" visibility="hidden"><line class="cross" y1="${pg.T}" y2="${pg.H - pg.B}"/></g>`;
   const played = d.play.filter(Boolean).length * d.step;
-  $('#ch-play-v').innerHTML = played ? `${played >= 3600 ? (played / 3600).toFixed(1) + '<span>ч</span>' : Math.round(played / 60) + '<span>мин</span>'}` : '—';
-  $('#ch-events').innerHTML = d.events.length ? d.events.slice().reverse().map(e =>
+  $('#ch-play-v').innerHTML = d.play_supported ? (played ? `${played >= 3600 ? (played / 3600).toFixed(1) + '<span>ч</span>' : Math.round(played / 60) + '<span>мин</span>'}` : '—') : '—';
+  $('#ch-events').innerHTML = !d.events_supported ? '<span class="meta">Подписка событий пока недоступна через SDK</span>' : d.events.length ? d.events.slice().reverse().map(e =>
     `<div class="ev-row"><time>${hm(e.t)}</time><span>${EV_TEXT[e.type] || '•'} ${esc(e.text)}</span></div>`).join('')
     : '<span class="meta">За этот период ничего не случилось</span>';
   showHover(chHover);
@@ -3254,7 +3014,9 @@ function showHover(t) {
   if (ph) {
     if (i < 0) ph.setAttribute('visibility', 'hidden');
     else { const X = xOf({ ...chGeom($('#ch-play')) }, d.t[i]); ph.setAttribute('visibility', 'visible'); ph.querySelector('.cross').setAttribute('x1', X); ph.querySelector('.cross').setAttribute('x2', X); }
-    $('#ch-play-sub').textContent = i >= 0 ? `в ${hm(d.t[i])}: ${d.play[i] ? 'играла' : 'тишина'}` : 'когда колонка что-то играла (музыка, ответы Алисы, звуки)';
+    $('#ch-play-sub').textContent = d.play_supported
+      ? (i >= 0 ? `в ${hm(d.t[i])}: ${d.play[i] ? 'играла' : 'тишина'}` : 'история воспроизведения')
+      : 'История воспроизведения недоступна через SDK';
   }
 }
 function chPointer(e) {
@@ -3628,8 +3390,8 @@ $('#cs-login').onsubmit = async e => {
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(d.error || r.statusText);
     $('#cs-pass').value = '';
+    await loadAccess();
     await connCheck();
-    loadAccess();
   } catch (x) { err.textContent = x.message; $('#cs-pass').select(); }
   finally { btn.disabled = false; }
 };
@@ -3643,12 +3405,7 @@ function onConnected() {
   refreshStatus();
   clearInterval(statusTimer);
   statusTimer = setInterval(refreshStatus, 5000);
-  loadSounds().catch(e => { if (!e.offline) $('#sounds').innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
-  api('/api/patterns').then(p => { patterns = p; renderPatterns(); }).catch(e => e.offline || toast(e.message, true));
   loadMusic();
-  loadDispState();
-  loadAlarms();
-  loadBt();
 }
 
 // ---------- старт ----------

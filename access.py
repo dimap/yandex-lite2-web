@@ -20,7 +20,7 @@ from pathlib import Path
 COOKIE = "yl2_session"
 SESSION_TTL = 90 * 24 * 3600       # продлевается при каждом заходе
 PBKDF2_ITER = 240_000
-MIN_PASSWORD = 4
+MIN_PASSWORD = 12
 
 
 class AccessError(Exception):
@@ -221,12 +221,13 @@ def ensure_certs(tls_dir: Path):
     Сертификат сервера перевыпускается, когда у машины меняется набор адресов.
     """
     tls_dir.mkdir(mode=0o700, exist_ok=True)
+    os.chmod(tls_dir, 0o700)
     ca_key, ca_crt = tls_dir / "ca.key", tls_dir / "ca.crt"
     key, crt, sans_file = tls_dir / "server.key", tls_dir / "server.crt", tls_dir / "server.sans"
     names, ips = local_names()
     sans = ",".join([f"DNS:{n}" for n in names] + [f"IP:{a}" for a in ips])
     if not ca_crt.exists() or not ca_key.exists():
-        permitted = ["IP:127.0.0.0/255.0.0.0", "IP:10.0.0.0/255.0.0.0", "IP:172.16.0.0/255.240.0.0",
+        permitted = ["IP:127.0.0.0/255.0.0.0", "IP:10.0.0.0/255.0.0.0", "IP:100.64.0.120/255.255.255.255", "IP:172.16.0.0/255.240.0.0",
                      "IP:192.168.0.0/255.255.0.0", "DNS:localhost", "DNS:local"] + [f"DNS:{n}" for n in names]
         with tempfile.NamedTemporaryFile("w", suffix=".cnf", delete=False) as f:
             f.write("[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n"

@@ -114,6 +114,22 @@ set_data_dir(ROOT)
 # Без пароля доступны только оболочка страницы и вход; всё остальное — после входа.
 PUBLIC_PATHS = {"/", "/index.html", "/model.stl", "/manifest.webmanifest", "/sw.js", "/ca.crt", "/api/panel-auth",
                 "/api/panel-auth/login"}
+# This deployment deliberately exposes only the host-side Station controls. Keep
+# device administration routes unavailable even when a panel session is valid.
+DISABLED_API_PREFIXES = (
+    "/api/alarms", "/api/auth", "/api/backup", "/api/boot", "/api/bt",
+    "/api/clock", "/api/conn", "/api/devices", "/api/footprint", "/api/fs",
+    "/api/log", "/api/pattern", "/api/term", "/api/yam",
+    "/api/panel/update", "/api/panel/version", "/api/play", "/api/profile",
+    "/api/sounds", "/api/stop", "/api/system", "/api/term", "/api/upload",
+    "/api/yam",
+)
+
+
+def disabled_api_path(path):
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in DISABLED_API_PREFIXES)
+
+
 # Команды Glagol, которые можно отправить из панели, и разрешённые для них поля.
 # Громкость: у Quasar своя шкала 0–20; колонка показывает её ×5 (0–100 с шагом 5), Glagol — /20 (0–1).
 # В ALSA она переводится по volume_manager_settings.platformToAlsaMap из quasar.cfg: 0 → 0, 1 → 49, 20 → 255.
@@ -2479,6 +2495,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path)
+        if disabled_api_path(u.path):
+            return self._send(404, {"error": "not found"})
         if self._guard(u.path):
             return
         if u.path == "/api/panel-auth":
@@ -2557,6 +2575,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
+        if disabled_api_path(u.path):
+            return self._send(404, {"error": "not found"})
         if self._guard(u.path):
             return
         if u.path.startswith("/api/panel-auth/"):

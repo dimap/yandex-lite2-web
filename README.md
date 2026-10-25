@@ -1,258 +1,41 @@
-# Веб-панель для Яндекс Станций
+# Station Lite 2 SDK panel
 
-Локальная веб-панель для **Яндекс Станций с root-доступом по adb** — Лайт 2, а также Мини 3 Про, Станции 2
-и Мини 3 (см. [Другие модели](#другие-модели-и-несколько-колонок)): музыка и плеер, будильник, который
-работает без интернета, своя заставка и звук запуска, подсветка и дисплей часов, Bluetooth, графики, файлы,
-логи и интерактивная root-консоль. Всё работает в локальной сети, через adb и локальный протокол колонки.
-Отдельно ставить на колонку ничего не нужно.
+This checkout adapts the upstream Station Web interface to `plum_sdk`. The web
+service runs on X230; the Station remains a hardware endpoint reached through
+the verified `station-lite2` SSH alias. The SDK owns fixed SSH operations,
+Glagol requests, and TTL-bounded LED writes.
 
-> [!WARNING]
-> Неофициальный проект, не связан с Яндексом. Панель работает только на колонке, где уже есть root-доступ по adb,
-> и сама колонку не рутирует. Консоль, файлы и некоторые функции дают полный доступ к системе колонки:
-> используйте на свой риск.
+The deployed surface includes real device status and telemetry, media/player
+controls, Alice text commands, the Lite 2 3D model, a 36-channel display
+editor, preview-only animation import, and temporary RGB control. Display and
+RGB snapshots and native Quasar ownership are unavailable, so the UI labels
+them as unsupported. The evidence registry and decision record are maintained
+in the separate `station-lite2` SDK checkout.
 
-![Обзор](docs/screenshots/overview.png)
+The deployed server is `sdk_server.py`; its route allowlist returns 404 for
+unsupported operations. It does not expose a shell, filesystem editor, ADB,
+YAM, alarms, boot hooks, or arbitrary SSH. `server.py` remains upstream source
+and is not a supported launch target for this adaptation.
+The old Docker and Windows launchers that invoked it have been removed; the
+Windows helper now points to the X230-hosted panel.
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/player.png" alt="Плеер"></td>
-    <td width="50%"><img src="docs/screenshots/alarm.png" alt="Будильник"></td>
-  </tr>
-  <tr>
-    <td align="center">Плеер: текст песни, очередь, похожие треки</td>
-    <td align="center">Локальный будильник</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/charts.png" alt="Графики"></td>
-    <td width="50%"><img src="docs/screenshots/console.png" alt="Консоль"></td>
-  </tr>
-  <tr>
-    <td align="center">Графики за сутки</td>
-    <td align="center">Интерактивная root-консоль</td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/boot.png" alt="Запуск"></td>
-    <td width="50%"><img src="docs/screenshots/overview-dark.png" alt="Тёмная тема"></td>
-  </tr>
-  <tr>
-    <td align="center">Редактор заставки и звук запуска</td>
-    <td align="center">Тёмная тема</td>
-  </tr>
-</table>
+## Deployment
 
-## Возможности
+The panel is served at `https://100.64.0.120:8766/` on X230, with a password,
+Host/Origin checks, request limits, and a peer-restricted host firewall rule.
+The address is CGNAT space, so reachability depends on the trusted client
+network. Follow [the X230 deployment and rollback guide](docs/x230-deployment.md)
+for setup, health checks, endpoints, and upstream update handling.
 
-**Каждый день**
-- **Обзор** — температура, память, Wi‑Fi, аптайм; 3D-модель колонки в цвете корпуса, на которой в реальном времени
-  повторяются дисплей часов и кольцо; громкость, звуки колонки и свои файлы, подсветка, дисплей часов (текст, дата,
-  температура, таймер). Виджеты можно переставлять и прятать.
-- **Плеер** — что играет, управление, громкость, команды Алисе, текст песни с подсветкой текущей строки
-  (Яндекс Музыка или [LRCLIB](https://lrclib.net)), очередь, похожие треки, об исполнителе, ссылки на Яндекс Музыку.
-  Вход в Яндекс — по QR-коду. Музыку с телефона по Bluetooth плеер тоже показывает.
-- **Будильник** — работает на самой колонке, даже когда компьютер с панелью выключен. «Моя волна», утреннее шоу,
-  любой запрос Алисе или свой звук; если нет интернета — играет звук. Нарастание громкости, «отложить»,
-  выключение кнопкой на колонке или голосом.
+## Development checks
 
-**Колонка**
-- **Запуск** — своя заставка на дисплее часов (покадровый редактор) и свой звук включения.
-- **Приложения** — установка пакетов [yam](https://github.com/nyakokitsu/yam) из реестра
-  [yapkg](https://github.com/nyakokitsu/yapkg).
-- **Файлы** — просмотр, правка, загрузка и скачивание, проигрывание аудио прямо с колонки.
-- **Консоль** — настоящий терминал (xterm.js): Tab, история, Ctrl+C, `top`, `vi`.
-- **Bluetooth** — сопряжённые устройства, подключение и «забыть», видимость на 3 минуты.
-
-**Состояние**
-- **Графики** — процессор, температура, память, диск, Wi‑Fi, нагрузка и воспроизведение за сутки, события
-  (перезагрузки, обрывы связи, будильники), выгрузка в CSV.
-- **Логи** — логи демонов Quasar и dmesg с фильтром.
-
-**Панель**
-- Пароль, HTTPS со своим сертификатом, установка как приложение (PWA), светлая и тёмная тема, цвет акцента.
-- Резервная копия всего, что панель поставила на колонку, и полное удаление в один клик.
-
-## Что нужно
-
-- Яндекс Станция Лайт 2 с **root-доступом по adb** — по сети (`adb connect <IP>:5555`) или по USB.
-- Компьютер или сервер в той же сети:
-  - **Python 3.9+** (только стандартная библиотека) и **adb** ([Android platform-tools](https://developer.android.com/tools/releases/platform-tools));
-  - для заставки и анимаций часов (формат zstd) — **Python 3.14+** или программа **zstd**;
-  - по желанию **ffmpeg** — чтобы играть mp3/ogg/opus и менять звуки (без него — только WAV) и **openssl** — для HTTPS;
-  - или **Docker** — там всё уже есть.
-
-## Установка
-
-### Windows — запускать, когда нужно
-
-1. Скачайте со страницы [Releases](https://github.com/dimap/yandex-station-web/releases/latest) архив
-   `…-windows-x64.zip` (для ARM-ноутбуков — `…-windows-arm64.zip`) и распакуйте в любую папку.
-2. Дважды щёлкните **`start.bat`**.
-
-Python в архиве уже есть. Остальное `start.bat` сделает сам. Если в системе нет adb или ffmpeg, он предложит скачать их
-в папку `runtime` рядом с панелью: platform-tools с сайта Google
-(~7 МБ) и по желанию ffmpeg (~110 МБ, нужен для mp3/ogg и своих звуков). В систему ничего не устанавливается,
-права администратора не нужны; чтобы убрать всё, достаточно удалить папку. При первом запуске панель спросит
-IP колонки, запомнит его и откроет браузер.
-
-Можно и без архива из Releases: **Code → Download ZIP** — тогда `start.bat` при необходимости скачает ещё и
-портативный Python с python.org (~11 МБ). Нужна Windows 10 (1803) или новее. Уже установленные Python 3.14+, adb (в `PATH` или папка `platform-tools`
-рядом с `server.py`) и ffmpeg `start.bat` найдёт и использует.
-
-### Linux / macOS — запускать, когда нужно
+Panel routes and device behavior are tested with fake backends. No automated
+tests invoke Station hardware, audio, or voice operations.
 
 ```sh
-# Debian/Ubuntu: sudo apt install python3 adb ffmpeg zstd      Fedora: sudo dnf install python3 android-tools ffmpeg zstd
-# macOS:        brew install python android-platform-tools ffmpeg zstd
-git clone https://github.com/dimap/yandex-station-web.git
-cd yandex-station-web
-./start.sh 192.168.1.50     # IP колонки; дальше можно просто ./start.sh
+PYTHONPATH=/path/to/station-lite2/src:$PWD python3 -m pytest -q
+node tests/test_paths.mjs
 ```
 
-Панель откроется на `http://127.0.0.1:8765/`. Остановить — Ctrl+C.
-
-### Docker — постоянно на сервере
-
-Готовый образ: **`ghcr.io/dimap/yandex-station-web`** (amd64, arm64 и armv7 — подойдёт и Raspberry Pi).
-Раньше он назывался `ghcr.io/dimap/yandex-lite2-web` — под старым именем образ пока тоже обновляется.
-В нём уже есть adb, ffmpeg и openssl, клонировать репозиторий не нужно.
-
-Одной командой (вместо `192.168.1.50` — IP колонки):
-
-```sh
-docker run -d --name yandex-station-web --network host --restart unless-stopped \
-  -e ADB_SERIAL=192.168.1.50 -v "$PWD/data:/data" \
-  ghcr.io/dimap/yandex-station-web:latest
-```
-
-Или через Docker Compose — сохраните как `docker-compose.yml` и запустите `docker compose up -d`:
-
-```yaml
-services:
-  panel:
-    image: ghcr.io/dimap/yandex-station-web:latest
-    container_name: yandex-station-web
-    network_mode: host               # сертификат HTTPS выпишется на адрес сервера в сети
-    environment:
-      ADB_SERIAL: "192.168.1.50"     # IP колонки (порт 5555 подставится сам)
-      # PANEL_PORT: "8765"
-      # PANEL_HTTPS_PORT: "8766"     # 0 — без HTTPS
-    volumes:
-      - ./data:/data
-    restart: unless-stopped
-```
-
-Панель: `http://<адрес сервера>:8765/`. Всё своё (вход в Яндекс, пароль, сертификаты, история графиков,
-ключ adb) хранится в `./data` и переживает обновления.
-
-- **Обновить:** `docker compose pull && docker compose up -d` (или `docker pull` и пересоздать контейнер).
-- **Версии:** `latest` — последняя из ветки `main`, `0.1.0` и т. д. — конкретный релиз.
-- **Без `network_mode: host`** (Docker Desktop на Windows/macOS) — пробросьте порты `-p 8765:8765 -p 8766:8766`;
-  панель работает так же, только HTTPS-сертификат будет выписан на адрес контейнера.
-- **Собрать образ самому:** склонируйте репозиторий и запустите `docker compose up -d --build`
-  с `build: .` вместо `image:` в `docker-compose.yml` из репозитория.
-
-> В Docker панель открыта для всей локальной сети — **задайте пароль** во вкладке «Настройки» → «Доступ».
-
-## Другие модели и несколько колонок
-
-Изначально проект создавался под Лайт 2, но сейчас так же имеется базовая поддержка некоторых других колонок.
-Панель сама определяет модель по плате колонки (платформа в `/proc/device-tree`) и запоминает её. При первом
-подключении другой модели она один раз перезапускается с подходящим профилем. Задать профиль вручную —
-`--model lite2 | mini3pro | mini3 | station2`.
-
-| Профиль | Часы / подсветка | Запуск / будильник | Проверено на колонке |
-|---|---|---|---|
-| `lite2` | 36 сегментов / кольцо 3 RGB | есть | полностью |
-| `mini3pro` | 36 сегментов / кольцо 16 RGB | отключены | чтение, часы, кольцо |
-| `station2` | без часов / framebuffer 89 RGB | отключены | чтение |
-| `mini3` | запись отключена | отключены | нет, экспериментальный |
-
-На других моделях скрипты загрузки Лайт 2 и будильник не подключаются. 3D-корпуса Станции 2, Мини 3 и
-Мини 3 Про — реконструкции по фото производителя ([источники](static/models/SOURCES.md)).
-
-**Несколько колонок в одной панели.** Скопируйте `speakers.example.json` в `speakers.json`, укажите свои
-колонки (модель — явно) и запустите:
-
-```sh
-python3 multi.py --config speakers.json --data-dir data/multi --port 8765
-```
-
-На `http://127.0.0.1:8765/` пункт «Выбор колонки» переключает устройство; у каждой колонки свой адрес
-`/speaker/<id>/`, свой вход в Яндекс и своя история, пароль панели общий. Для доступа из сети задайте пароль
-и добавьте `--host 0.0.0.0` (по желанию `--allow-network 192.168.1.0/24` и `--https-port 8766`). В Docker
-замените команду контейнера на `python multi.py --config /config/speakers.json --data-dir /data --host 0.0.0.0`.
-Обновление из настроек в этом режиме отключено — обновите файлы и перезапустите `multi.py`.
-
-3D-модели без колонки: `python3 tools/preview-models.py`. Добавить новую модель: [CONTRIBUTION.md](CONTRIBUTION.md).
-
-## Параметры
-
-| Аргумент | Переменная | По умолчанию | |
-|---|---|---|---|
-| `--device` | `ADB_SERIAL` | запомненный | IP колонки (порт 5555 подставится сам), `host:port` или серийник USB |
-| `--host` | `PANEL_HOST` | `127.0.0.1` | `0.0.0.0` — доступ из локальной сети (в Docker так и есть) |
-| `--port` | `PANEL_PORT` | `8765` | порт HTTP |
-| `--https-port` | `PANEL_HTTPS_PORT` | `8766` | порт HTTPS, `0` — выключить |
-| `--data-dir` | `PANEL_DATA_DIR` | рядом с `server.py` | где хранить токен, пароль, сертификаты, историю |
-| `--model` | `PANEL_MODEL` | `auto` | профиль колонки: `auto` — определить по плате, или `lite2`, `mini3pro`, `mini3`, `station2` |
-| `--open` | | | открыть панель в браузере |
-| | `ADB` | из `PATH` | путь к adb |
-| | `PANEL_OPENSSL` | из `PATH` | путь к openssl для HTTPS (на Windows ищется и в Git for Windows) |
-
-## Безопасность
-
-- По умолчанию панель слушает только `127.0.0.1`. Если открываете её в сеть (`--host 0.0.0.0`, Docker) — задайте пароль.
-- Пароль хранится только как PBKDF2-хэш; вход — cookie на 90 дней; после 5 ошибок — пауза. Забыли пароль —
-  удалите `.panel_auth.json` в папке данных и перезапустите панель.
-- Запросы и консоль с чужих сайтов отклоняются всегда (проверка `Origin`), даже без пароля.
-- HTTPS: при первом запуске создаётся свой маленький центр сертификации. Он ограничен локальными адресами
-  и именами, поэтому, даже установленный на телефон, для чужих сайтов не действует.
-- Токен Яндекса хранится только на компьютере с панелью (`.yandex_auth.json`, права 600) и в браузер не попадает.
-- У веб-интерфейса yamd (порт 8099 на колонке) своей авторизации нет — это свойство yam, а не панели.
-
-## Что панель ставит на колонку
-
-Только то, что вы включили сами, — всё в `/data/quasar/webpanel` плюс одна строка автозапуска в
-`/data/quasar/rootkeeper.sh` (перед первой правкой сохраняется копия):
-
-| Функция | Что на колонке |
-|---|---|
-| Своя заставка / звук запуска | файл + bind mount поверх стандартного (`/system` только для чтения) |
-| «Показывать заставку при каждой загрузке», автозапуск yamd | файлы-флаги |
-| Будильник | `alarm/`: скрипт-демон, конфиг, звуки, журнал |
-
-Остальное работает через adb и ничего не оставляет (временное — в `/tmp`). Вкладка «Настройки» → «Колонка»
-показывает, что установлено, делает резервную копию и одной кнопкой убирает всё, возвращая колонку к исходному
-состоянию.
-
-## Как это устроено
-
-Один процесс на Python без зависимостей (`server.py`) и одна страница (`static/index.html`).
-- С колонкой — через adb: `shell`, файлы — `pull`/`push` (`exec-out` этот adbd не умеет, а `shell` портит бинарные данные).
-  Фоновые скрипты на колонке запускаются через `start-stop-daemon`, иначе их убивает adbd.
-- Плеер и громкость — локальный протокол Glagol (WebSocket на порту 1961 колонки) с токеном вашего аккаунта;
-  трек, текст, очередь — API Яндекс Музыки.
-- Дисплей часов — sysfs `plum:white:clock*`; кольцо — framebuffer `/dev/fb0`, как у самой Алисы.
-- Будильник — sh-демон `device/alarmd.sh`; запросы Алисе он отправляет сам через отладочный CLI `maind --cli`.
-- Консоль — WebSocket `/api/term` ↔ `adb shell` (псевдотерминал выделяет adbd на колонке).
-
-Проверялось на прошивке 0.369.1.50. На других версиях что-то может работать иначе — пишите в Issues.
-
-## Благодарности и лицензии
-
-Код панели — [MIT](LICENSE).
-
-- 3D-модель колонки — [«Yandex Station Lite 2 | Яндекс станция лайт 2»](https://www.thingiverse.com/thing:7349611)
-  от **vanyabeat**, лицензия [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Файлы в `3d/`
-  не изменены, подробнее — [3d/README.md](3d/README.md).
-- 3D-модели Станции 2, Мини 3 и Мини 3 Про — собственные приблизительные реконструкции по общедоступным фотографиям
-  производителя от **[chelaxian](https://github.com/chelaxian)** (`static/model-studio.js`), лицензия MIT, как у кода
-  панели. Это не официальные чертежи и не скачанные модели; фотографии в проект не входят —
-  [источники](static/models/SOURCES.md).
-- Поддержка других моделей, профили колонок и единая панель для нескольких колонок —
-  [PR №1](https://github.com/dimap/yandex-station-web/pull/1) от **[chelaxian](https://github.com/chelaxian)**.
-- [three.js](https://threejs.org) (MIT), [xterm.js](https://xtermjs.org) (MIT),
-  [QR Code Generator](https://github.com/kazuhikoarase/qrcode-generator) Kazuhiko Arase (MIT) — в `static/vendor`.
-- Тексты песен — [LRCLIB](https://lrclib.net); пакеты — [yam / yapkg](https://github.com/nyakokitsu/yam).
-- Протокол Glagol и вход по QR — по мотивам [YandexStation](https://github.com/AlexxIT/YandexStation) для Home Assistant.
-
-«Яндекс», «Алиса» и «Яндекс Станция» — товарные знаки ООО «Яндекс». Проект неофициальный.
+Keep panel credentials, generated TLS keys, device dumps, media, and test
+artifacts outside Git. The existing MIT and 3D vendor notices remain in place.

@@ -1,0 +1,27 @@
+[Unit]
+Description=Station Lite 2 SDK web panel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fleef/project/station-lite2-web
+Environment=STATION_SSH_ALIAS=station-lite2
+Environment=PYTHONPATH=/home/fleef/.codex/worktrees/station-web-quasar/station-lite2/src
+Environment=PANEL_DATA_DIR=%h/.local/share/station-lite2/panel
+Environment=PANEL_HOST=100.64.0.120
+Environment=PANEL_PORT=0
+Environment=PANEL_HTTPS_PORT=8766
+ExecStart=/home/fleef/.local/share/station-lite2/venv/bin/python /home/fleef/project/station-lite2-web/sdk_server.py --host 100.64.0.120 --port 0 --https-port 8766
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/station-lite2/panel
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=default.target

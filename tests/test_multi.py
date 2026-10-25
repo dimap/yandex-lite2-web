@@ -1,5 +1,5 @@
 """Routing/authentication/tunnel regression tests with isolated fake workers."""
-import http.client,json,socket,sys,tempfile,threading,unittest,subprocess
+import http.client,json,sys,tempfile,threading,unittest,subprocess
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
@@ -12,6 +12,8 @@ class Worker(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.headers.get('X-Panel-Gateway')!='test-gateway-secret':
             self.send_error(403);return
+        if server.disabled_api_path(self.path.split('?',1)[0]):
+            self.send_error(404);return
         if self.headers.get('Upgrade','').lower()=='websocket':
             self.send_response(101);self.send_header('Upgrade','websocket');self.send_header('Connection','Upgrade');self.end_headers();self.wfile.flush()
             self.connection.sendall(self.connection.recv(8));return
@@ -52,13 +54,15 @@ class GatewayTests(unittest.TestCase):
         for model in gateway.DEVICES:
             for method in ['GET','POST']:
                 self.assertEqual(self.request('/speaker/'+model+'/api/status',method,cookie=False)[0],401)
-    def test_paths_pin_requests_to_device_even_with_concurrent_tabs(self):
+    def test_device_routes_are_pinned_and_disabled_routes_stay_unavailable(self):
         for _ in range(2):
             for model in ['station2','mini3pro']:
-                status,data,_=self.request('/speaker/'+model+'/api/shell','POST',body='read-only-test')
-                self.assertEqual(status,200);value=json.loads(data);self.assertEqual(value['model'],model);self.assertEqual(value['path'],'/api/shell');self.assertEqual(value['body'],'read-only-test')
+                status,data,_=self.request('/speaker/'+model+'/api/status')
+                self.assertEqual(status,200);value=json.loads(data);self.assertEqual(value['model'],model);self.assertEqual(value['path'],'/api/status')
+                self.assertEqual(self.request('/speaker/'+model+'/api/term','GET')[0],404)
+                self.assertEqual(self.request('/speaker/'+model+'/api/fs/write','POST',body='test')[0],404)
     def test_csrf_denied(self):
-        self.assertEqual(self.request('/speaker/mini3pro/api/shell','POST',origin='https://untrusted.example',body='test')[0],403)
+        self.assertEqual(self.request('/speaker/mini3pro/api/status','POST',origin='https://untrusted.example',body='test')[0],403)
     def test_proxy_preserves_page_bytes_instead_of_rewriting_source(self):
         for model in gateway.DEVICES:
             status,data,_=self.request('/speaker/'+model+'/');self.assertEqual(status,200)
@@ -76,18 +80,14 @@ class GatewayTests(unittest.TestCase):
             self.assertEqual(manifest['name'],gateway.DEVICES[model]['name'])
             self.assertEqual(manifest['scope'],'./')
             self.assertTrue(all(icon['src'].startswith('./static/')for icon in manifest['icons']))
-    def test_websocket_origin_and_login_are_checked(self):
-        for cookie,origin,expected in [(False,'http://'+self.host,401),(True,'https://untrusted.example',403)]:
+    def test_terminal_websocket_is_unavailable(self):
+        for cookie,origin,expected in [(False,'http://'+self.host,401),(True,'http://'+self.host,404)]:
             connection=http.client.HTTPConnection('127.0.0.1',self.gateway.server_port,timeout=5)
             headers={'Origin':origin,'Upgrade':'websocket','Connection':'Upgrade'}
             if cookie:headers['Cookie']=self.cookie
-            connection.request('GET','/speaker/mini3pro/api/term',headers=headers);response=connection.getresponse();self.assertEqual(response.status,expected);response.read();connection.close()
-    def test_authenticated_websocket_tunnel_transfers_bytes(self):
-        with socket.create_connection(('127.0.0.1',self.gateway.server_port),timeout=5)as sock:
-            packet=f'GET /speaker/mini3pro/api/term HTTP/1.1\r\nHost: {self.host}\r\nOrigin: http://{self.host}\r\nCookie: {self.cookie}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n'
-            sock.sendall(packet.encode());reply=b''
-            while b'\r\n\r\n'not in reply:reply+=sock.recv(1024)
-            self.assertIn(b' 101 ',reply);sock.sendall(b'tunnel!!');self.assertEqual(sock.recv(8),b'tunnel!!')
+            connection.request('GET','/speaker/mini3pro/api/term',headers=headers);response=connection.getresponse();self.assertEqual(response.status,expected);connection.close()
+    def test_filesystem_write_endpoint_is_unavailable(self):
+        self.assertEqual(self.request('/speaker/mini3pro/api/fs/write','POST',body='arbitrary')[0],404)
     def test_private_worker_accepts_signed_snat_peer_only_on_loopback_listener(self):
         code='''import os,server,json
 from types import SimpleNamespace

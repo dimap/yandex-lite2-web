@@ -68,6 +68,7 @@ class Gateway(server.Handler):
                 return self._send(409,{'error':'Обновите страницу единой панели','url':'/'})
             clean=urlsplit(path).path
             if not self._allowed(clean):return
+            if server.disabled_api_path(clean):return self._send(404,{'error':'not found'})
             if clean=='/api/panel-auth' and self.command=='GET':
                 return self._send(200,self._panel_auth_get())
             if clean.startswith('/api/panel-auth/') and self.command=='POST':
@@ -100,7 +101,10 @@ class Gateway(server.Handler):
         body=self.rfile.read(length) if length else None
         conn=http.client.HTTPConnection('127.0.0.1',DEVICES[model]['port'],timeout=180)
         try:
-            conn.request(self.command,path,body=body,headers=self.request_headers())
+            headers=self.request_headers()
+            headers['Host']=f"127.0.0.1:{DEVICES[model]['port']}"
+            if self.command=='POST':headers['Origin']='http://'+headers['Host']
+            conn.request(self.command,path,body=body,headers=headers)
             response=conn.getresponse()
             self.send_response(response.status)
             for key,value in response.getheaders():
@@ -176,7 +180,7 @@ class Workers:
                     directory.mkdir(parents=True,mode=0o700,exist_ok=True)
                     ready=Path(temporary)/(identifier+'.json')
                     env={**os.environ,'PANEL_GATEWAY_SECRET':secret,'PANEL_READY_FILE':str(ready)}
-                    command=[sys.executable,str(ROOT/'server.py'),'--device',spec['device'],'--model',spec['model'],
+                    command=[sys.executable,str(ROOT/'sdk_server.py'),'--ssh-alias',spec['device'],
                              '--host','127.0.0.1','--port','0','--https-port','0','--data-dir',str(directory)]
                     log=open(directory/'worker.log','ab')
                     try: process=subprocess.Popen(command,cwd=ROOT,env=env,stdout=log,stderr=subprocess.STDOUT)
