@@ -77,10 +77,17 @@ class PanelHandler(BaseHTTPRequestHandler):
     def _guard(self, path):
         if not self._host_valid():
             return True
-        limit = 120 if self.command == "GET" else 30
+        path = urlsplit(self.path).path
+        if self.command == "GET":
+            bucket, limit = "GET", 120
+        elif path == "/api/panel-auth/login":
+            # Login has its own budget; normal panel actions must not lock out sign-in.
+            bucket, limit = "login", 10
+        else:
+            bucket, limit = "POST", 30
         now = time.monotonic()
         with self.request_lock:
-            window = self.request_windows.setdefault(self.client_address[0], deque())
+            window = self.request_windows.setdefault((self.client_address[0], bucket), deque())
             while window and now - window[0] >= 60:
                 window.popleft()
             if len(window) >= limit:

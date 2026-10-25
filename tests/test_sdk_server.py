@@ -123,3 +123,42 @@ def test_network_auth_origin_and_host_guards():
             client.close()
             server.shutdown()
             server.server_close()
+
+
+def test_login_has_separate_rate_limit_from_panel_post_traffic():
+    with tempfile.TemporaryDirectory() as directory:
+        auth = access.PanelAccess(Path(directory) / ".panel_auth.json")
+        auth.set_password("", "unit-test-password", "unittest")
+        session = auth.login("127.0.0.1", "unit-test-password", "unittest")
+        server = ThreadingHTTPServer(("127.0.0.1", 0), sdk_server.PanelHandler)
+        host = f"127.0.0.1:{server.server_port}"
+        server.allowed_hosts = {host}
+        sdk_server.PanelHandler.adapter = FakeAdapter()
+        sdk_server.PanelHandler.panel_access = auth
+        sdk_server.PanelHandler.data_dir = Path(directory)
+        sdk_server.PanelHandler.request_windows = {}
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        client = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+        headers = {
+            "Host": host,
+            "Origin": f"http://{host}",
+            "Cookie": f"{access.COOKIE}={session}",
+            "Content-Type": "application/json",
+        }
+        try:
+            for _ in range(30):
+                client.request("POST", "/api/metrics/clear", body="{}", headers=headers)
+                response = client.getresponse()
+                assert response.status == 200
+                response.read()
+
+            client.request("POST", "/api/panel-auth/login", body=json.dumps({"password": "unit-test-password"}),
+                           headers={key: value for key, value in headers.items() if key != "Cookie"})
+            response = client.getresponse()
+            assert response.status == 200
+            assert access.COOKIE in response.getheader("Set-Cookie")
+        finally:
+            client.close()
+            server.shutdown()
+            server.server_close()
