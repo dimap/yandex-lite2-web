@@ -37,6 +37,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import access
 import glagol
+import assistant
 
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
@@ -904,6 +905,7 @@ class Panel:
         self.adb = adb
         self._version = None
         self.ffmpeg = shutil.which("ffmpeg")
+        self.assistant = assistant.Assistant(adb)
 
     def _configure_glagol(self, device_id):
         # Glagol использует тип устройства из прошивки, а не профиль LED/часов панели.
@@ -1375,9 +1377,9 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             f"grep -q '{HOOK_MARK}' {ROOTKEEPER} 2>/dev/null && echo 1 || echo 0",
             f"[ -d {WEB_DIR} ] && du -sk {WEB_DIR} | cut -f1 || echo 0",
             f"[ -d {ALARM_DIR} ] && du -sk {ALARM_DIR} | cut -f1 || echo 0",
-            q(YAMD)])
+            q(YAMD), q(assistant.BIN)])
         v = self.adb.shell(cmd, check=False)[0].split()
-        v = (v + ["0"] * 15)[:15]
+        v = (v + ["0"] * 16)[:16]
         b = [x == "1" for x in v]
         n = lambda x: int(x) if x.isdigit() else 0
         items = [
@@ -1389,6 +1391,8 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             {"key": "backup", "name": "Копии оригиналов", "on": b[8] or b[9] or b[10],
              "detail": "заставка, звук запуска, rootkeeper.sh — на случай отката"},
             {"key": "hook", "name": "Строка автозапуска в rootkeeper.sh", "on": b[11]},
+            {"key": "assistant", "name": "OpenAI и VPN", "on": b[15],
+             "detail": "автономный сервис, API-ключ и профиль VPN (не входят в резервную копию)"},
         ]
         return {"items": items, "dir": WEB_DIR, "size_kb": n(v[12]), "any": any(i["on"] for i in items),
                 "yam_installed": b[14]}
@@ -1396,6 +1400,8 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
     def footprint_reset(self):
         """Возвращает колонку к исходному: снимает подмены, гасит наши демоны, убирает строку из rootkeeper.sh
         и удаляет /data/quasar/webpanel. yam не трогаем — это отдельный проект со своим удалением."""
+        if self.adb.shell(f"[ -d {assistant.BASE} ] && echo yes; true", check=False)[0].strip() == "yes":
+            self.assistant.uninstall()
         self.adb.shell(
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; killall aplay 2>/dev/null; "
@@ -1436,7 +1442,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
                 manifest = {
                     "format": 1, "created": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
                     "firmware": self.version().get("quasar_version"),
-                    "items": [i["key"] for i in self.footprint()["items"] if i["on"] and i["key"] not in ("hook", "backup")],
+                    "items": [i["key"] for i in self.footprint()["items"] if i["on"] and i["key"] not in ("hook", "backup", "assistant")],
                     "ui": {k: str(v) for k, v in (ui or {}).items() if re.fullmatch(r"(ui|ov|ch|snd)\.[a-z.]{1,20}", k)},
                 }
                 data = json.dumps(manifest, ensure_ascii=False, indent=1).encode()
@@ -2385,6 +2391,16 @@ class Handler(BaseHTTPRequestHandler):
         """True — запрос уже отклонён. POST с чужого сайта (CSRF) режем всегда, даже без пароля:
         иначе любая открытая вкладка могла бы дёрнуть /api/shell на localhost."""
         # Optional private worker: local listener + per-run key, never a LAN bypass.
+        if path.startswith("/api/assistant") and self.command == "POST":
+            if self.headers.get("Origin") == "null" or self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+                self._send(415, {"error": "Настройки принимаются только как JSON из панели"})
+                return True
+            if not self.https and not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                self._send(403, {"error": "Настраивайте OpenAI и VPN через HTTPS или откройте панель на localhost"})
+                return True
+            if int(self.headers.get("Content-Length") or 0) > 300 * 1024:
+                self._send(413, {"error": "Слишком большой запрос"})
+                return True
         gateway_key = os.environ.get("PANEL_GATEWAY_SECRET")
         if gateway_key:
             import hmac
@@ -2524,6 +2540,7 @@ class Handler(BaseHTTPRequestHandler):
         p = self.panel
         routes = {
             "/api/status": p.status,
+            "/api/assistant": p.assistant.status,
             "/api/sounds": p.sounds,
             "/api/patterns": p.patterns,
             "/api/logs": p.logs_list,
@@ -2620,6 +2637,13 @@ class Handler(BaseHTTPRequestHandler):
         d = self._json()
         routes = {
             "/api/volume": lambda: p.set_volume(d),
+            "/api/assistant/install": p.assistant.install,
+            "/api/assistant/uninstall": p.assistant.uninstall,
+            "/api/assistant/config": lambda: p.assistant.command("config", d),
+            "/api/assistant/vpn": lambda: p.assistant.command("vpn", d),
+            "/api/assistant/vpn-install": p.assistant.install_vpn,
+            "/api/assistant/test": lambda: p.assistant.command("test"),
+            "/api/assistant/stop": lambda: p.assistant.command("stop"),
             "/api/play": lambda: p.play_system(d["name"]),
             "/api/stop": p.stop_sound,
             "/api/pattern": lambda: p.play_pattern(d["kind"], d["name"], d.get("seconds", 5)),
@@ -2673,7 +2697,7 @@ class PanelUpdater:
     """Проверка новых релизов панели на GitHub и обновление — в зависимости от того, как панель установлена:
     zip (Windows-сборка, Download ZIP) — скачать релиз и заменить файлы панели; git — git pull --ff-only;
     docker — только подсказать команду (образ изнутри не обновить)."""
-    FILES = ("server.py", "access.py", "glagol.py", "profiles.py", "multi.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
+    FILES = ("server.py", "access.py", "glagol.py", "assistant.py", "profiles.py", "multi.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
              "Dockerfile", "docker-compose.yml")
     DIRS = ("static", "device", "3d", "tools", "docs")
 

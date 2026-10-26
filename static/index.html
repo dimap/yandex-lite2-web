@@ -634,6 +634,8 @@
       <a href="#alarm" data-tab="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#boot" data-tab="boot"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Запуск</a>
       <a href="#apps" data-tab="apps"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Приложения</a>
+      <a href="#assistant" data-tab="assistant"><svg width="20" height="20" aria-hidden="true"><use href="#i-music"/></svg>OpenAI</a>
+      <a href="#vpn" data-tab="vpn"><svg width="20" height="20" aria-hidden="true"><use href="#i-gear"/></svg>VPN</a>
       <a href="#files" data-tab="files"><svg width="20" height="20" aria-hidden="true"><use href="#i-folder"/></svg>Файлы</a>
       <a href="#console" data-tab="console"><svg width="20" height="20" aria-hidden="true"><use href="#i-term"/></svg>Консоль</a>
       <div class="nav-group" role="presentation">Состояние</div>
@@ -919,11 +921,11 @@
         <div class="set-item set-top"><div class="set-label"><b>Установлено на колонке</b><small>Остальные функции панели ничего на колонке не хранят</small></div>
           <div class="set-ctl"><div id="fp-list" class="fp-list"><span class="meta">—</span></div></div></div>
         <div class="set-item"><div class="set-label"><b>Резервная копия</b><small>Заставка, звук запуска, будильники со звуками, флаги автозапуска, оформление и раскладка.
-          Пароль, вход в Яндекс и история графиков в копию не входят</small></div>
+          Пароль, вход в Яндекс, история графиков, помощник OpenAI и настройки VPN в копию не входят</small></div>
           <div class="set-ctl"><button class="btn sm" id="bk-save"><svg width="18" height="18" aria-hidden="true"><use href="#i-dl"/></svg>Скачать</button>
             <button class="btn sm" id="bk-restore"><svg width="18" height="18" aria-hidden="true"><use href="#i-ul"/></svg>Восстановить…</button></div>
           <input type="file" id="bk-file" accept=".gz,.tgz,application/gzip" hidden></div>
-        <div class="set-item set-danger"><div class="set-label"><b>Удалить всё с колонки</b><small>Вернёт стандартные заставку и звук, удалит будильники и строку автозапуска. Перезагрузка не нужна</small></div>
+        <div class="set-item set-danger"><div class="set-label"><b>Удалить всё с колонки</b><small>Вернёт стандартные заставку и звук, удалит будильники, помощника OpenAI, ключи VPN и автозапуск. Перезагрузка не нужна</small></div>
           <div class="set-ctl"><button class="btn sm danger" id="fp-reset" disabled>Удалить всё</button></div></div>
       </section>
 
@@ -937,6 +939,61 @@
         <pre class="set-cmd" id="upd-cmd" hidden></pre>
       </section>
 
+    </div>
+  </main>
+
+  <main id="tab-assistant" data-page hidden>
+    <header class="page-head"><div><h1>OpenAI</h1><div class="sub">Разговор по голосовой фразе · работает на колонке</div></div></header>
+    <div class="settings">
+      <section class="card set-card">
+        <div class="set-head"><div><h2>Автономный помощник</h2><p id="ai-state" role="status" aria-live="polite">Проверяем состояние…</p></div></div>
+        <p class="set-note">Скажите: <b id="ai-example">«Алиса, спроси GPT, почему небо голубое?»</b><br>Алиса распознаёт вопрос, OpenAI отвечает синтезированным голосом. Распознавание требует связи с Яндексом.</p>
+        <div class="set-item"><div class="set-label"><b>Сервис на колонке</b><small id="ai-detail">Загрузка…</small></div><div class="set-ctl">
+          <button class="btn primary" id="ai-install">Установить сервис</button><button class="btn sm" id="ai-refresh">Обновить статус</button>
+          <button class="btn sm danger" id="ai-uninstall" hidden>Удалить сервис и ключи</button>
+        </div></div>
+        <p class="set-note" id="ai-error" role="alert" hidden></p>
+      </section>
+      <section class="card set-card">
+        <div class="set-head"><div><h2>OpenAI</h2><p>Нужен API-ключ проекта OpenAI; подписка ChatGPT не включает оплату API.</p></div></div>
+        <form id="ai-form" autocomplete="off">
+          <fieldset id="ai-fields" disabled style="border:0;padding:0;margin:0;min-width:0">
+            <label class="set-item"><div class="set-label"><b>Голосовой запуск</b><small>После настройки панель можно закрыть</small></div><div class="set-ctl"><input type="checkbox" class="switch" id="ai-enabled"></div></label>
+            <label class="set-item"><div class="set-label"><b>API-ключ</b><small id="ai-key-state">Ключ не задан</small></div><div class="set-ctl"><input class="field" type="password" id="ai-key" placeholder="sk-…" autocomplete="new-password" maxlength="512" spellcheck="false"></div></label>
+            <label class="set-item"><div class="set-label"><b>Модель</b><small>Имя модели из вашего проекта OpenAI</small></div><div class="set-ctl"><input class="field" id="ai-model" value="gpt-5.6-terra" required maxlength="100" spellcheck="false"></div></label>
+            <label class="set-item"><div class="set-label"><b>Голос</b><small>Озвучка OpenAI</small></div><div class="set-ctl"><select id="ai-voice"><option value="coral">Coral</option><option value="marin">Marin</option><option value="cedar">Cedar</option><option value="alloy">Alloy</option><option value="nova">Nova</option><option value="onyx">Onyx</option><option value="sage">Sage</option></select></div></label>
+            <label class="set-item"><div class="set-label"><b>Фраза после «Алиса»</b><small>Произнесите фразу и вопрос одним предложением</small></div><div class="set-ctl"><input class="field" id="ai-prefix" value="спроси gpt" required maxlength="60"></div></label>
+            <label class="set-item"><div class="set-label"><b>Как отвечать</b><small>Стиль и язык ответа</small></div><div class="set-ctl"><textarea class="field" id="ai-instructions" rows="3" maxlength="2000" style="width:100%;min-width:220px"></textarea></div></label>
+            <div class="set-item"><div class="set-label"><small>Ключ хранится только на колонке с доступом root. Пустое поле оставляет прежний ключ.</small></div><div class="set-ctl">
+              <button class="btn primary" type="submit">Сохранить</button><button class="btn sm" type="button" id="ai-test">Произнести тест</button><button class="btn sm" type="button" id="ai-stop">Остановить ответ</button><button class="btn sm danger" type="button" id="ai-clear">Удалить ключ</button>
+            </div></div>
+          </fieldset>
+        </form>
+        <p class="set-note">Для следующего вопроса снова скажите «Алиса, спроси GPT…». Контекст последних четырёх ответов хранится в памяти до 10 минут. «Алиса, спроси GPT, стоп» прерывает ответ, «…новый разговор» очищает контекст. Тест и разговоры расходуют баланс OpenAI API.</p>
+      </section>
+    </div>
+  </main>
+
+  <main id="tab-vpn" data-page hidden>
+    <header class="page-head"><div><h1>VPN</h1><div class="sub">Профиль и параметры подключения на колонке</div></div></header>
+    <div class="settings">
+      <section class="card set-card">
+        <div class="set-head"><div><h2>Red Shield VPN · OpenVPN</h2><p id="ai-vpn-state" role="status" aria-live="polite">Профиль ещё не загружен</p></div></div>
+        <div class="set-item" id="vpn-prepare-row" hidden><div class="set-label"><b>Сервис подключения</b><small>Установите сервис на колонку, затем добавьте профиль VPN</small></div><div class="set-ctl"><button class="btn primary" id="vpn-prepare">Подготовить колонку</button></div></div>
+        <p class="set-note">Скачайте .ovpn с встроенными сертификатами из личного кабинета Red Shield. Туннель используется для OpenAI; Алиса и локальное управление используют обычное соединение.</p>
+        <div class="set-item"><div class="set-label"><b>Клиент OpenVPN</b><small>Совместимый клиент для подключения на колонке</small></div><div class="set-ctl"><button class="btn sm" id="ai-vpn-install" disabled>Установить OpenVPN</button></div></div>
+        <form id="ai-vpn-form" autocomplete="off">
+          <fieldset id="ai-vpn-fields" disabled style="border:0;padding:0;margin:0;min-width:0">
+            <label class="set-item"><div class="set-label"><b>VPN для OpenAI</b><small>Если включён, запросы ждут подключения VPN</small></div><div class="set-ctl"><input type="checkbox" class="switch" id="ai-vpn-enabled"></div></label>
+            <label class="set-item"><div class="set-label"><b>Конфигурация .ovpn</b><small id="ai-vpn-file-state">Не загружена</small></div><div class="set-ctl"><input type="file" id="ai-vpn-file" accept=".ovpn,text/plain" style="max-width:260px"></div></label>
+            <details class="set-note"><summary>Или вставить профиль VPN текстом</summary><label for="ai-vpn-config">Полное содержимое .ovpn, включая сертификаты</label><textarea class="field" id="ai-vpn-config" rows="8" maxlength="262144" autocomplete="off" spellcheck="false" placeholder="client&#10;dev tun&#10;remote …&#10;&lt;ca&gt;&#10;…&#10;&lt;/ca&gt;" style="width:100%;font-family:monospace"></textarea></details>
+            <label class="set-item"><div class="set-label"><b>Логин VPN</b><small>Если профиль требует auth-user-pass</small></div><div class="set-ctl"><input class="field" id="ai-vpn-user" autocomplete="off" maxlength="512" spellcheck="false" placeholder="Сохранить прежнее значение"></div></label>
+            <label class="set-item"><div class="set-label"><b>Пароль VPN</b><small>Пароль подключения из кабинета Red Shield</small></div><div class="set-ctl"><input class="field" type="password" id="ai-vpn-password" autocomplete="new-password" maxlength="512" placeholder="Сохранить прежнее значение"></div></label>
+            <label class="set-item"><div class="set-label"><b>DNS внутри VPN</b><small>Для подключения к OpenAI</small></div><div class="set-ctl"><input class="field" id="ai-vpn-dns" value="1.1.1.1" required maxlength="15"></div></label>
+            <div class="set-item"><div class="set-label"><small>Профиль и пароль не включаются в резервную копию панели.</small></div><div class="set-ctl"><button class="btn primary" type="submit">Сохранить VPN</button><button class="btn sm danger" type="button" id="ai-vpn-clear">Удалить профиль</button></div></div>
+          </fieldset>
+        </form>
+      </section>
     </div>
   </main>
 
@@ -2099,7 +2156,7 @@ const store = {
   get: k => { try { return localStorage.getItem(PanelContext.storageKey(k)); } catch { return null; } },
   set: (k, v) => { try { localStorage.setItem(PanelContext.storageKey(k), v); } catch {} },
 };
-const TABS = ['overview', 'player', 'alarm', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
+const TABS = ['overview', 'player', 'alarm', 'charts', 'boot', 'apps', 'assistant', 'vpn', 'files', 'logs', 'console', 'settings'];
 let bootLoaded = false;
 let logsLoaded = false;
 let shownTab = null;
@@ -2124,6 +2181,7 @@ function showTab() {
   if (tab === 'console') setTimeout(() => { termConnect(); try { termFit?.fit(); } catch {} term?.focus(); }, 0);
   if (tab === 'boot' && !bootLoaded) { bootLoaded = true; loadBoot(); }
   if (tab === 'apps') loadYam();
+  if (tab === 'assistant' || tab === 'vpn') window.loadAssistant?.();
   if (tab === 'alarm') loadAlarms();
   if (tab === 'charts') loadCharts();
   if (tab === 'settings') { loadAccess(); loadFootprint(); loadPanelVersion(); loadPanelModel(); }
@@ -3062,7 +3120,7 @@ async function loadFootprint() {
 }
 $('#fp-reset').onclick = e => {
   if (!confirm('Удалить с колонки всё, что поставила панель?\n\n• своя заставка и звук запуска — вернутся стандартные;\n'
-    + '• будильники и их звуки;\n• флаги автозапуска;\n• строка в rootkeeper.sh и копии оригиналов.\n\nКолонку перезагружать не нужно.')) return;
+    + '• будильники и их звуки;\n• помощник OpenAI, API-ключ и профиль VPN;\n• флаги автозапуска;\n• строка в rootkeeper.sh и копии оригиналов.\n\nКолонку перезагружать не нужно.')) return;
   act(e.currentTarget, async () => {
     footprint = await api('/api/footprint/reset', {});
     await loadFootprint();
@@ -3086,7 +3144,7 @@ $('#bk-restore').onclick = () => $('#bk-file').click();
 $('#bk-file').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f || !confirm(`Восстановить из «${f.name}»?\n\nТо, что сейчас стоит на колонке от панели (заставка, звук запуска, будильники), `
-    + 'будет заменено содержимым копии. Оформление и раскладка этого браузера тоже вернутся из копии.')) return;
+    + 'будет заменено содержимым копии. Помощник OpenAI и настройки VPN будут удалены: в копию они не входят. Оформление и раскладка этого браузера тоже вернутся из копии.')) return;
   toast('Восстанавливаем… это может занять минуту');
   const r = await act($('#bk-restore'), () => api('/api/backup/restore', f, { raw: true, headers: { 'Content-Type': 'application/gzip' } }));
   if (!r) return;
@@ -3657,6 +3715,7 @@ connCheck();
 // A fast local worker can connect before the vendor scripts below have loaded.
 document.addEventListener('DOMContentLoaded',()=>{if(online&&!$('#tab-console').hidden)termConnect();});
 </script>
+<script src="static/assistant.js"></script>
 <script src="static/vendor/qrcode.js"></script>
 <script src="static/vendor/xterm/xterm.js"></script>
 <script src="static/vendor/xterm/addon-fit.js"></script>

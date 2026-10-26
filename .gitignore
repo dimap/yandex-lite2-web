@@ -16,3 +16,5 @@ platform-tools/
 .vscode/
 runtime/
 dist/
+device/assistant/station-assistant-linux-arm64
+*.ovpn
