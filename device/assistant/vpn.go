@@ -12,7 +12,75 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
+
+// OpenVPN accepts quoted arguments and comments. Parse them as data, then
+// serialize each token ourselves: quoting never bypasses the directive allowlist.
+func ovpnFields(line string) ([]string, error) {
+	var fields []string
+	var word strings.Builder
+	var quote rune
+	escaped, started := false, false
+	flush := func() {
+		if started {
+			fields = append(fields, word.String())
+			word.Reset()
+			started = false
+		}
+	}
+	for _, r := range line {
+		if escaped {
+			word.WriteRune(r)
+			escaped = false
+			started = true
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			started = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			} else {
+				word.WriteRune(r)
+			}
+			continue
+		}
+		if r == '"' || r == '\'' {
+			quote = r
+			started = true
+			continue
+		}
+		if unicode.IsSpace(r) {
+			flush()
+			continue
+		}
+		if (r == '#' || r == ';') && !started {
+			break
+		}
+		word.WriteRune(r)
+		started = true
+	}
+	if quote != 0 || escaped {
+		return nil, errors.New("Незакрытые кавычки или escape")
+	}
+	flush()
+	return fields, nil
+}
+
+func ovpnLine(fields []string) string {
+	quoted := make([]string, len(fields))
+	for i, s := range fields {
+		if s == "" || strings.ContainsAny(s, " \t\\\"'#;") {
+			s = "\"" + strings.NewReplacer("\\", "\\\\", "\"", "\\\"").Replace(s) + "\""
+		}
+		quoted[i] = s
+	}
+	return strings.Join(quoted, " ")
+}
 
 // Configs are data, never executable hooks. Unknown directives fail closed.
 func sanitizeOVPN(src string) (string, bool, error) {
@@ -51,11 +119,14 @@ func sanitizeOVPN(src string) (string, bool, error) {
 			out = append(out, line)
 			continue
 		}
-		fields := strings.Fields(line)
-		key := fields[0]
-		if strings.ContainsAny(line, "\\\"'") && key != "verify-x509-name" {
-			return "", false, fmt.Errorf("Неподдерживаемые кавычки или пути, строка %d", n+1)
+		fields, err := ovpnFields(line)
+		if err != nil {
+			return "", false, fmt.Errorf("Незакрытые кавычки или escape в строке %d", n+1)
 		}
+		if len(fields) == 0 {
+			continue
+		}
+		key := fields[0]
 		switch key {
 		case "dev":
 			if len(fields) != 2 || fields[1] != "tun" {
@@ -81,7 +152,15 @@ func sanitizeOVPN(src string) (string, bool, error) {
 		case "verb", "mute", "redirect-gateway", "route", "route-ipv6", "route-metric", "route-delay", "dhcp-option", "register-dns", "block-outside-dns":
 			continue
 		case "setenv":
-			if line == "setenv opt block-outside-dns" {
+			if strings.Join(fields, " ") == "setenv opt block-outside-dns" {
+				continue
+			}
+		case "pull-filter":
+			// DNS is handled by our marked resolver. Keep ignore filters only;
+			// an accept filter could take precedence over our own route filters.
+			if len(fields) == 3 && fields[1] == "ignore" &&
+				(fields[2] == "dns" || fields[2] == "dhcp-option" || strings.HasPrefix(fields[2], "dhcp-option ")) {
+				out = append(out, ovpnLine(fields))
 				continue
 			}
 		case "comp-lzo":
@@ -102,13 +181,15 @@ func sanitizeOVPN(src string) (string, bool, error) {
 			}
 			remote = true
 		}
-		out = append(out, line)
+		out = append(out, ovpnLine(fields))
 	}
 	if block != "" || !remote || !seen["ca"] || seen["cert"] != seen["key"] {
 		return "", false, errors.New("Нужен .ovpn с remote, встроенным <ca> и парой <cert>/<key>, если используется сертификат клиента")
 	}
 	// route-nopull prevents changes to the speaker's network, DNS and LAN routes.
-	out = append(out, "client", "dev webgpt0", "dev-type tun", "remote-cert-tls server", "route-nopull", "script-security 1", "auth-nocache", "allow-compression no", "verb 3", "pull-filter ignore redirect-gateway", "pull-filter ignore route-ipv6", "pull-filter ignore ifconfig-ipv6")
+	out = append(out, "client", "dev webgpt0", "dev-type tun", "remote-cert-tls server", "route-nopull", "script-security 1", "auth-nocache", "allow-compression no", "verb 3", "pull-filter ignore redirect-gateway", "pull-filter ignore route-ipv6", "pull-filter ignore ifconfig-ipv6",
+		// Let dual-transport profiles try TCP before our 45-second watchdog fires.
+		"server-poll-timeout 10", "connect-retry 2 5")
 	return strings.Join(out, "\n") + "\n", needAuth, nil
 }
 
@@ -201,6 +282,7 @@ func (v *VPN) ensure(c Config) {
 			v.mu.Lock()
 			v.connected = false
 			v.cancel = nil
+			v.lastStart = time.Now() // Keep failures visible during the retry delay.
 			close(done)
 			v.mu.Unlock()
 		}()
@@ -267,6 +349,15 @@ func (v *VPN) ensure(c Config) {
 			} else if strings.Contains(line, "AUTH_FAILED") {
 				v.set("error", "Red Shield отклонил логин или пароль", false)
 				cancel()
+			} else if strings.Contains(line, "Attempting to establish TCP connection") {
+				v.set("connecting", "Пробуем TCP-соединение с Red Shield VPN", false)
+			} else if strings.Contains(line, "UDP link remote:") {
+				v.set("connecting", "Пробуем UDP-соединение с Red Shield VPN", false)
+			} else if strings.Contains(line, "VERIFY ERROR") {
+				v.set("error", "Не удалось проверить сертификат VPN-сервера", false)
+				cancel()
+			} else if strings.Contains(line, "RESOLVE: Cannot resolve host address") {
+				v.set("error", "Не удалось определить адрес VPN-сервера; проверьте интернет", false)
 			} else if strings.Contains(line, "Restart pause") || strings.Contains(line, "SIGUSR1") {
 				v.set("connecting", "Переподключение VPN", false)
 			} else if strings.Contains(line, "Options error") || strings.Contains(line, "Exiting due to fatal error") {

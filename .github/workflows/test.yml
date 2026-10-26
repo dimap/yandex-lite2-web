@@ -34,6 +34,7 @@ jobs:
       - run: node tests/test_renderer.mjs
       - run: node tests/test_paths.mjs
       - run: node --check static/assistant.js
+      - run: node tests/test_assistant_ui.mjs
       - run: sh -n device/assistant/service.sh && sh -n tools/build-assistant.sh
 
   assistant:

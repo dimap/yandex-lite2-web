@@ -16,6 +16,46 @@ import (
 
 const profile = "client\ndev tun\nproto udp\nremote vpn.example.test 1194\nauth-user-pass\n<ca>\nTEST-CA\n</ca>\nredirect-gateway def1\ndhcp-option DNS 9.9.9.9\n"
 
+func TestRedShieldQuotedDNS(t *testing.T) {
+	src := profile + "pull-filter ignore \"dns\"\ndhcp-option DNS \"1.1.1.1\"\n"
+	got, auth, err := sanitizeOVPN(src)
+	if err != nil || !auth {
+		t.Fatal("quoted Red Shield profile rejected", err)
+	}
+	if !strings.Contains(got, "pull-filter ignore dns") || strings.Contains(got, "dhcp-option DNS") {
+		t.Fatal("DNS policy changed")
+	}
+	for _, line := range []string{`remote "vpn.example.test" 443 tcp # fallback`, `verify-x509-name "VPN server" name`} {
+		fields, err := ovpnFields(line)
+		if err != nil {
+			t.Fatal(err)
+		}
+		again, err := ovpnFields(ovpnLine(fields))
+		if err != nil || strings.Join(fields, "\x00") != strings.Join(again, "\x00") {
+			t.Fatal("quote roundtrip")
+		}
+	}
+	for _, line := range []string{`"up" "/bin/reboot"`, `"plugin" "/tmp/x.so"`, `pull-filter accept "route"`, `pull-filter ignore "dns`, `remote host\`} {
+		if _, _, err := sanitizeOVPN(profile + line + "\n"); err == nil {
+			t.Fatalf("accepted unsafe/malformed line %q", line)
+		}
+	}
+}
+
+func TestOptionalOVPNProfile(t *testing.T) {
+	path := os.Getenv("STATION_TEST_OVPN")
+	if path == "" {
+		t.Skip("no local profile supplied")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal("could not read supplied profile")
+	}
+	if _, _, err = sanitizeOVPN(string(data)); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOVPN(t *testing.T) {
 	got, auth, err := sanitizeOVPN(profile)
 	if err != nil || !auth {

@@ -9,6 +9,7 @@ import ipaddress
 import argparse
 import base64
 import collections
+import contextlib
 import hashlib
 import io
 import json
@@ -328,10 +329,21 @@ class Adb:
         self.adb = adb_path
         self.serial = serial
         self.lock = threading.Lock()
+        self._sync_lock = threading.Lock()
+        self.sync_busy = threading.Event()
         self.conn = None  # Connection; сообщаем ему, когда связь пропала посреди команды
 
     def _base(self):
         return [self.adb] + (["-s", self.serial] if self.serial else [])
+
+    @contextlib.contextmanager
+    def _sync_transfer(self):
+        with self._sync_lock:
+            self.sync_busy.set()
+            try:
+                yield
+            finally:
+                self.sync_busy.clear()
 
     def shell(self, cmd, timeout=15, check=True):
         try:
@@ -355,7 +367,8 @@ class Adb:
     def pull(self, remote, local, timeout=300):
         # exec-out этот adbd не поддерживает ("error: closed"), а shell идёт через pty
         # и портит бинарные данные, поэтому файлы забираем только через pull.
-        p = subprocess.run(self._base() + ["pull", "-a", remote, str(local)], capture_output=True, timeout=timeout)
+        with self._sync_transfer():
+            p = subprocess.run(self._base() + ["pull", "-a", remote, str(local)], capture_output=True, timeout=timeout)
         if p.returncode != 0:
             raise AdbError((p.stderr or p.stdout).decode("utf-8", "replace").strip())
 
@@ -379,7 +392,8 @@ class Adb:
         return res
 
     def push(self, local, remote, timeout=120):
-        p = subprocess.run(self._base() + ["push", str(local), remote], capture_output=True, timeout=timeout)
+        with self._sync_transfer():
+            p = subprocess.run(self._base() + ["push", str(local), remote], capture_output=True, timeout=timeout)
         if p.returncode != 0:
             raise AdbError(p.stderr.decode("utf-8", "replace").strip())
 
@@ -458,6 +472,10 @@ class Connection:
     def _alive(self):
         """adb get-state верит в старое TCP-соединение: после резкого выключения колонки он ещё долго
         отвечает «device». Поэтому проверяем по-настоящему — короткой командой на колонке."""
+        # Old adbd can delay shell replies during sync transfer. A four-second
+        # probe must not disconnect a healthy, slower firmware upload.
+        if self.adb.sync_busy.is_set():
+            return True
         try:
             p = subprocess.run(self.adb._base() + ["shell", "echo ok"], capture_output=True, timeout=4)
             return p.stdout.strip() == b"ok"

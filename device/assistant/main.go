@@ -51,12 +51,14 @@ func (d *Daemon) status() map[string]any {
 	connected, state, msg := d.vpn.status()
 	_, vpnErr := os.Stat("/opt/sbin/openvpn")
 	_, routingErr := os.Stat(filepath.Join(d.dir, ".vpn-ready"))
+	_, needsAuth, _ := sanitizeOVPN(d.cfg.VPNConfig)
 	return map[string]any{"installed": true, "running": true, "version": version,
 		"enabled": d.cfg.Enabled, "has_key": d.cfg.APIKey != "", "model": d.cfg.Model, "voice": d.cfg.Voice,
 		"prefix": d.cfg.Prefix, "instructions": d.cfg.Instructions, "busy": d.busy, "stage": d.stage,
 		"error": d.err, "requests": d.requests, "last_voice": d.lastVoice.Unix(), "log_available": d.logOK,
 		"vpn_enabled": d.cfg.VPNEnabled, "vpn_configured": d.cfg.VPNConfig != "", "vpn_has_auth": d.cfg.VPNUser != "" && d.cfg.VPNPassword != "",
-		"vpn_installed": vpnErr == nil && routingErr == nil, "vpn_connected": connected, "vpn_state": state, "vpn_message": msg, "vpn_dns": d.cfg.VPNDNS}
+		"vpn_needs_auth": needsAuth,
+		"vpn_installed":  vpnErr == nil && routingErr == nil, "vpn_connected": connected, "vpn_state": state, "vpn_message": msg, "vpn_dns": d.cfg.VPNDNS}
 }
 
 func (d *Daemon) update(data []byte, vpn bool) error {

@@ -161,12 +161,17 @@ class Assistant:
             self.shell("test -f /etc/init.d/rcS && test -x /usr/bin/aplay && "
                        "test -x /system/vendor/quasar/maind && test -d /data/quasar/daemons_logs")
             binary = build_binary()
+            expected = hashlib.sha256(binary.read_bytes()).hexdigest()
+            staged = self.shell(f"if [ -f {BIN}.new ]; then sha256sum {BIN}.new | cut -d ' ' -f 1; fi").strip()
             free = self.shell("df -Pk /data | tail -1 | awk '{print $4}'").strip()
-            if not free.isdigit() or int(free)*1024 < binary.stat().st_size + 8*1024*1024:
+            needed = (0 if staged == expected else binary.stat().st_size) + 8*1024*1024
+            if not free.isdigit() or int(free)*1024 < needed:
                 raise ValueError("На колонке нужно место для сервиса и ещё 8 МБ свободного запаса")
             self.shell(f"umask 077; mkdir -p {BASE}; chmod 700 {BASE}")
-            self.adb.push(binary, BIN + ".new")
-            self.shell(f"chmod 700 {BIN}.new && {BIN}.new version")
+            if staged != expected:
+                self.adb.push(binary, BIN + ".new")
+            self.shell(f"test \"$(sha256sum {BIN}.new | cut -d ' ' -f 1)\" = {expected} && "
+                       f"chmod 700 {BIN}.new && {BIN}.new version")
             # Stop the old executable only after the replacement has been verified.
             self.shell(f"if [ -x {BASE}/service.sh ]; then {BASE}/service.sh stop; fi")
             self.adb.push(ROOT / "device/assistant/service.sh", BASE + "/service.sh")

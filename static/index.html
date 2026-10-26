@@ -990,9 +990,11 @@
             <label class="set-item"><div class="set-label"><b>Логин VPN</b><small>Если профиль требует auth-user-pass</small></div><div class="set-ctl"><input class="field" id="ai-vpn-user" autocomplete="off" maxlength="512" spellcheck="false" placeholder="Сохранить прежнее значение"></div></label>
             <label class="set-item"><div class="set-label"><b>Пароль VPN</b><small>Пароль подключения из кабинета Red Shield</small></div><div class="set-ctl"><input class="field" type="password" id="ai-vpn-password" autocomplete="new-password" maxlength="512" placeholder="Сохранить прежнее значение"></div></label>
             <label class="set-item"><div class="set-label"><b>DNS внутри VPN</b><small>Для подключения к OpenAI</small></div><div class="set-ctl"><input class="field" id="ai-vpn-dns" value="1.1.1.1" required maxlength="15"></div></label>
-            <div class="set-item"><div class="set-label"><small>Профиль и пароль не включаются в резервную копию панели.</small></div><div class="set-ctl"><button class="btn primary" type="submit">Сохранить VPN</button><button class="btn sm danger" type="button" id="ai-vpn-clear">Удалить профиль</button></div></div>
+            <div class="set-item"><div class="set-label"><small>Профиль и пароль не включаются в резервную копию панели.</small></div><div class="set-ctl"><button class="btn primary" type="submit">Сохранить профиль</button><button class="btn primary" type="button" id="ai-vpn-connect" hidden>Подключить VPN</button><button class="btn sm" type="button" id="ai-vpn-disconnect" hidden>Отключить VPN</button><button class="btn sm danger" type="button" id="ai-vpn-clear">Удалить профиль</button></div></div>
           </fieldset>
         </form>
+        <p class="set-note" id="ai-vpn-result" role="status" aria-live="polite" hidden></p>
+        <p class="set-note" id="ai-vpn-next" role="status" aria-live="polite"></p>
       </section>
     </div>
   </main>

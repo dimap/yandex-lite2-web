@@ -3,8 +3,32 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from types import SimpleNamespace
 
 import server
+
+
+class AdbTransferTests(unittest.TestCase):
+    def test_monitor_does_not_interrupt_sync_transfer(self):
+        adb = server.Adb('adb', '192.0.2.1:5555')
+        conn = server.Connection(adb)
+        for fail in (False, True):
+            def run(args, **kwargs):
+                if 'push' in args:
+                    self.assertTrue(adb.sync_busy.is_set())
+                    self.assertTrue(conn._alive())  # Must not launch a second shell probe.
+                    return SimpleNamespace(returncode=int(fail), stdout=b'', stderr=b'upload failed')
+                return SimpleNamespace(returncode=0, stdout=b'ok\n', stderr=b'')
+            with patch.object(server.subprocess, 'run', side_effect=run) as process:
+                if fail:
+                    with self.assertRaises(server.AdbError):
+                        adb.push('local', '/tmp/remote')
+                else:
+                    adb.push('local', '/tmp/remote')
+                self.assertFalse(adb.sync_busy.is_set())
+                self.assertEqual(process.call_count, 1)
+                self.assertTrue(conn._alive())
+                self.assertEqual(process.call_count, 2)
 
 
 class AdbDiscoveryTests(unittest.TestCase):
