@@ -14,6 +14,7 @@ from pathlib import Path
 TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say")
 
 PROFILES = {
+    'lite': dict(name='Станция Лайт', platform='yandexmicro', clock=False, boot=False, alarms=False, light=True, tested=TRIAL_FEATURES),
     'lite2': dict(name='Станция Лайт 2', platform='plum', clock=True, boot=True, alarms=True, light=True, tested=TRIAL_FEATURES),
     'station2': dict(name='Станция 2', platform='yandexmidi', clock=False, boot=False, alarms=False, light=True),
     'mini3pro': dict(name='Станция Мини 3 Про', platform='pickle', clock=True, boot=False, alarms=False, light=True),
@@ -252,11 +253,12 @@ def install(s, model='lite2', auto=False):
             setattr(P, method, unsupported)
     # Хук в rootkeeper.sh (звук запуска, автозапуск будильника и ассистента) — только если файл есть или его
     # вызывает штатный onboot.sh, иначе _ensure_hook сам откажет. На Мини 3 оборудование не сверено — не трогаем.
-    if profile.get('experimental'):
+    if profile.get('experimental') and model != 'lite':
         P._ensure_hook = unsupported
-    for method in ('yam_install_daemon', 'yam_update_daemon', 'yam_autostart'):
-        if hasattr(P, method):
-            setattr(P, method, unsupported)
+    if model != 'lite':
+        for method in ('yam_install_daemon', 'yam_update_daemon', 'yam_autostart'):
+            if hasattr(P, method):
+                setattr(P, method, unsupported)
     # Помощник проверен только на Лайт 2: здесь — на пробу, без хука автозапуска Лайт 2 (до перезагрузки колонки)
     original_assistant_status = P.assistant_status
     P.assistant_status = lambda self: {**original_assistant_status(self), 'experimental': 'assistant' not in profile['tested'],
@@ -276,7 +278,7 @@ def install(s, model='lite2', auto=False):
     # Existing community YAM installations on the new profiles use this layout; Mini 2 keeps the Lite 2 one.
     old = s.YAM_DIR
     for name, value in list(vars(s).items()):
-        if model != 'mini2' and name.startswith('YAM') and isinstance(value, str):
+        if model not in ('mini2', 'lite') and name.startswith('YAM') and isinstance(value, str):
             setattr(s, name, value.replace(old, '/data/local/yam'))
 
     def patterns(self):
@@ -302,9 +304,22 @@ def install(s, model='lite2', auto=False):
         return self.play_clock(s.decode_clock_pattern(name, self.adb.read_bytes(f'{s.QUASAR}/ledpatterns/clock/{name}')), seconds)
     P.play_pattern = play_pattern
 
+    if model == 'lite':
+        s.RING_LEDS = [f"micro:{c}:ring{i}" for i in (1, 2, 3) for c in ("red", "green", "blue")]
+        s.RING_TRIGGER_CMD = ("for n in " + " ".join(s.RING_LEDS) + "; do grep -q '\\[led_ring_fb\\]' " + s.LEDS
+                              + "/$n/trigger 2>/dev/null || echo led_ring_fb > " + s.LEDS + "/$n/trigger 2>/dev/null; done; true")
+
     def leds(self):
         if model == 'mini3':
             return {'v': [0] * 36, 'ring': [[0, 0, 0]] * 3}
+        if model == 'lite':
+            names = [f'micro:{color}:ring{i}' for i in range(1, 4) for color in ('red', 'green', 'blue')]
+            out, _, _ = self.adb.shell('cd /sys/class/leds; ' + '; '.join(f'cat {name}/brightness' for name in names))
+            values = [int(value) for value in out.split() if value.isdigit()]
+            if len(values) != len(names):
+                raise s.AdbError('Неполное состояние светодиодов')
+            ring = [values[i * 3:i * 3 + 3] for i in range(3)]
+            return {'v': [0] * 36, 'ring': ring, 'ring_all': ring}
         if model == 'station2':
             temporary = '/tmp/webpanel_fb_' + os.urandom(8).hex()
             try:
@@ -353,7 +368,10 @@ def install(s, model='lite2', auto=False):
         if not profile['light']:
             return unsupported()
         rgb = [max(0, min(255, int(data.get(color, 0)))) for color in ('red', 'green', 'blue')]
-        if model == 'mini3pro':
+        if model == 'lite':
+            data = "".join(f"\\x{b:02x}\\x{g:02x}\\x{r:02x}" for r, g, b in [tuple(rgb)] * 3)
+            self.adb.shell(s.RING_TRIGGER_CMD + f"; printf '{data}' > /dev/fb0")
+        elif model == 'mini3pro':
             self.adb.shell(mini3pro_ring_script(rgb))
         elif model == 'mini2':
             self.adb.shell(MINI2_STOP_RING + '\n' + mini2_ring_script(rgb))
@@ -370,15 +388,19 @@ def install(s, model='lite2', auto=False):
     P.ring = ring
 
     def reset_ring(self):
-        if model == 'mini3':
+        if model == 'lite':
+            command = s.RING_TRIGGER_CMD + '; head -c 9 /dev/zero > /dev/fb0'
+        elif model == 'mini3':
             return {'ok': True}
-        if model == 'mini3pro':
+        elif model == 'mini3pro':
             command = mini3pro_ring_script()
         elif model == 'mini2':
             command = mini2_ring_script()
         else:
             command = 'if [ -s /tmp/webpanel_ring.before ]; then cat /tmp/webpanel_ring.before > /dev/fb0; rm -f /tmp/webpanel_ring.before; fi'
         self.adb.shell(command)
+        if hasattr(self, 'leds'):
+            self.leds.cached = {'v': None}
         return {'ok': True, 'leds': self.clock_state()['ring']}
     P.ring_reset = reset_ring
     original_stop = P.stop_pattern

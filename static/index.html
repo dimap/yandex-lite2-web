@@ -1527,14 +1527,17 @@
     </header>
 
     <section class="card" id="yam-missing" hidden>
-      <h2>yam не установлен</h2>
-      <p class="hint">yam — менеджер пакетов для Станций (github.com/nyakokitsu/yam). Панель скачает последний релиз yamd с GitHub, сверит контрольную сумму, положит его на колонку в /data/quazar/yam и запустит — как официальный установщик.</p>
-      <div class="row"><button class="btn primary" id="yam-install">Установить yam</button></div>
+      <h2>Менеджер пакетов не установлен</h2>
+      <p class="hint">Для запуска приложений нужен фоновый демон (BetterYAM или классический yamd). BetterYAM полностью поддерживает Яндекс Станцию Лайт (управление 3 RGB-диодами, сенсорными кнопками и ALSA-звуком).</p>
+      <div class="row" style="gap:8px">
+        <button class="btn primary" id="yam-install">Установить BetterYAM</button>
+        <button class="btn" id="yam-install-classic">Установить Classic YAM</button>
+      </div>
     </section>
 
     <section class="card" id="yam-card">
       <div class="card-head">
-        <h2>yamd</h2>
+        <h2 id="yam-title">yamd</h2>
         <div class="actions">
           <span class="badge" id="yam-badge">—</span>
           <button class="btn sm primary" id="yam-start" hidden><svg width="14" height="14" aria-hidden="true"><use href="#i-play"/></svg>Запустить</button>
@@ -1542,10 +1545,11 @@
         </div>
       </div>
       <p class="hint" id="yam-off" hidden>Демон не работает — без него устанавливать и запускать пакеты нельзя.</p>
+      <div id="yam-device-caps" class="meta" style="margin-bottom:8px" hidden></div>
       <div class="set-item" id="yam-ver-row">
         <div class="set-label"><b>Версия</b><small id="yam-ver">проверяем…</small></div>
         <div class="set-ctl"><a class="btn sm" id="yam-notes" target="_blank" rel="noopener" hidden>Что нового ↗</a>
-          <button class="btn sm primary" id="yam-update" hidden>Обновить yamd</button></div>
+          <button class="btn sm primary" id="yam-update" hidden>Обновить</button></div>
       </div>
       <div id="yam-update-confirm" hidden class="hint">
         <p id="yam-update-text"></p>
@@ -1553,7 +1557,7 @@
         <button class="btn" id="yam-update-cancel">Отмена</button>
       </div>
       <p id="yam-update-result" role="status" class="hint" hidden></p>
-      <label class="toggle"><span>Запускать yamd при загрузке колонки</span>
+      <label class="toggle"><span id="yam-autostart-label">Запускать при загрузке колонки</span>
         <input type="checkbox" id="yam-autostart"></label>
     </section>
 
@@ -3538,22 +3542,47 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
 })();
 
 // ---------- приложения (yam) ----------
-const yam = { registry: [], plugins: [] };
+const yam = { registry: [], plugins: [], flavor: 'betteryam' };
 async function loadYam() {
   let st;
   try { st = await api('/api/yam/status'); } catch (e) { return e.offline || toast(e.message, true); }
   yam.status = st;
+  yam.flavor = st.flavor || 'betteryam';
+  const isBetter = yam.flavor === 'betteryam';
+  const name = isBetter ? 'BetterYAM' : 'yamd';
   $('#yam-missing').hidden = st.installed;
   $('#yam-card').hidden = !st.installed;
   if (!st.installed) { $('#yam-on').hidden = true; return; }
-  $('#yam-badge').textContent = st.running ? 'yamd работает' : 'yamd остановлен';
+  const titleEl = $('#yam-title');
+  if (titleEl) titleEl.textContent = name;
+  const autoLabel = $('#yam-autostart-label');
+  if (autoLabel) autoLabel.textContent = `Запускать ${name} при загрузке колонки`;
+  $('#yam-badge').textContent = st.running ? `${name} работает` : `${name} остановлен`;
   $('#yam-badge').className = 'badge' + (st.running ? ' ok' : ' bad');
   $('#yam-start').hidden = st.running;
   $('#yam-off').hidden = st.running;
   $('#yam-autostart').checked = st.autostart;
   $('#yam-on').hidden = !st.running;
   $('#yam-web').hidden = !(st.running && st.web_url);
-  if (st.web_url) $('#yam-web').href = st.web_url;
+  if (st.web_url) {
+    $('#yam-web').href = st.web_url;
+    $('#yam-web').textContent = `Веб-интерфейс ${name} ↗`;
+  }
+  const capsEl = $('#yam-device-caps');
+  if (capsEl) {
+    if (st.device) {
+      const dev = st.device;
+      const feats = [];
+      if (dev.led_count) feats.push(`${dev.led_count} RGB LED`);
+      if (dev.capabilities?.['audio.play'] || (dev.features || []).includes('audio')) feats.push('Звук ALSA');
+      if (dev.capabilities?.['input'] || (dev.features || []).includes('input')) feats.push('Кнопки');
+      if (dev.architecture) feats.push(dev.architecture);
+      capsEl.textContent = `Платформа: ${dev.name || dev.model || dev.id} (${feats.join(' · ')})`;
+      capsEl.hidden = false;
+    } else {
+      capsEl.hidden = true;
+    }
+  }
   loadYamVersion();          // GitHub может отвечать долго — версию дорисуем отдельно
   if (!st.running) return;
   const [plugins, reg, settings] = await Promise.all([
@@ -3562,7 +3591,7 @@ async function loadYam() {
     api('/api/yam/settings').catch(() => null),
   ]);
   yam.plugins = plugins; yam.registry = reg.packages || [];
-  if (settings) $('#yam-binaries').checked = settings.allow_plugin_binaries;
+  if (settings) $('#yam-binaries').checked = !!(settings.allow_plugin_binaries ?? settings.allow_binaries);
   renderYam();
 }
 const yamCall = (btn, body, msg) => act(btn, async () => { await api('/api/yam/action', body); await loadYam(); }, msg);
@@ -3585,6 +3614,12 @@ async function loadYamVersion(refresh) {
   let v;
   try { v = await api('/api/yam/version' + (refresh ? '?refresh=1' : '')); } catch (e) { $('#yam-ver').textContent = e.message; return; }
   const date = d => d ? ' от ' + new Date(d).toLocaleDateString('ru-RU') : '';
+  if (v.flavor === 'betteryam') {
+    $('#yam-ver').textContent = `${v.installed} (сборка для yandexmicro)`;
+    $('#yam-ver').classList.remove('warn');
+    if (v.latest_url) { $('#yam-notes').href = v.latest_url; $('#yam-notes').hidden = false; }
+    return;
+  }
   $('#yam-ver').textContent = v.error ? v.error
     : !v.installed ? `сборка не из релизов yam (sha256 ${v.sha}…), последний релиз — ${v.latest || '—'}`
     : v.update ? `установлена ${v.installed}${date(v.installed_date)}, доступна ${v.latest}${date(v.latest_date)}`
@@ -3657,20 +3692,32 @@ $('#yam-refresh').onclick = e => act(e.currentTarget, async () => { await api('/
 $('#yam-autostart').onchange = e => act(e.target, async () => {
   const st = await api('/api/yam/autostart', { enabled: e.target.checked });
   e.target.checked = st.autostart;
-}, e.target.checked ? 'yamd будет запускаться при загрузке' : 'Автозапуск yamd выключен');
+}, e.target.checked ? 'Демон будет запускаться при загрузке' : 'Автозапуск демона выключен');
 $('#yam-install').onclick = e => {
   const btn = e.currentTarget;
   act(btn, async () => {
-    btn.textContent = 'Скачиваю и устанавливаю…';
-    try { const r = await api('/api/yam/install-daemon', {}); toast('yam ' + (r.version || '') + ' установлен и запущен'); }
-    finally { btn.textContent = 'Установить yam'; }
+    btn.textContent = 'Устанавливаю BetterYAM…';
+    try { const r = await api('/api/yam/install-daemon', { flavor: 'betteryam' }); toast('BetterYAM ' + (r.version || '') + ' установлен и запущен'); }
+    finally { btn.textContent = 'Установить BetterYAM'; }
     await loadYam();
   });
 };
+const btnClassic = $('#yam-install-classic');
+if (btnClassic) {
+  btnClassic.onclick = e => {
+    const btn = e.currentTarget;
+    act(btn, async () => {
+      btn.textContent = 'Устанавливаю yamd…';
+      try { const r = await api('/api/yam/install-daemon', { flavor: 'yam' }); toast('yam ' + (r.version || '') + ' установлен и запущен'); }
+      finally { btn.textContent = 'Установить Classic YAM'; }
+      await loadYam();
+    });
+  };
+}
 $('#yam-update').onclick = () => {
   // Станция 2 и Мини 3 Про: перед заменой — резервная копия, прошлые копии при этом удаляются
   const b = yam.status?.backups;
-  $('#yam-update-text').textContent = 'Обновить yamd? Пакеты временно остановятся и запустятся снова, пакеты и настройки сохранятся.'
+  $('#yam-update-text').textContent = 'Обновить демон? Пакеты временно остановятся и запустятся снова, пакеты и настройки сохранятся.'
     + (!b ? '' : ' Перед заменой будет создана резервная копия.'
       + (b.count ? ` Старые резервные копии (${b.count} шт., ${(b.kb / 1024).toFixed(1)} МБ) будут удалены.` : ''));
   $('#yam-update-confirm').hidden = false;
@@ -3682,15 +3729,15 @@ $('#yam-update-confirm-btn').onclick = e => {
     $('#yam-update').disabled = true;
     $('#yam-update-cancel').disabled = true;
     result.hidden = false; result.classList.remove('warn');
-    result.textContent = 'Скачиваю и проверяю yamd. Не закрывайте страницу…';
+    result.textContent = 'Обновляю демон. Не закрывайте страницу…';
     try {
-      const r = await api('/api/yam/install-daemon', { drop_backups: !!yam.status?.backups?.count });
+      const r = await api('/api/yam/install-daemon', { flavor: yam.flavor || 'betteryam', drop_backups: !!yam.status?.backups?.count });
       $('#yam-update-confirm').hidden = true;
-      result.textContent = 'yamd обновлён до ' + (r.version || 'последней версии') + '. Пакеты и настройки сохранены.';
+      result.textContent = (r.name || 'Демон') + ' обновлён до ' + (r.version || 'последней версии') + '. Пакеты и настройки сохранены.';
       toast(result.textContent);
       await loadYam();
     } catch (error) {
-      result.textContent = 'Не удалось обновить yamd: ' + error.message;
+      result.textContent = 'Не удалось обновить: ' + error.message;
       result.classList.add('warn');
       throw error;
     } finally {
@@ -3699,10 +3746,10 @@ $('#yam-update-confirm-btn').onclick = e => {
     }
   });
 };
-$('#yam-start').onclick = e => act(e.currentTarget, async () => { await api('/api/yam/start', {}); await loadYam(); }, 'yamd запущен');
+$('#yam-start').onclick = e => act(e.currentTarget, async () => { await api('/api/yam/start', {}); await loadYam(); }, 'Демон запущен');
 $('#yam-binaries').onchange = e => act(e.target, async () => {
-  const r = await api('/api/yam/settings', { allow_plugin_binaries: e.target.checked });
-  e.target.checked = r.allow_plugin_binaries;
+  const r = await api('/api/yam/settings', { allow_plugin_binaries: e.target.checked, allow_binaries: e.target.checked });
+  e.target.checked = !!(r.allow_plugin_binaries ?? r.allow_binaries);
 }, e.target.checked ? 'Бинарные пакеты разрешены' : 'Бинарные пакеты запрещены');
 
 // ---------- файлы ----------

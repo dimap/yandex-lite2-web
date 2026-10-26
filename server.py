@@ -40,6 +40,34 @@ from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 import access
 import glagol
 
+
+def _setup_ssl_certs():
+    cafile = None
+    try:
+        import certifi
+        cafile = certifi.where()
+    except Exception:
+        pass
+    if not cafile or not os.path.isfile(cafile):
+        for p in ("/etc/ssl/cert.pem", "/etc/pki/tls/certs/ca-bundle.crt", "/etc/ssl/certs/ca-certificates.crt"):
+            if os.path.isfile(p):
+                cafile = p
+                break
+    if cafile and os.path.isfile(cafile):
+        os.environ.setdefault("SSL_CERT_FILE", cafile)
+        try:
+            ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=cafile)
+        except Exception:
+            pass
+    else:
+        try:
+            ssl._create_default_https_context = ssl._create_unverified_context
+        except Exception:
+            pass
+
+
+_setup_ssl_certs()
+
 ROOT = Path(__file__).resolve().parent
 STATIC = ROOT / "static"
 MIME = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".html": "text/html; charset=utf-8",
@@ -80,18 +108,27 @@ OVR_DIR = f"{WEB_DIR}/override"
 # В списках анимаций они — «my/<имя>…» рядом со встроенными.
 MY_ANIM_DIR = f"{WEB_DIR}/anims"
 MY_ANIM_NAME = re.compile(r"[\w-]{1,40}")
-# YAM (github.com/nyakokitsu/yam): менеджер пакетов для Станций. На колонке — демон yamd с HTTP API на :8099.
+# YAM (github.com/nyakokitsu/yam) и BetterYAM: менеджеры пакетов для Станций на :8099.
 YAM_DIR = "/data/quazar/yam"
 YAMD = f"{YAM_DIR}/bin/yamd"
 YAM_PLUGINS = f"{YAM_DIR}/data/plugins"
+BETTERYAM_DIR = "/data/quazar/betteryam"
+BETTERYAMD = f"{BETTERYAM_DIR}/bin/betteryamd"
+BETTERYAM_PLUGINS = f"{BETTERYAM_DIR}/data/plugins"
+BETTERYAM_CMD = f"exec {BETTERYAMD} --data-dir {BETTERYAM_DIR}/data --listen 0.0.0.0:8099 >{BETTERYAM_DIR}/betteryamd.log 2>&1"
+def yam_fix_exec_cmd(flavor=None):
+    dirs = f"{BETTERYAM_PLUGINS}/*/plugin.toml {YAM_PLUGINS}/*/plugin.toml" if not flavor else (
+        f"{BETTERYAM_PLUGINS}/*/plugin.toml" if flavor == "betteryam" else f"{YAM_PLUGINS}/*/plugin.toml"
+    )
+    return (f"for t in {dirs}; do [ -f \"$t\" ] || continue; d=${{t%/plugin.toml}}; "
+            "grep -q '^kind *= *\"binary\"' \"$t\" || continue; "
+            "p=$(sed -n 's/^path *= *\"\\(.*\\)\"/\\1/p' \"$t\" | head -n 1); "
+            "case \"$p\" in ''|/*|*..*) continue ;; esac; [ -f \"$d/$p\" ] && chmod 755 \"$d/$p\"; done; true")
 # Бинарникам пакетов — право на запуск: некоторые .yap (например, fastfetch 2.70.0) собраны с файлом 0666,
 # yamd распаковывает как есть и потом получает «Permission denied». Путь берём из [launch] path в plugin.toml.
-YAM_FIX_EXEC = (f"for t in {YAM_PLUGINS}/*/plugin.toml; do [ -f \"$t\" ] || continue; d=${{t%/plugin.toml}}; "
-                "grep -q '^kind *= *\"binary\"' \"$t\" || continue; "
-                "p=$(sed -n 's/^path *= *\"\\(.*\\)\"/\\1/p' \"$t\" | head -n 1); "
-                "case \"$p\" in ''|/*|*..*) continue ;; esac; [ -f \"$d/$p\" ] && chmod 755 \"$d/$p\"; done; true")
+YAM_FIX_EXEC = yam_fix_exec_cmd()
 # В консоли панели бинарники пакетов доступны по имени (fastfetch, …).
-YAM_PATH = (f"for d in {YAM_PLUGINS}/*/*/; do [ -d \"$d\" ] && PATH=\"$PATH:${{d%/}}\"; done; export PATH; ")
+YAM_PATH = (f"for d in {BETTERYAM_PLUGINS}/*/*/ {YAM_PLUGINS}/*/*/; do [ -d \"$d\" ] && PATH=\"$PATH:${{d%/}}\"; done; export PATH; ")
 YAM_PORT = 8099
 YAM_REGISTRY = "https://raw.githubusercontent.com/nyakokitsu/yapkg/registry/index.json"
 # Версия панели — в файле VERSION; сборка релиза проверяет, что метка vX.Y.Z с ним совпадает.
@@ -272,9 +309,9 @@ BOOT_HOOK_SCRIPT = (
     f"bind {HOSTS_CUSTOM} {HOSTS_TARGET}\n"
     f"[ -d {OVR_DIR} ] && (cd {OVR_DIR} && find . -type f) | while read -r f; do "
     f"bind \"{OVR_DIR}/${{f#./}}\" \"{QUASAR}/${{f#./}}\"; done\n"
-    # Очередь аналитики при загрузке не чистим: для этого телеметрию приходится убивать kill -9, а в первую
-    # минуту после старта это совпало с зависанием звука у Алисы. Адреса закрыты — очередь и так не уйдёт.
-    # yamd сам после загрузки не стартует; start-stop-daemon -b — чтобы не держать rootkeeper.sh
+    # yamd / betteryamd сам после загрузки не стартует; start-stop-daemon -b — чтобы не держать rootkeeper.sh
+    f"[ -f {YAM_AUTOSTART} ] && [ -x {BETTERYAMD} ] && ! pidof betteryamd >/dev/null && "
+    f"start-stop-daemon -S -b -m -p /tmp/webpanel_betteryamd.sd -x {BETTERYAMD} -- --data-dir {BETTERYAM_DIR}/data --listen 0.0.0.0:8099\n"
     f"[ -f {YAM_AUTOSTART} ] && [ -x {YAMD} ] && ! pidof yamd >/dev/null && "
     f"start-stop-daemon -S -b -m -p /tmp/webpanel_yamd.sd -x /bin/sh -- -c {shlex.quote(YAMD_CMD)}\n"
     f"[ -f {ALARM_CONF} ] && [ -f {ALARMD} ] && start-stop-daemon -S -b -m -p {ALARM_SD} -x /bin/sh -- {ALARMD}\n"
@@ -309,13 +346,13 @@ SEGMENTS = {
 RING_LEDS = [f"plum:{c}:ring{i}" for i in (1, 2, 3) for c in ("red", "green", "blue")]
 # Возвращает светодиоды кольца под управление /dev/fb0 (если что-то сняло триггер записью в brightness).
 RING_TRIGGER_CMD = ("for n in " + " ".join(RING_LEDS) + "; do grep -q '\\[led_ring_fb\\]' " + LEDS
-                    + "/$n/trigger || echo led_ring_fb > " + LEDS + "/$n/trigger; done")
+                    + "/$n/trigger 2>/dev/null || echo led_ring_fb > " + LEDS + "/$n/trigger 2>/dev/null; done; true")
 
 
 def ring_fb_cmd(pixels):
     """Кадр кольца во fb0: 3 пикселя по 3 байта в порядке B,G,R (rgba 8/16,8/8,8/0)."""
     data = "".join(f"\\x{b:02x}\\x{g:02x}\\x{r:02x}" for r, g, b in pixels)
-    return f'echo -e -n "{data}" > /dev/fb0'
+    return f"printf '{data}' > /dev/fb0"
 
 
 class AdbError(Exception):
@@ -2963,25 +3000,49 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
 
     def yam_status(self):
         out, _, _ = self.adb.shell(
-            f"[ -x {YAMD} ] && echo installed; pidof yamd >/dev/null && echo running; "
+            f"[ -x {BETTERYAMD} ] && echo betteryam_installed; pidof betteryamd >/dev/null && echo betteryam_running; "
+            f"[ -x {YAMD} ] && echo yam_installed; pidof yamd >/dev/null && echo yam_running; "
             f"awk '$4==\"0A\" && $2 ~ /:{YAM_PORT:04X}$/ {{f=1}} END{{if(f)print \"listening\"}}' "
-            f"/proc/net/tcp /proc/net/tcp6; [ -f {YAM_AUTOSTART} ] && grep -q '{HOOK_MARK}' {ROOTKEEPER} && echo autostart; true")
+            f"/proc/net/tcp /proc/net/tcp6; [ -f {YAM_AUTOSTART} ] && grep -q '{HOOK_MARK}' {ROOTKEEPER} && echo autostart; "
+            f"grep -q 'betteryamd' {ROOTKEEPER} 2>/dev/null && echo betteryam_autostart; true")
         flags = set(out.split())
-        return {"installed": "installed" in flags, "running": "running" in flags and "listening" in flags,
-                "autostart": "autostart" in flags,
-                "web_url": f"http://{self.adb.serial.split(':')[0]}:{YAM_PORT}/" if self.adb.serial and ":" in self.adb.serial else None}
+        is_better = "betteryam_running" in flags or ("betteryam_installed" in flags and "yam_running" not in flags)
+        flavor = "betteryam" if is_better else "yam"
+        installed = ("betteryam_installed" in flags) or ("yam_installed" in flags)
+        running = ("betteryam_running" in flags or "yam_running" in flags) and ("listening" in flags)
+        autostart = ("betteryam_autostart" in flags) or ("autostart" in flags)
+        res = {
+            "installed": installed,
+            "running": running,
+            "flavor": flavor,
+            "name": "BetterYAM" if flavor == "betteryam" else "yamd",
+            "autostart": autostart,
+            "web_url": f"http://{self.adb.serial.split(':')[0]}:{YAM_PORT}/" if self.adb.serial and ":" in self.adb.serial else None
+        }
+        if running and flavor == "betteryam":
+            try:
+                res["device"] = self._yam("GET", "/api/device", timeout=5)
+            except Exception:
+                pass
+        return res
 
     def yam_start(self):
-        if not self.yam_status()["installed"]:
-            raise AdbError("yam не установлен на колонке")
-        # Как в docs/DEPLOYMENT.md, только через start-stop-daemon: nohup adbd всё равно прибивает.
-        self.detach("yamd", YAMD_CMD)
+        st = self.yam_status()
+        if not st["installed"]:
+            raise AdbError("YAM / BetterYAM не установлен на колонке")
+        if st.get("flavor") == "betteryam":
+            cmd = (f"start-stop-daemon --start --background --make-pidfile --pidfile {BETTERYAM_DIR}/betteryamd.pid "
+                   f"--startas {BETTERYAMD} -- --data-dir {BETTERYAM_DIR}/data --listen 0.0.0.0:8099")
+            self.adb.shell(cmd, check=False)
+        else:
+            self.detach("yamd", YAMD_CMD)
         for _ in range(20):
             time.sleep(0.5)
             if self.yam_status()["running"]:
                 return self.yam_status()
-        out, _, _ = self.adb.shell(f"tail -5 {YAM_DIR}/yamd.log", check=False)
-        raise AdbError("yamd не поднял порт 8099. Лог: " + out.strip()[-400:])
+        log_file = f"{BETTERYAM_DIR}/betteryamd.log" if st.get("flavor") == "betteryam" else f"{YAM_DIR}/yamd.log"
+        out, _, _ = self.adb.shell(f"tail -5 {log_file}", check=False)
+        raise AdbError("демон не поднял порт 8099. Лог: " + out.strip()[-400:])
 
     # ---------- версия yamd ----------
     # Своей версии yamd не сообщает (нет ни --version, ни API), поэтому узнаём её по sha256 бинарника:
@@ -3013,6 +3074,21 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         return self._yam_sums[tag]
 
     def yam_version(self, refresh=False):
+        st = self.yam_status()
+        if st.get("flavor") == "betteryam":
+            out, _, _ = self.adb.shell(f"[ -f {BETTERYAMD} ] && sha256sum {BETTERYAMD}; true", check=False, timeout=30)
+            sha = (strip_ansi(out).split() or [None])[0]
+            ver = "0.1.18"
+            return {
+                "flavor": "betteryam",
+                "sha": (sha or "")[:12],
+                "installed": f"BetterYAM v{ver}",
+                "installed_date": "",
+                "latest": f"v{ver}",
+                "latest_date": "",
+                "latest_url": "https://github.com/Yandex-Station-Universal-Repo/BetterYAM",
+                "update": False
+            }
         out, _, _ = self.adb.shell(f"[ -f {YAMD} ] && sha256sum {YAMD}; true", check=False, timeout=30)
         sha = (strip_ansi(out).split() or [None])[0]
         if not sha:
@@ -3039,8 +3115,30 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
                 # сборка не нашлась среди релизов — не предлагаем «обновить», вдруг это своя сборка
                 "update": bool(installed) and installed["tag_name"] != latest["tag_name"]}
 
-    def yam_install_daemon(self):
-        """Как install.sh из репозитория yam: последний релиз, проверка SHA256SUMS, yamd на колонку, запуск."""
+    def yam_install_daemon(self, flavor="betteryam"):
+        """Установка демона: BetterYAM (из локального репозитория или GitHub) или classic yamd."""
+        if flavor == "betteryam":
+            local_bin = ROOT.parent / "BetterYAM" / "target" / "aarch64-unknown-linux-musl" / "release" / "betteryamd-yandexmicro"
+            if local_bin.is_file():
+                blob = local_bin.read_bytes()
+            else:
+                api = "https://api.github.com/repos/Yandex-Station-Universal-Repo/BetterYAM/releases/latest"
+                with urllib.request.urlopen(urllib.request.Request(api, headers={"User-Agent": "webpanel"}), timeout=20) as r:
+                    rel = json.load(r)
+                assets = {a["name"]: a["browser_download_url"] for a in rel.get("assets", [])}
+                asset_name = "betteryamd-yandexmicro-aarch64-linux"
+                if asset_name not in assets:
+                    raise AdbError(f"в релизе BetterYAM нет {asset_name}")
+                with urllib.request.urlopen(assets[asset_name], timeout=300) as r:
+                    blob = r.read()
+            with tempfile.TemporaryDirectory() as td:
+                f = Path(td) / "betteryamd"
+                f.write_bytes(blob)
+                self.adb.shell(f"mkdir -p {BETTERYAM_DIR}/bin {BETTERYAM_DIR}/data {BETTERYAM_DIR}/data/plugins")
+                self.adb.push(f, f"{BETTERYAMD}.new", timeout=300)
+            self.adb.shell(f"chmod 755 {BETTERYAMD}.new; pidof betteryamd >/dev/null && kill $(pidof betteryamd); sleep 1; mv {BETTERYAMD}.new {BETTERYAMD}")
+            st = self.yam_start()
+            return {**st, "version": "0.1.18", "flavor": "betteryam"}
         api = "https://api.github.com/repos/nyakokitsu/yam/releases/latest"
         with urllib.request.urlopen(urllib.request.Request(api, headers={"User-Agent": "webpanel"}), timeout=20) as r:
             rel = json.load(r)
@@ -3062,7 +3160,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
             self.adb.push(f, f"{YAMD}.new", timeout=300)
         self.adb.shell(f"chmod 755 {YAMD}.new; pidof yamd >/dev/null && kill $(pidof yamd); sleep 1; mv {YAMD}.new {YAMD}")
         st = self.yam_start()
-        return {**st, "version": rel.get("tag_name")}
+        return {**st, "version": rel.get("tag_name"), "flavor": "yam"}
 
     def yam_autostart(self, enabled):
         if enabled:
@@ -3076,23 +3174,32 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         return self.yam_status()
 
     def _yam(self, method, path, body=None, headers=None, timeout=60):
-        """Запрос к API yamd через adb forward (переподнимаем проброс, если adb переподключился)."""
+        """Запрос к API yamd / BetterYAM: напрямую по сети (если TCP serial) или через adb forward."""
+        host = self.adb.serial.split(":")[0] if self.adb.serial and ":" in self.adb.serial else None
+        urls = []
+        if host:
+            urls.append(f"http://{host}:{YAM_PORT}{path}")
         for attempt in (1, 2):
             if self._yam_port is None:
                 self._yam_port = self.adb.forward(YAM_PORT)
-            req = urllib.request.Request(f"http://127.0.0.1:{self._yam_port}{path}", data=body,
-                                         method=method, headers=headers or {})
-            try:
-                with urllib.request.urlopen(req, timeout=timeout) as r:
-                    data = r.read()
-                    ctype = r.headers.get("Content-Type", "")
-                    return json.loads(data) if "json" in ctype and data else data.decode("utf-8", "replace")
-            except urllib.error.HTTPError as e:
-                raise AdbError(f"yamd: {e.read().decode('utf-8', 'replace').strip() or e.reason}")
-            except (urllib.error.URLError, ConnectionError, OSError) as e:
-                self._yam_port = None
-                if attempt == 2:
-                    raise AdbError(f"yamd недоступен ({e}). Запущен ли он?")
+            current_urls = list(urls)
+            if self._yam_port:
+                current_urls.append(f"http://127.0.0.1:{self._yam_port}{path}")
+            last_err = None
+            for u in current_urls:
+                req = urllib.request.Request(u, data=body, method=method, headers=headers or {})
+                try:
+                    with urllib.request.urlopen(req, timeout=timeout) as r:
+                        data = r.read()
+                        ctype = r.headers.get("Content-Type", "")
+                        return json.loads(data) if "json" in ctype and data else data.decode("utf-8", "replace")
+                except urllib.error.HTTPError as e:
+                    raise AdbError(f"yamd: {e.read().decode('utf-8', 'replace').strip() or e.reason}")
+                except (urllib.error.URLError, ConnectionError, OSError) as e:
+                    last_err = e
+            self._yam_port = None
+            if attempt == 2:
+                raise AdbError(f"демон приложений недоступен ({last_err}). Запущен ли он?")
 
     def yam_registry(self, refresh=False):
         ts, data = self._registry
@@ -4115,7 +4222,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/boot/sound/play": lambda: p.boot_sound_play(d.get("which", "default")),
             "/api/clock/boot/always": lambda: p.boot_always(bool(d["enabled"])),
             "/api/yam/start": p.yam_start,
-            "/api/yam/install-daemon": lambda: p.yam_install_daemon(**({"drop_backups": True} if d.get("drop_backups") else {})),
+            "/api/yam/install-daemon": lambda: p.yam_install_daemon(flavor=(d or {}).get("flavor", "betteryam"), **({"drop_backups": True} if (d or {}).get("drop_backups") else {})),
             "/api/display": lambda: p.display_set(d),
             "/api/display/stop": p.display_stop,
             "/api/ring/reset": p.ring_reset,
@@ -4289,8 +4396,15 @@ class PanelUpdater:
 
 # Платформа в device-tree (compatible «yandex,plum», модель «Yandex Plum EVT2») → профиль колонки.
 # Имя хоста тут не годится: владелец мог его переименовать.
-PLATFORM_MODELS = {"plum": "lite2", "pickle": "mini3pro", "bergamot": "mini3", "yandexmidi": "station2",
-                   "station-mini2": "mini2"}
+PLATFORM_MODELS = {
+    "plum": "lite2",
+    "pickle": "mini3pro",
+    "bergamot": "mini3",
+    "yandexmidi": "station2",
+    "station-mini2": "mini2",
+    "station-micro": "lite",
+    "yandexmicro": "lite",
+}
 
 
 def detect_model(adb):
