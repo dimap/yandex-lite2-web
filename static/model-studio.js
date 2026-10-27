@@ -2,12 +2,14 @@
 import * as T from 'three';
 import { OrbitControls } from './vendor/three/OrbitControls.js';
 import {modelSettings} from './model-settings.js';
+import * as G from './clock-geometry.js';
 export function createModel(profile){
-const view=document.getElementById('model-view'),lite=profile.id==='lite',mini=lite||profile.id==='mini3pro'||profile.id==='mini3';
+const view=document.getElementById('model-view'),lite=profile.id==='lite',mini2=profile.id==='mini2',mini=lite||mini2||profile.id==='mini3pro'||profile.id==='mini3';
 view.setAttribute('role','group');view.setAttribute('aria-label','3D-модель: вращайте мышью или пальцем');view.classList.add('studio-view');
 // Preserve upstream visualizer canvas and the references held by its animation loop.
 // Лайт первого поколения: цвета как в её ledconfigs (purple, yellow, green, pink, red, beige).
-const palette=lite?{purple:['Фиолетовый','#6a3fe6'],yellow:['Жёлтый','#f0c43a'],green:['Зелёный','#59b96d'],pink:['Розовый','#ec2c7c'],red:['Красный','#d9473f'],beige:['Бежевый','#d8c6ab']}:profile.id==='mini3'?{black:['Чёрный','#34343a'],grey:['Серый','#a0a2a8'],violet:['Лиловый','#9b8eaa'],teal:['Бирюзовый','#6aa6a7']}:mini?{black:['Графит','#34343a'],grey:['Серый','#888b91'],blue:['Синий','#355d82']}:{black:['Антрацит','#3b3c40'],blue:['Кобальт','#485c85'],copper:['Медный','#a66d5d'],sand:['Песочный','#c5baaa'],red:['Рубин','#8c3447']};
+// Мини 2: четыре официальных цвета; третий элемент — пластик в цвет корпуса (крышка, задняя планка, ярлык, ободок).
+const palette=lite?{purple:['Фиолетовый','#6a3fe6'],yellow:['Жёлтый','#f0c43a'],green:['Зелёный','#59b96d'],pink:['Розовый','#ec2c7c'],red:['Красный','#d9473f'],beige:['Бежевый','#d8c6ab']}:mini2?{white:['Белый','#dcd8d1','#e8e5df'],black:['Чёрный','#2b2b2f','#232326'],red:['Красный','#6e2634','#601f2d'],blue:['Синий','#2d4070','#273863']}:profile.id==='mini3'?{black:['Чёрный','#34343a'],grey:['Серый','#a0a2a8'],violet:['Лиловый','#9b8eaa'],teal:['Бирюзовый','#6aa6a7']}:mini?{black:['Графит','#34343a'],grey:['Серый','#888b91'],blue:['Синий','#355d82']}:{black:['Антрацит','#3b3c40'],blue:['Кобальт','#485c85'],copper:['Медный','#a66d5d'],sand:['Песочный','#c5baaa'],red:['Рубин','#8c3447']};
 let renderer;
 try{renderer=new T.WebGLRenderer({antialias:true,alpha:true,powerPreference:'low-power'});}catch(e){view.insertAdjacentHTML('beforeend','<p class="studio-error">Для объёмной модели включите WebGL в браузере.</p>');throw e;}
 renderer.domElement.className='studio-canvas';renderer.domElement.setAttribute('aria-label',profile.name+' — вращаемая 3D-модель');
@@ -20,8 +22,8 @@ scene.add(new T.HemisphereLight(0xf1f4ff,0x45404b,2));
 const keyLight=new T.DirectionalLight(0xfff5e9,3.2);keyLight.position.set(-140,220,180);scene.add(keyLight);
 const fill=new T.DirectionalLight(0xd7e4ff,1.5);fill.position.set(160,80,-100);scene.add(fill);
 // прорези по краю крышки Лайт: 72 наклонных овала (R — радиус крышки в пикселях холста)
-function liteSlots(c,R){const k=R/512;c.save();c.translate(R,R);for(let i=0;i<72;i++){c.save();c.rotate(i/72*Math.PI*2);c.translate(0,-R*.905);c.rotate(.62);
-  c.beginPath();c.roundRect(-11*k,-28*k,22*k,56*k,11*k);c.fill();c.restore();}c.restore();}
+function liteSlots(c,R,w=22,h=56,ring=.905){const k=R/512;c.save();c.translate(R,R);for(let i=0;i<72;i++){c.save();c.rotate(i/72*Math.PI*2);c.translate(0,-R*ring);c.rotate(.62);
+  c.beginPath();c.roundRect(-w/2*k,-h/2*k,w*k,h*k,w/2*k);c.fill();c.restore();}c.restore();}
 function canvasTexture(size,draw){const canvas=document.createElement('canvas');canvas.width=canvas.height=size;draw(canvas.getContext('2d'),size);const texture=new T.CanvasTexture(canvas);texture.colorSpace=T.SRGBColorSpace;return texture;}
 // Match the lightweight material budget of the original Lite 2 renderer.
 const fallback=Object.keys(palette)[0];
@@ -32,10 +34,10 @@ const glass=new T.MeshStandardMaterial({color:'#303139',roughness:.35,metalness:
 function mesh(geo,mat,x=0,y=0,z=0,parent=group){const m=new T.Mesh(geo,mat);m.position.set(x,y,z);parent.add(m);return m;}
 function roundedShape(w,d,r){const s=new T.Shape(),x=-w/2,z=-d/2;s.moveTo(x+r,z);s.lineTo(x+w-r,z);s.quadraticCurveTo(x+w,z,x+w,z+r);s.lineTo(x+w,z+d-r);s.quadraticCurveTo(x+w,z+d,x+w-r,z+d);s.lineTo(x+r,z+d);s.quadraticCurveTo(x,z+d,x,z+d-r);s.lineTo(x,z+r);s.quadraticCurveTo(x,z,x+r,z);return s;}
 function roundedBox(w,h,d,r,b=1){const geo=new T.ExtrudeGeometry(roundedShape(w-2*b,d-2*b,Math.max(1,r-b)),{depth:h-2*b,bevelEnabled:true,bevelThickness:b,bevelSize:b,bevelSegments:5,steps:1,curveSegments:16});geo.rotateX(-Math.PI/2);geo.translate(0,-h/2+b,0);geo.computeVertexNormals();return geo;}
-const ledMaterials=[];
+const ledMaterials=[],trimMaterials=[];   // trim: материалы в цвет пластика корпуса (перекрашиваются вместе с ним)
 function ledMaterial(){const m=new T.MeshStandardMaterial({color:'#181820',emissive:'#000000',emissiveIntensity:0,roughness:.28,metalness:.05});ledMaterials.push(m);return m;}
 function port(y,z){mesh(roundedBox(10,4,1.5,1.9,.3),rubber,0,y,z);mesh(roundedBox(6,1.5,1.8,.7,.2),new T.MeshStandardMaterial({color:'#727078',metalness:.7,roughness:.5}),0,y,z-.15);}
-let topY,baseY,clockSegments=[];
+let topY,baseY,clockSegments=[],display=null;
 if(lite){
   // По фото: прямой цилиндр 88 мм с острым верхним краем (корпус ~44 мм) на чёрном основании ~12 мм,
   // которое сужается книзу и изрезано наклонными канавками.
@@ -66,6 +68,93 @@ if(lite){
   const usbDecal=mesh(new T.PlaneGeometry(9.6,9.6),new T.MeshStandardMaterial({map:usb,transparent:true,roughness:.5,metalness:.3,polygonOffset:true,polygonOffsetFactor:-1}),0,-9,-44.03);
   usbDecal.rotation.y=Math.PI;
   topY=28;baseY=-28;
+}else if(mini2){
+  // Станция Мини 2 с часами (YNDX-00020) по фото и штангенциркулю владельца и паспортным 97 × 54 мм: прямой
+  // цилиндр в ткани, верхний край скруглён плотно (R≈2,2 мм), за ним плоский тканевый поясок и чуть
+  // утопленный пластиковый диск крышки. Пластик — в цвет корпуса, резиновое дно серое. Дисплей — ровно
+  // посередине высоты, светит сквозь ткань спереди. Профили — дугами по точкам, сегментов по кругу 256.
+  const R=48.5,TOP=27,BOT=-27,N=256,V=p=>new T.Vector2(...p);
+  const arcPts=(cx,cy,r,a0,a1,n)=>Array.from({length:n+1},(_,i)=>{const a=a0+(a1-a0)*i/n;return[cx+r*Math.cos(a),cy+r*Math.sin(a)];});
+  // Внешняя оболочка — ткань: сетчатая вязка с шагом ≈0,9 мм, светлые нити по диагоналям и тёмные
+  // ромбики ячеек между ними (как на фото вблизи); цвет корпуса умножается на карту, бликов нет.
+  const knit=canvasTexture(256,(c,n)=>{c.fillStyle='#8a8a8e';c.fillRect(0,0,n,n);
+    for(const[w,col]of[[30,'#e3e3e5'],[9,'#fbfbfb']]){c.strokeStyle=col;c.lineWidth=w;c.beginPath();
+      for(let i=-4;i<=8;i++){const x=i*n/4;c.moveTo(x,0);c.lineTo(x+n,n);c.moveTo(x,n);c.lineTo(x+n,0);}c.stroke();}});
+  knit.wrapS=knit.wrapT=T.RepeatWrapping;knit.repeat.set(85,15);knit.anisotropy=4;fabric.map=knit;fabric.roughness=1;
+  mesh(new T.CylinderGeometry(42,42,.8,N),new T.MeshStandardMaterial({color:'#6b6c70',emissive:'#232327',roughness:.9}),0,BOT+.2);   // резиновое дно (снизу света нет — лёгкая подсветка материалом)
+  mesh(new T.LatheGeometry([[41,BOT+.4],[46.8,BOT+.4],...arcPts(46.8,BOT+2.2,1.8,-Math.PI/2,0,8),[48.6,BOT+2.6]].map(V),N),plastic);   // нижний ободок
+  const shell=new T.LatheGeometry([[48.5,BOT+2.6],[48.5,TOP-2.2],...arcPts(46.3,TOP-2.2,2.2,0,Math.PI/2,16),[44.95,TOP],...arcPts(44.95,TOP-.45,.45,Math.PI/2,Math.PI,5),[44.5,TOP-1.6]].map(V),N);
+  const shellUV=shell.attributes.uv,shellPos=shell.attributes.position;for(let i=0;i<shellUV.count;i++)shellUV.setY(i,(shellPos.getY(i)-BOT)/(TOP-BOT));   // вязка без растяжения
+  mesh(shell,fabric);
+  mesh(new T.CylinderGeometry(44.6,44.6,.4,N),rubber,0,TOP-1.8);   // тёмный зазор между пояском и диском
+  mesh(new T.LatheGeometry([[0,TOP-2.1],[44.1,TOP-2.1],[44.1,TOP-.85],[43.75,TOP-.5],[0,TOP-.5]].map(V),N),plastic);   // диск крышки с фаской, верх на 0,5 мм ниже пояска
+  // Крышка по фото сверху: 72 узкие наклонные прорези у края, 4 микрофона по диагоналям, «−» слева и «+» справа
+  // (если смотреть на дисплей), в центре вставка с кольцом подсветки и логотипом Алисы.
+  const marks=canvasTexture(1024,(c,n)=>{const R2=n/2,k=R2/44;c.fillStyle='rgba(8,8,12,.92)';liteSlots(c,R2,12,60,.915);c.translate(R2,R2);
+    c.fillStyle='rgba(8,8,12,.85)';for(const[x,y]of[[-1,-1],[1,-1],[-1,1],[1,1]]){c.beginPath();c.arc(x*R2*.34,y*R2*.34,.75*k,0,Math.PI*2);c.fill();}
+    c.strokeStyle='rgba(20,18,28,.32)';c.lineWidth=.55*k;c.lineCap='round';const d=R2*.55,l=2.4*k;
+    c.beginPath();c.moveTo(-d-l,0);c.lineTo(-d+l,0);c.moveTo(d-l,0);c.lineTo(d+l,0);c.moveTo(d,-l);c.lineTo(d,l);c.stroke();});
+  marks.anisotropy=8;   // крышка видна под острым углом — иначе прорези размываются
+  const marksMesh=mesh(new T.CircleGeometry(43.7,N),new T.MeshBasicMaterial({map:marks,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}),0,TOP-.45);
+  marksMesh.rotation.x=-Math.PI/2;marksMesh.renderOrder=1;
+  // Вставка подсветки: кольцо 4,3–6,9 мм светится цветом колонки, логотип в центре — вполсилы; без подсветки — белый пластик.
+  const alice=canvasTexture(256,(c,n)=>{c.translate(n/2,n/2);const k=n/16;c.lineWidth=2.6*k;c.strokeStyle='#ffffff';c.beginPath();c.arc(0,0,5.6*k,0,Math.PI*2);c.stroke();
+    c.strokeStyle='rgba(60,60,70,.3)';c.lineWidth=.22*k;for(const r of[6.95,4.25]){c.beginPath();c.arc(0,0,r*k,0,Math.PI*2);c.stroke();}
+    const t=2.3*k,pts=[[0,-t],[t*.9,t*.62],[-t*.9,t*.62]];c.beginPath();c.moveTo(t*.45,-t*.19);for(let i=0;i<3;i++){const p=pts[(i+1)%3],q=pts[(i+2)%3];c.arcTo(p[0],p[1],q[0],q[1],t*.42);}c.closePath();c.fillStyle='rgba(255,255,255,.6)';c.fill();});
+  const aliceMat=new T.MeshBasicMaterial({map:alice,transparent:true,depthWrite:false,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+  aliceMat.userData.logo=true;ledMaterials.push(aliceMat);
+  const aliceMesh=mesh(new T.PlaneGeometry(16,16),aliceMat,0,TOP-.4);aliceMesh.rotation.x=-Math.PI/2;aliceMesh.renderOrder=2;
+  // Дисплей: 4 цифры по 7 сегментов, двоеточие, дефис и градус (32 светодиода, точек у цифр нет) — в геометрии
+  // панели (clock-geometry.js, 1 ед. = 0,215 мм: цифра 12 × 21 мм, ряд ≈ 64 мм), центр ровно посередине высоты.
+  // Сетка ткани вырезает из сегментов точки, под ними размытое свечение; перерисовка только при смене кадра.
+  const W=1032,H=348,canvas=document.createElement('canvas'),crisp=document.createElement('canvas');canvas.width=crisp.width=W;canvas.height=crisp.height=H;
+  const ctx=canvas.getContext('2d'),cc=crisp.getContext('2d'),tex=new T.CanvasTexture(canvas);tex.colorSpace=T.SRGBColorSpace;tex.anisotropy=4;
+  const tile=document.createElement('canvas');tile.width=tile.height=18;const tc=tile.getContext('2d');tc.strokeStyle='rgba(0,0,0,.9)';tc.lineWidth=4.6;
+  tc.beginPath();tc.moveTo(0,9);tc.lineTo(9,0);tc.lineTo(18,9);tc.lineTo(9,18);tc.closePath();tc.stroke();const lattice=cc.createPattern(tile,'repeat');
+  const paintFrame=(c,v)=>{c.setTransform(3,0,0,3,12,12);c.fillStyle=c.strokeStyle='#fff6ea';c.lineWidth=4;const lit=(a,draw)=>{if(!(a>0))return;c.globalAlpha=Math.max(.18,a/255);draw();};
+    G.DIGIT_X.forEach((x,p)=>{for(const[seg,d]of G.segShapes(x))lit(v[p*8+G.SEGS.indexOf(seg)],()=>c.fill(new Path2D(d)));});
+    [[G.X_DH,30],[G.X_DL,66]].forEach(([i,y])=>lit(v[i],()=>{c.beginPath();c.arc(146,y,6,0,7);c.fill();}));
+    lit(v[G.X_DM],()=>c.fillRect(137,45,18,6));lit(v[G.X_DEG],()=>{c.beginPath();c.arc(318,10,7,0,7);c.stroke();});c.globalAlpha=1;c.setTransform(1,0,0,1,0,0);};
+  let lastFrame='';
+  display=values=>{const v=Array.from({length:36},(_,i)=>Number(values?.[i])||0),key=v.join(',');if(key===lastFrame)return;lastFrame=key;
+    cc.clearRect(0,0,W,H);paintFrame(cc,v);cc.globalCompositeOperation='destination-out';cc.fillStyle=lattice;cc.fillRect(0,0,W,H);cc.globalCompositeOperation='source-over';
+    ctx.clearRect(0,0,W,H);ctx.shadowColor='rgba(255,240,222,.6)';ctx.shadowBlur=16;ctx.drawImage(crisp,0,0);ctx.shadowBlur=0;ctx.shadowColor='transparent';ctx.drawImage(crisp,0,0);tex.needsUpdate=true;};
+  const unit=.215,arc=W/3*unit/(R+.15);
+  mesh(new T.CylinderGeometry(R+.15,R+.15,H/3*unit,64,1,true,-arc/2,arc),new T.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,toneMapped:false}),0,0);
+  display(new Array(36).fill(0));
+  // Задняя планка во всю высоту: пластик в цвет корпуса, по оси сверху вниз — круглая кнопка выключения
+  // микрофонов, гнездо AUX 3,5 мм и ниже него круглый фирменный разъём питания (адаптер 15 В, не USB).
+  const stripW=25,stripArc=stripW/R,stripTop=TOP-2.2,stripBot=BOT+2.6,stripH=stripTop-stripBot,stripY=(stripTop+stripBot)/2;
+  mesh(new T.CylinderGeometry(R+.12,R+.12,stripH,32,1,true,Math.PI-stripArc/2,stripArc),plastic,0,stripY);
+  const stripCanvas=document.createElement('canvas');stripCanvas.width=256;stripCanvas.height=512;
+  {const c=stripCanvas.getContext('2d'),k=256/stripW,mm=(x,y)=>[x*k,y*k];c.lineCap='round';c.lineJoin='round';
+    c.strokeStyle='rgba(0,0,0,.28)';c.lineWidth=.3*k;c.beginPath();c.arc(...mm(12.5,7.5),4.4*k,0,Math.PI*2);c.stroke();   // кнопка
+    c.save();c.translate(...mm(12.5,7.5));c.strokeStyle='rgba(0,0,0,.55)';c.lineWidth=.42*k;c.beginPath();c.roundRect(-.75*k,-2.4*k,1.5*k,3*k,.75*k);
+    c.moveTo(-1.5*k,-.4*k);c.quadraticCurveTo(-1.5*k,1.6*k,0,1.6*k);c.quadraticCurveTo(1.5*k,1.6*k,1.5*k,-.4*k);c.moveTo(0,1.6*k);c.lineTo(0,2.5*k);c.moveTo(-1*k,2.5*k);c.lineTo(1*k,2.5*k);
+    c.moveTo(-1.9*k,1.5*k);c.lineTo(1.9*k,-2.1*k);c.stroke();c.restore();   // перечёркнутый микрофон
+    for(const[y,r,rim]of[[27.5,1.75,.4],[37.5,2.7,.6]]){c.fillStyle='#8f8f95';c.beginPath();c.arc(...mm(12.5,y),(r+rim)*k,0,Math.PI*2);c.fill();c.fillStyle='#0b0b0e';c.beginPath();c.arc(...mm(12.5,y),r*k,0,Math.PI*2);c.fill();}
+    c.fillStyle='#55555c';c.beginPath();c.arc(...mm(12.5,37.5),.9*k,0,Math.PI*2);c.fill();}   // AUX сверху, под ним питание (контакт в центре)
+  const stripTex=new T.CanvasTexture(stripCanvas);stripTex.colorSpace=T.SRGBColorSpace;
+  mesh(new T.CylinderGeometry(R+.25,R+.25,stripH,32,1,true,Math.PI-stripArc/2,stripArc),new T.MeshBasicMaterial({map:stripTex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}),0,stripY);
+  // Ярлык «Я» — мягкая силиконовая лента 9 мм толщиной 1,1 мм: свисает по боку на 12 мм, перегибается через
+  // скруглённый край и ложится на тканевый поясок до диска. Справа от дисплея (≈50°). Сетка 6 × 96 сужается
+  // по контуру со скруглёнными углами и изгибается по пути ленты (вершины переносятся вдоль неё).
+  const side=.87,tagW=9,hang=11.8,thick=1.1,bend=2.25+thick/2,lay=1.9,len=hang+bend*Math.PI/2+lay,Cx=R-2.2,Cy=TOP-2.2;
+  const silicone=new T.MeshStandardMaterial({color:plastic.color,roughness:.82});trimMaterials.push(silicone);
+  const tagGeo=new T.BoxGeometry(tagW,len,thick,6,96,1);
+  {const pos=tagGeo.attributes.position,w=tagW/2,r=2.6,rt=.8,s1=hang,s2=hang+bend*Math.PI/2;
+    const edge=sPos=>sPos<r?w-r+Math.sqrt(Math.max(0,r*r-(r-sPos)**2)):sPos>len-rt?w-rt+Math.sqrt(Math.max(0,rt*rt-(sPos-len+rt)**2)):w;   // контур: скруглённые углы
+    for(let i=0;i<pos.count;i++){const sPos=pos.getY(i)+len/2,x=pos.getX(i)*edge(sPos)/w,nOff=pos.getZ(i);let rad,y;
+      if(sPos<=s1){rad=R+.05+thick/2+nOff;y=TOP-2.2-hang+sPos;}
+      else if(sPos<=s2){const phi=(sPos-s1)/bend;rad=Cx+(bend+nOff)*Math.cos(phi);y=Cy+(bend+nOff)*Math.sin(phi);}
+      else{rad=Cx-(sPos-s2);y=Cy+bend+nOff;}
+      pos.setXYZ(i,x,y,rad);}
+    tagGeo.computeVertexNormals();}
+  const tag=new T.Group();tag.rotation.y=side;group.add(tag);mesh(tagGeo,silicone,0,0,0,tag);
+  const tagTex=canvasTexture(256,(c,n)=>{c.font='500 115px "Helvetica Neue", Arial, sans-serif';c.textAlign='center';c.textBaseline='middle';c.translate(n/2,n*.6);c.scale(1,.72);
+    c.lineJoin='round';c.strokeStyle='rgba(255,255,255,.3)';c.lineWidth=2.5;c.strokeText('Я',1,1.5);c.fillStyle='rgba(0,0,0,.4)';c.fillText('Я',0,0);});
+  mesh(new T.PlaneGeometry(tagW,hang),new T.MeshBasicMaterial({map:tagTex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}),0,TOP-2.2-hang/2,R+thick+.08,tag);
+  topY=TOP;baseY=BOT;
 }else if(mini){
   const points=[[0,-35],[43,-35],[47,-34],[49.4,-31],[50.4,-26],[51,-18],[51,20],[50.8,28],[49.6,31],[0,31]].map(p=>new T.Vector2(...p));
   const shell=new T.LatheGeometry(points,192),shellUV=shell.attributes.uv,shellPosition=shell.attributes.position;
@@ -98,9 +187,9 @@ const liteTex=lite&&canvasTexture(1024,(c,n)=>{const R=n/2;c.translate(R,R);
   c.save();c.translate(0,-k);c.scale(1.5,1.5);c.lineWidth=4.6;c.beginPath();c.roundRect(-11,-34,22,38,11);c.moveTo(-19,-8);c.quadraticCurveTo(-19,16,0,16);c.quadraticCurveTo(19,16,19,-8);
   c.moveTo(0,16);c.lineTo(0,28);c.moveTo(-13,28);c.lineTo(13,28);c.moveTo(-22,12);c.lineTo(22,-30);c.stroke();c.restore();            // микрофон выключен
 });
-const topMarks=mesh(lite?new T.CircleGeometry(43.5,128):new T.PlaneGeometry(mini?98:117,mini?98:93),lite?new T.MeshBasicMaterial({map:liteTex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}):new T.MeshBasicMaterial({map:controlsTex,transparent:true,depthWrite:false,opacity:.72}),0,topY+.05);topMarks.rotation.x=-Math.PI/2;topMarks.renderOrder=1;   // прозрачные слои крышки — всегда в одном порядке, иначе мерцают при вращении
-topMarks.castShadow=false;
-if(mini&&!lite){
+if(!mini2){const topMarks=mesh(lite?new T.CircleGeometry(43.5,128):new T.PlaneGeometry(mini?98:117,mini?98:93),lite?new T.MeshBasicMaterial({map:liteTex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}):new T.MeshBasicMaterial({map:controlsTex,transparent:true,depthWrite:false,opacity:.72}),0,topY+.05);topMarks.rotation.x=-Math.PI/2;topMarks.renderOrder=1;   // прозрачные слои крышки — всегда в одном порядке, иначе мерцают при вращении
+topMarks.castShadow=false;}
+if(mini&&!lite&&!mini2){
   const white=new T.MeshStandardMaterial({color:'#fff9e8',emissive:'#fff2d6',emissiveIntensity:2,roughness:.8,toneMapped:false});
   function horizontal(){const s=new T.Shape();s.moveTo(-3.5,0);s.lineTo(-2.5,1);s.lineTo(2.5,1);s.lineTo(3.5,0);s.lineTo(2.5,-1);s.lineTo(-2.5,-1);s.closePath();return new T.ShapeGeometry(s);}
   const positions=[[0,10,0],[4.2,5,1],[4.2,-5,1],[0,-10,0],[-4.2,-5,1],[-4.2,5,1],[0,0,0]];
@@ -108,11 +197,15 @@ if(mini&&!lite){
   for(const[x,y]of[[29,10],[0,1],[0,-7],[0,-3]]){const theta=x/51,geometry=clockSegments.length===32?new T.RingGeometry(.9,1.4,20):clockSegments.length===35?new T.PlaneGeometry(3,1):new T.CircleGeometry(.9,16),s=mesh(geometry,white,51.3*Math.sin(theta),y,51.3*Math.cos(theta));s.rotation.y=theta;s.visible=false;s.castShadow=false;clockSegments.push(s);}
 }
 let dirty=true;
-window.modelShow=values=>{clockSegments.forEach((s,i)=>{s.visible=Number(values?.[i])>0;});dirty=true;};
-window.modelRing=leds=>{if(!leds?.length)return;ledMaterials.forEach((m,i)=>{const rgb=leds[Math.floor(i*leds.length/ledMaterials.length)]||[0,0,0],color=new T.Color().setRGB(...rgb.map(v=>Math.max(0,Math.min(255,v))/255),T.SRGBColorSpace);m.color.copy(color);
-  if(m.userData.logo){if(Math.max(...rgb)<12)m.color.set('#ffffff');else m.color.copy(color).lerp(new T.Color('#ffffff'),.15);return;}   // логотип Лайт: без подсветки белый
+window.modelShow=values=>{if(display)display(values);else clockSegments.forEach((s,i)=>{s.visible=Number(values?.[i])>0;});dirty=true;};
+window.modelRing=leds=>{if(!leds?.length)return;
+  const lit=mini2&&leds.some(rgb=>rgb.some(v=>v>0));
+  // Approximate the central diffuser's mixed hue; all six native zones contribute.
+  if(mini2)leds=[[0,1,2].map(c=>leds.reduce((sum,rgb)=>sum+Math.max(0,Math.min(255,Number(rgb?.[c])||0)),0)/leds.length)];
+  ledMaterials.forEach((m,i)=>{const rgb=leds[Math.floor(i*leds.length/ledMaterials.length)]||[0,0,0],color=new T.Color().setRGB(...rgb.map(v=>Math.max(0,Math.min(255,v))/255),T.SRGBColorSpace);m.color.copy(color);
+  if(m.userData.logo){if(mini2?!lit:Math.max(...rgb)<12)m.color.set('#ffffff');else m.color.copy(color).lerp(new T.Color('#ffffff'),.15);return;}   // логотип Лайт: без подсветки белый
   m.emissive.copy(color);m.emissiveIntensity=.55;});dirty=true;};
-function paint(key){key=palette[key]?key:fallback;fabric.color.set(palette[key][1]);plastic.color.copy(fabric.color).multiplyScalar(.65);dirty=true;}
+function paint(key){key=palette[key]?key:fallback;const[,body,trim]=palette[key];fabric.color.set(body);if(trim)plastic.color.set(trim);else plastic.color.copy(fabric.color).multiplyScalar(.65);for(const m of trimMaterials)m.color.copy(plastic.color);dirty=true;}
 let preference=null;
 window.modelColor=key=>{if(!preference)paint(key);};
 paint(window.__deviceColor||fallback);

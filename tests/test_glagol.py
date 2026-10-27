@@ -5,6 +5,36 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import server
+import glagol
+
+
+class MusicTrackTests(unittest.TestCase):
+    def test_short_track_accepts_missing_title_and_preserves_existing_metadata(self):
+        music = object.__new__(glagol.YandexMusic)
+        cases = [({}, ''), ({'title': None}, ''), ({'title': ''}, ''),
+                 ({'title': 'Example'}, 'Example'),
+                 ({'title': 'Example', 'version': 'Live'}, 'Example (Live)'),
+                 ({'title': None, 'version': 'Live'}, ' (Live)')]
+        for fields, title in cases:
+            with self.subTest(fields=fields):
+                track = dict(id=123, artists=[{'name': 'Artist'}], durationMs=120000,
+                             coverUri='img.example.invalid/%%', available=False, **fields)
+                self.assertEqual(music._short(track),
+                                 dict(id='123', title=title, artists='Artist', durationMs=120000,
+                                      cover='https://img.example.invalid/100x100', available=False))
+
+    def test_radio_queue_survives_tracks_without_a_title(self):
+        music = object.__new__(glagol.YandexMusic)
+        tracks = {'1': {'id': 1, 'title': None},
+                  '2': {'id': 2, 'title': 'Current', 'version': 'Live'},
+                  '3': {'id': 3}}
+        music._raw = Mock(side_effect=lambda tid: tracks[str(tid)])
+        queue = music.queue({'id': 2, 'playlistType': 'Radio',
+                             'entityInfo': {'prev': {'id': 1}, 'next': {'id': 3}}})
+        self.assertEqual([t['id'] for t in queue['tracks']], ['1', '2', '3'])
+        self.assertEqual([t['title'] for t in queue['tracks']], ['', 'Current (Live)', ''])
+        self.assertEqual(queue['current'], 1)
+        self.assertEqual(queue['type'], 'Radio')
 
 
 class GlagolIdentityTests(unittest.TestCase):

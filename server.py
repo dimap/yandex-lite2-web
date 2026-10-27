@@ -1503,11 +1503,13 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
                               r"alarm/alarms\.conf|alarm/default\.wav|alarm/[su]_[0-9a-f]{10}\.wav)")
     BACKUP_LIMIT = 200 * 1024 * 1024
 
-    def backup(self, ui):
+    def backup(self, ui, device_files=True):
         with tempfile.TemporaryDirectory() as td:
-            out, _, _ = self.adb.shell(f"cd {WEB_DIR} 2>/dev/null && find . -type f; true", check=False)
-            names = [l.strip()[2:] for l in strip_ansi(out).splitlines() if l.strip().startswith("./")]
-            names = [n for n in names if self.BACKUP_FILES.fullmatch(n)]
+            names = []
+            if device_files:
+                out, _, _ = self.adb.shell(f"cd {WEB_DIR} 2>/dev/null && find . -type f; true", check=False)
+                names = [l.strip()[2:] for l in strip_ansi(out).splitlines() if l.strip().startswith("./")]
+                names = [n for n in names if self.BACKUP_FILES.fullmatch(n)]
             buf = io.BytesIO()
             with tarfile.open(fileobj=buf, mode="w:gz") as tar:
                 for n in names:
@@ -1527,8 +1529,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         name = "stantsiya-backup-" + time.strftime("%Y%m%d-%H%M") + ".tar.gz"
         return name, buf.getvalue()
 
-    def backup_restore(self, body):
-        """Делает колонку такой, как в копии: сначала полный сброс того, что ставила панель, потом установка."""
+    def _backup_contents(self, body):
         if len(body) > self.BACKUP_LIMIT:
             raise AdbError("файл слишком большой")
         files, manifest = {}, None
@@ -1543,8 +1544,13 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
                         files[m.name[9:]] = tar.extractfile(m).read()
         except (tarfile.TarError, OSError, ValueError, EOFError) as e:
             raise AdbError(f"это не резервная копия панели: {e}")
-        if not manifest or manifest.get("format") != 1:
+        if not isinstance(manifest, dict) or manifest.get("format") != 1:
             raise AdbError("это не резервная копия панели (нет manifest.json)")
+        return files, manifest
+
+    def backup_restore(self, body):
+        """Делает колонку такой, как в копии: сначала полный сброс того, что ставила панель, потом установка."""
+        files, manifest = self._backup_contents(body)
         report = []
         self.footprint_reset()
         boot = self.boot_status()
@@ -2882,7 +2888,8 @@ class PanelUpdater:
 
 # Платформа в device-tree (compatible «yandex,plum», модель «Yandex Plum EVT2») → профиль колонки.
 # Имя хоста тут не годится: владелец мог его переименовать.
-PLATFORM_MODELS = {"plum": "lite2", "pickle": "mini3pro", "bergamot": "mini3", "yandexmidi": "station2"}
+PLATFORM_MODELS = {"plum": "lite2", "pickle": "mini3pro", "bergamot": "mini3", "yandexmidi": "station2",
+                   "station-mini2": "mini2"}
 
 
 def detect_model(adb):
@@ -2890,6 +2897,8 @@ def detect_model(adb):
     out, _, _ = adb.shell("cat /proc/device-tree/compatible /proc/device-tree/model 2>/dev/null | tr '\\000' ' '; true",
                           check=False, timeout=15)
     text = strip_ansi(out).lower()
+    if re.search(r"\byandex\s+station\s+mini\s+2\b", text):
+        return "mini2", "station-mini2"
     for platform, model in PLATFORM_MODELS.items():
         if re.search(rf"(^|[^a-z0-9]){platform}([^a-z0-9]|$)", text):
             return model, platform
@@ -3072,7 +3081,7 @@ def main():
                     help="где хранить токен, пароль, сертификаты и историю (по умолчанию — рядом с server.py) [PANEL_DATA_DIR]")
     ap.add_argument("--open", action="store_true", help="открыть панель в браузере после запуска")
     ap.add_argument("--model", choices=[*profiles.PROFILES, "auto"], default=env("PANEL_MODEL", "auto"),
-                    help="профиль колонки: lite2, mini3pro, mini3, station2 или auto — определить по плате [PANEL_MODEL]")
+                    help="профиль колонки: lite2, mini2, mini3pro, mini3, station2 или auto — определить по плате [PANEL_MODEL]")
     args = ap.parse_args()
     for stream in (sys.stdout, sys.stderr):   # консоль Windows: русский текст не должен ронять сервер
         try:
@@ -3169,6 +3178,8 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        if hasattr(panel, 'close_mini2'):
+            panel.close_mini2()
         panel.metrics._save()
 
 

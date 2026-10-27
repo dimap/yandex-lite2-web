@@ -1596,6 +1596,7 @@ function segShapes(x) {
   ];
 }
 function clockSVG(v, { thumb = false } = {}) {
+  const hasDot = p => window.clockGeom?.layout?.segments?.includes(`H${p + 1}`) ?? true;
   const lvl = i => v[i] / 255;
   const cls = i => v[i] > 0 ? 'seg-on' : 'seg-off';
   const op = i => v[i] > 0 ? ` fill-opacity="${(0.5 + 0.5 * lvl(i)).toFixed(2)}"` : '';   // горящий сегмент заметно ярче погасшего
@@ -1606,7 +1607,7 @@ function clockSVG(v, { thumb = false } = {}) {
       s += `<path d="${d}" class="${cls(i)}"${op(i)} data-i="${i}"/>`;
     }
     const i = p * 8 + 7;
-    s += `<circle cx="${x + 28}" cy="36" r="4.5" class="${cls(i)}"${op(i)} data-i="${i}"/>`;   // точка H — чуть выше центра цифры
+    if (hasDot(p)) s += `<circle cx="${x + 28}" cy="36" r="4.5" class="${cls(i)}"${op(i)} data-i="${i}"/>`;   // точка H — чуть выше центра цифры
   });
   [[X_DH, 30], [X_DL, 66]].forEach(([i, y]) =>
     s += `<circle cx="146" cy="${y}" r="6" class="${cls(i)}"${op(i)} data-i="${i}"/>`);
@@ -1847,7 +1848,7 @@ async function liveLeds() {
   setTimeout(liveLeds, want ? (spectrumNow ? 100 : 700) : 500);
 }
 setTimeout(liveLeds, 1000);   // первый запуск — когда весь скрипт уже загружен
-function animateRing({ frames, loop }, seconds) {
+function animateRing({ frames, loop, loop_at = 0 }, seconds) {
   clearTimeout(ringTimer);
   if (!frames.length) return;
   const until = ringAnimUntil = Date.now() + seconds * 1000;
@@ -1856,7 +1857,7 @@ function animateRing({ frames, loop }, seconds) {
     if (Date.now() > until) { ringAnimUntil = 0; return; }
     if (i >= frames.length) {
       if (!loop) { ringAnimUntil = 0; return; }
-      i = 0;
+      i = loop_at;   // Кадры до loop_at — вступление, оно проигрывается только один раз.
     }
     toRing(frames[i].c);
     ringTimer = setTimeout(step, Math.max(16, frames[i++].ms));
@@ -1880,7 +1881,7 @@ function bootFull() {
   return pause ? [{ flag: 0, v: blankFrame(), ms: pause }, ...boot.frames] : boot.frames;
 }
 function checkPause() {
-  const short = (+$('#boot-pause').value || 0) < 3000;
+  const short = !boot.status?.editor_only && (+$('#boot-pause').value || 0) < 3000;
   $('#boot-pause-hint').style.color = short ? 'var(--danger)' : '';
 }
 $('#boot-pause').oninput = checkPause;
@@ -1928,7 +1929,7 @@ function renderBootStatus() {
   $('#snd-badge').className = 'badge' + (s.sound_custom ? ' ok' : '');
   $('#bs-play-custom').disabled = !s.sound_custom;
   $('#bs-reset').disabled = !s.sound_custom;
-  if (!s.supported) { $('#boot-status').innerHTML = '<span class="badge bad">прошивка не поддерживается</span>'; return; }
+  if (!s.supported) { $('#boot-status').innerHTML = s.editor_only ? '<span class="badge">только редактор и проигрывание</span>' : '<span class="badge bad">прошивка не поддерживается</span>'; return; }
   $('#boot-status').innerHTML = s.custom
     ? `<span class="badge ok">своя</span>${s.mounted ? '' : '<span class="badge bad">не подменена</span>'}`
     : '<span class="badge">стандартная</span>';
@@ -2597,14 +2598,22 @@ async function loadYam() {
   let st;
   try { st = await api('/api/yam/status'); } catch (e) { return e.offline || toast(e.message, true); }
   yam.status = st;
+  if (st.read_only) {
+    ['#yam-install', '#yam-start', '#yam-autostart', '#yam-update', '#yam-update-confirm-btn', '#yam-binaries'].forEach(id => {
+      $(id).disabled = true; $(id).title = st.read_only_reason;
+    });
+    $('#yam-missing .hint').textContent = st.read_only_reason;
+  }
   $('#yam-missing').hidden = st.installed;
   $('#yam-card').hidden = !st.installed;
   if (!st.installed) { $('#yam-on').hidden = true; return; }
   $('#yam-badge').textContent = st.running ? 'yamd работает' : 'yamd остановлен';
   $('#yam-badge').className = 'badge' + (st.running ? ' ok' : ' bad');
   $('#yam-start').hidden = st.running;
-  $('#yam-off').hidden = st.running;
+  $('#yam-off').hidden = st.running && !st.read_only;
+  $('#yam-off').textContent = st.read_only ? st.read_only_reason : 'Демон не работает — без него устанавливать и запускать пакеты нельзя.';
   $('#yam-autostart').checked = st.autostart;
+  if (st.autostart_external) $('#yam-autostart').title = 'Автозапуск настроен вне панели.';
   $('#yam-on').hidden = !st.running;
   $('#yam-web').hidden = !(st.running && st.web_url);
   if (st.web_url) $('#yam-web').href = st.web_url;
@@ -2705,6 +2714,11 @@ function renderYam() {
     await api('/api/yam/install', { id: b.dataset.id, version: b.dataset.v });
     await loadYam();
   }, 'Установлен: ' + b.dataset.id));
+  if (yam.status?.read_only) {
+    $$('#yam-installed button:not([data-a="logs"]), #yam-catalog button[data-id]').forEach(b => {
+      b.disabled = true; b.title = yam.status.read_only_reason;
+    });
+  }
 }
 $('#yam-filter').oninput = renderYam;
 $('#yam-refresh').onclick = e => act(e.currentTarget, async () => { await api('/api/yam/registry?refresh=1'); await loadYam(); loadYamVersion(true); });
@@ -3149,7 +3163,7 @@ async function loadFootprint() {
     + `${i.on ? '' : ' <small>— нет</small>'}</span></div>`).join('');
   $('#fp-info').textContent = f.any ? `Всё лежит в ${f.dir} · ${kb(f.size_kb)}` + (f.yam_installed ? ' · yam не затрагивается, у него своё удаление' : '')
     : 'Сейчас на колонке ничего от панели нет';
-  $('#fp-reset').disabled = !f.any;
+  $('#fp-reset').disabled = !f.any || f.reset_supported === false;
   loadPrivacy();
 }
 async function loadPrivacy() {
@@ -3202,10 +3216,11 @@ $('#bk-save').onclick = e => act(e.currentTarget, async () => {
 $('#bk-restore').onclick = () => $('#bk-file').click();
 $('#bk-file').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
-  if (!f || !confirm(`Восстановить из «${f.name}»?\n\nТо, что сейчас стоит на колонке от панели (заставка, звук запуска, будильники), `
-    + 'будет заменено содержимым копии. Оформление и раскладка этого браузера тоже вернутся из копии.')) return;
+  if (!f || !confirm(`Восстановить из «${f.name}»?\n\n` + (footprint?.backup_ui_only
+    ? 'Оформление и раскладка этого браузера вернутся из копии. Копии с системными файлами панели не принимаются.'
+    : 'То, что сейчас стоит на колонке от панели (заставка, звук запуска, будильники), будет заменено содержимым копии. Оформление и раскладка этого браузера тоже вернутся из копии.'))) return;
   toast('Восстанавливаем… это может занять минуту');
-  const r = await act($('#bk-restore'), () => api('/api/backup/restore', f, { raw: true, headers: { 'Content-Type': 'application/gzip' } }));
+  const r = await act($('#bk-restore'), () => api('/api/backup/restore', f, { raw: true, headers: { 'Content-Type': 'application/octet-stream' } }));
   if (!r) return;
   try { for (const [k, v] of Object.entries(r.ui || {})) if (UI_KEYS.test(k)) localStorage.setItem(PanelContext.storageKey(k), v); } catch {}
   applyUI();

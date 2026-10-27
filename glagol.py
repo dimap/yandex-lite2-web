@@ -375,7 +375,7 @@ class YandexMusic:
         return f"https://{uri.replace('%%', f'{size}x{size}')}" if uri else None
 
     def _short(self, t):
-        return {"id": str(t.get("id")), "title": t.get("title") + (f" ({t['version']})" if t.get("version") else ""),
+        return {"id": str(t.get("id")), "title": (t.get("title") or "") + (f" ({t['version']})" if t.get("version") else ""),
                 "artists": ", ".join(a.get("name", "") for a in t.get("artists", [])),
                 "cover": self.cover(t.get("coverUri") or (t.get("albums") or [{}])[0].get("coverUri"), 100),
                 "durationMs": t.get("durationMs"), "available": t.get("available", True)}
