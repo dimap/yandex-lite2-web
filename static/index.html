@@ -3905,13 +3905,13 @@ function plGesture(e) {
   if (!plMobile() || e.pointerType === 'mouse' || e.button || e.target.closest('button, input, textarea, a, [data-pl-sec], .pl-mtabs, .pl-controls, .mu-volrow, .progress'))
     return;
   // вбок — только над перемоткой: обложка с фоном вокруг неё и название; вниз — откуда угодно
-  const allowSide = !!e.target.closest('.pl-cover-box, .pl-title, .pl-artist');
+  const allowSide = !plSwapping && !!e.target.closest('.pl-cover-box, .pl-title, .pl-artist');
   const body = $('#pl-body'), cover = $('#tab-player .pl-cover'), el = e.currentTarget, x0 = e.clientX, y0 = e.clientY;
   let mode = '', dx = 0, dy = 0;
   const move = ev => {
     dx = ev.clientX - x0; dy = ev.clientY - y0;
     if (!mode && Math.hypot(dx, dy) > 10) {
-      mode = allowSide && Math.abs(dx) > Math.abs(dy) ? 'side' : 'down';
+      mode = Math.abs(dx) > Math.abs(dy) ? (allowSide ? 'side' : 'none') : 'down';   // вбок, пока трек меняется, — ничего
       // захватываем касание, только когда это уже свайп: иначе нажатие на название ушло бы не ему, а плееру
       try { el.setPointerCapture(ev.pointerId); } catch {}
     }
@@ -3945,7 +3945,8 @@ async function plSwipeEnd(dx) {
 let plSwapping = false;
 async function plCoverSwap(dir, send) {
   const covers = $$('.mu-cover').filter(e => e.offsetParent), sign = dir === 'next' ? -1 : 1, was = mu.trackId;
-  if (plSwapping || !covers.length) return send();
+  if (plSwapping) return;   // трек уже меняется — второй раз не переключаем, пока новый не встанет на место
+  if (!covers.length) return send();
   plSwapping = true;
   const far = c => c.classList.contains('pl-cover') && plMobile();
   covers.forEach(c => {
@@ -3966,6 +3967,7 @@ async function plCoverSwap(dir, send) {
     c.style.transition = 'transform .35s cubic-bezier(.2, .8, .2, 1), opacity .35s ease';
     c.style.transform = c.style.opacity = '';
   });
+  await new Promise(r => setTimeout(r, 350));   // новая обложка встала — можно переключать дальше
   plSwapping = false;
 }
 $('#pl-body').addEventListener('pointerdown', plGesture);
@@ -4057,7 +4059,10 @@ function musicAction(a, btn, noAnim) {
     muOptimistic(want);
     return muCmd(null, { command: want ? 'play' : 'stop' }).then(r => { if (!r) { muWant = null; loadMusic(); } });
   }
-  if (a === 'prev' || a === 'next') { muPulse(btn); return muCmd(null, { command: a }); }
+  if (a === 'prev' || a === 'next') {
+    if (plSwapping && !noAnim) return;   // идёт смена трека — ждём новый
+    muPulse(btn); return muCmd(null, { command: a });
+  }
   if (a === 'shuffle') return muCmd(btn, { command: 'shuffle', enable: !p?.entityInfo?.shuffled });
   if (a === 'repeat') return muCmd(btn, { command: 'repeat', mode: { None: 'All', All: 'One', One: 'None' }[p?.entityInfo?.repeatMode || 'None'] });
   if (!p?.id) return;
