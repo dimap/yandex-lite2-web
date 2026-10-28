@@ -3694,7 +3694,8 @@ echo @@BLUEZ
         payload = {"command": cmd, **{k: d[k] for k in MUSIC_COMMANDS[cmd] if k in d}}
         res = self.glagol.send(payload)
         if cmd == "play":
-            res = self._play_fallback(res)
+            # проверка «заиграло ли» — в фоне: ответ кнопке нужен сразу, а не через 4 с
+            threading.Thread(target=self._play_fallback, args=(res,), daemon=True).start()
         return res
 
     def _play_fallback(self, res):

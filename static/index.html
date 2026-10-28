@@ -729,6 +729,8 @@
   .cbtn.on { color: var(--accent-ink); background: var(--accent-soft); }
   .cbtn.big { width: 52px; height: 52px; background: var(--accent); color: var(--on-accent); }
   .cbtn.big:hover { filter: brightness(1.08); background: var(--accent); }
+  .cbtn.pulse { animation: cbtn-pulse .35s ease; }
+  @keyframes cbtn-pulse { 0% { transform: scale(1); background: var(--accent-soft); } 40% { transform: scale(.86); background: var(--accent-soft); } 100% { transform: scale(1); } }
   .cbtn { position: relative; }
   .cbtn .one { position: absolute; right: 4px; bottom: 3px; font-size: 10px; font-weight: 800; line-height: 1; }
 
@@ -3518,10 +3520,27 @@ const muHas = () => { const p = muPlayer(); return !!(p && (p.title || p.subtitl
 // на телефоне мини-плеер есть всегда: кнопки «Плеер» в нижней панели нет, в плеер ведёт он
 const minibarOn = () => store.get('ui.minibar') !== '0' || plMobile();
 const coverUrl = (uri, size) => uri ? (uri.includes('://') ? uri : 'https://' + uri.replace('%%', `${size}x${size}`)) : '';
+// Мгновенный отклик кнопок плеера. muWant — что мы попросили; пока колонка не подтвердила (до 5 с), опрос
+// состояния его не перетирает. Позицию трека при этом замораживаем или продолжаем с текущей.
+let muWant = null;
+function muOptimistic(playing) {
+  const g = mu.info?.glagol, s = g?.state;
+  if (!s) return;
+  if (s.playerState) s.playerState.progress = musicPos();
+  g.updated = g.progress_at = Date.now() / 1000;
+  s.playing = playing;
+  muWant = { playing, until: Date.now() + 5000 };
+  renderMusic();
+}
+// «назад»/«вперёд»: короткая вспышка на самой кнопке — видно, что нажатие принято
+function muPulse(btn) {
+  if (!btn) return;
+  btn.classList.remove('pulse'); void btn.offsetWidth; btn.classList.add('pulse');
+}
 const muCmd = (btn, payload, msg) => act(btn, async () => {
   const r = await api('/api/music/cmd', payload);
   if (r.status && r.status !== 'SUCCESS' && r.status !== 'timeout') throw new Error('Колонка ответила: ' + r.status);
-  setTimeout(loadMusic, 300);
+  setTimeout(loadMusic, 200); setTimeout(loadMusic, 700);   // новое состояние колонки — как можно раньше
   return r;
 }, msg);
 
@@ -3545,6 +3564,11 @@ async function loadMusic() {
   if (!online) { voiceInput?.update(false); return; }
   if (document.hidden || !need) return;
   try { mu.info = await api('/api/music'); } catch { voiceInput?.update(false); return; }
+  const s = mu.info?.glagol?.state;
+  if (muWant && s) {   // колонка ещё не подтвердила паузу/игру — показываем то, что попросили
+    if (Date.now() > muWant.until || !!s.playing === muWant.playing) muWant = null;
+    else s.playing = muWant.playing;
+  }
   renderMusic();
 }
 setInterval(loadMusic, 1000);
@@ -4027,11 +4051,13 @@ function musicAction(a, btn, noAnim) {
       && !matchMedia('(prefers-reduced-motion: reduce)').matches)
     return plCoverSwap(a, () => musicAction(a, btn, true));
   if (a === 'play') {
-    if (s?.playing) return muCmd(btn, { command: 'stop' });
-    if (!muHas()) return muCmd(btn, { command: 'sendText', text: 'Включи мою волну' }, 'Включаю «Мою волну»');
-    return muCmd(btn, { command: 'play' });
+    if (!muHas() && !s?.playing) return muCmd(btn, { command: 'sendText', text: 'Включи мою волну' }, 'Включаю «Мою волну»');
+    // пауза и «играть» — на странице сразу, не дожидаясь колонки; не вышло — вернём как есть
+    const want = !s?.playing;
+    muOptimistic(want);
+    return muCmd(null, { command: want ? 'play' : 'stop' }).then(r => { if (!r) { muWant = null; loadMusic(); } });
   }
-  if (a === 'prev' || a === 'next') return muCmd(btn, { command: a });
+  if (a === 'prev' || a === 'next') { muPulse(btn); return muCmd(null, { command: a }); }
   if (a === 'shuffle') return muCmd(btn, { command: 'shuffle', enable: !p?.entityInfo?.shuffled });
   if (a === 'repeat') return muCmd(btn, { command: 'repeat', mode: { None: 'All', All: 'One', One: 'None' }[p?.entityInfo?.repeatMode || 'None'] });
   if (!p?.id) return;
