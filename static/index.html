@@ -774,7 +774,7 @@
   .pl-kicker { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .card .pl-title { margin: 0; font-size: clamp(32px, 4.2vw, 56px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
   /* название — всегда одна строка (плеер не прыгает): не влезает — бегущая строка туда и обратно */
-  .pl-title { white-space: nowrap; overflow: hidden; }
+  .pl-title { white-space: nowrap; overflow: hidden; padding-bottom: .12em; }   /* хвосты g, у, р не срезаются */
   .pl-title .mq { display: inline-block; }
   .pl-title.run { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
                   mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
@@ -866,7 +866,7 @@
     #pl-artist-card .artist-grid .pl-meta { justify-content: center; }
     #tab-player .pl-main { flex: none; gap: 8px !important; align-self: stretch; min-width: 0; }
     #tab-player .pl-kicker, #tab-player .pl-meta { display: none; }
-    #tab-player .card .pl-title { font-size: 44px; letter-spacing: -0.03em; line-height: 1.1; }
+    #tab-player .card .pl-title { font-size: 44px; letter-spacing: -0.03em; line-height: 1.2; cursor: pointer; }
     /* жесты ведёт сам плеер: иначе браузер забирает касание фона себе и обрывает свайп (pointercancel) */
     #tab-player #pl-body { touch-action: none; }
     #tab-player [data-pl-sec], #tab-player #pl-command { touch-action: pan-y; }
@@ -3699,6 +3699,7 @@ function mSheet(nodes, title, label) {
   open.onclick = () => mSheetShow(wrap);
   wrap.querySelector('.msheet-head button').onclick = () => mSheetShow(null);
   mSheets.push(wrap);
+  sheetDrag(wrap, () => wrap.classList.contains('open'), () => mSheetShow(null));
   return { wrap, open, count: text => { open.querySelector('.meta').textContent = text || ''; } };
 }
 function mSheetShow(wrap) {
@@ -3710,6 +3711,37 @@ function mSheetShow(wrap) {
 const mSheetOf = el => el.closest('.msheet');
 $('#msheet-bg').onclick = () => mSheetShow(null);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('msheet-on')) mSheetShow(null); });
+// Лист снизу закрывается свайпом вниз из любого места, если он (и список под пальцем) прокручен до верха —
+// не нужно тянуться к его верхнему краю. Лист едет за пальцем; отпустили ниже ~90 px — закрыт, иначе встаёт назад.
+function sheetDrag(el, isOpen, close) {
+  let y0 = 0, dy = 0, atTop = false, dragging = false;
+  el.addEventListener('touchstart', e => {
+    if (!isOpen() || e.touches.length !== 1) return;
+    y0 = e.touches[0].clientY; dy = 0; dragging = false;
+    // прокручен ли до верха и сам лист, и всё прокручиваемое под пальцем (текст песни, журнал)
+    atTop = true;
+    for (let n = e.target; n && n !== el.parentElement; n = n.parentElement) if (n.scrollTop > 0) { atTop = false; break; }
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (!atTop || !isOpen()) return;
+    dy = e.touches[0].clientY - y0;
+    if (dy <= 0 && !dragging) { atTop = false; return; }   // повели вверх — это прокрутка, не закрытие
+    if (e.target.closest('input[type=range], textarea')) return;
+    e.preventDefault(); dragging = true;
+    el.style.transition = 'none'; el.style.transform = `translateY(${Math.max(0, dy)}px)`;
+  }, { passive: false });
+  el.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false; el.style.transition = '';
+    if (dy > 90) close();
+    el.style.transform = '';
+  });
+}
+sheetDrag($('#nav-sheet'), () => document.body.classList.contains('nav-open'), () => navSheet(false));
+$$('#tab-player [data-pl-sec]').forEach(x => sheetDrag(x, () => x.classList.contains('open'), () => plSheet('')));
+sheetDrag($('#pl-command'), () => $('#tab-player').classList.contains('pl-ask'), () => plSheet(''));
+sheetDrag($('#sc-add-step'), () => $('#sc-board').classList.contains('pal-open'), () => $('#sc-board').classList.remove('pal-open'));
+
 // какие списки уходят в листы
 mSheet([$('#snd-folders'), $('#snd-filter').closest('.search'), $('#sounds')], 'Звуки колонки', 'Все звуки');
 mSheet([$('#pat-kind').closest('.card-head'), $('#patterns')], 'Анимации', 'Анимации кольца и часов');
@@ -3800,7 +3832,10 @@ function plSheet(name) {
 }
 $$('.pl-mtabs [data-pl-open]').forEach(b => b.onclick = () => plSheet(plOpen === b.dataset.plOpen ? '' : b.dataset.plOpen));
 $('#pl-sheet-bg').onclick = () => plSheet('');
-$('#tab-player .pl-artist').addEventListener('click', () => { if (plMobile() && !document.body.classList.contains('mu-bt') && muHas()) plSheet('artist'); });
+// исполнитель — по нажатию и на его имя, и на название трека
+['.pl-artist', '.pl-title'].forEach(sel => $('#tab-player ' + sel).addEventListener('click', () => {
+  if (plMobile() && !document.body.classList.contains('mu-bt') && muHas()) plSheet('artist');
+}));
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && plOpen) plSheet(''); });
 const plBack = () => { location.hash = prevTab && prevTab !== 'player' ? prevTab : 'overview'; };
 // закрыть плеер: уезжает вниз и гаснет (как после смахивания), потом — прошлая вкладка
@@ -3820,11 +3855,14 @@ function plGesture(e) {
   // вбок — только над перемоткой: обложка с фоном вокруг неё и название; вниз — откуда угодно
   const allowSide = !!e.target.closest('.pl-cover-box, .pl-title, .pl-artist');
   const body = $('#pl-body'), cover = $('#tab-player .pl-cover'), el = e.currentTarget, x0 = e.clientX, y0 = e.clientY;
-  try { el.setPointerCapture(e.pointerId); } catch {}
   let mode = '', dx = 0, dy = 0;
   const move = ev => {
     dx = ev.clientX - x0; dy = ev.clientY - y0;
-    if (!mode && Math.hypot(dx, dy) > 10) mode = allowSide && Math.abs(dx) > Math.abs(dy) ? 'side' : 'down';
+    if (!mode && Math.hypot(dx, dy) > 10) {
+      mode = allowSide && Math.abs(dx) > Math.abs(dy) ? 'side' : 'down';
+      // захватываем касание, только когда это уже свайп: иначе нажатие на название ушло бы не ему, а плееру
+      try { el.setPointerCapture(ev.pointerId); } catch {}
+    }
     if (mode === 'down') {
       body.classList.add('dragging');
       body.style.transform = `translateY(${Math.max(0, dy)}px)`; body.style.opacity = String(1 - Math.min(Math.max(0, dy) / 600, .5));
@@ -3927,7 +3965,7 @@ async function loadPlayerExtras() {
     const a = await api('/api/music/artist?id=' + aid);
     if (mu.trackId !== id) return;
     $('#pl-artist').innerHTML = `<div class="artist-grid">
-      ${a.cover ? `<img src="${esc(a.cover)}" alt="">` : '<span></span>'}
+      ${a.cover ? `<img src="${esc(a.cover)}" ${a.cover_big ? `srcset="${esc(a.cover)} 300w, ${esc(a.cover_big)} 1000w" sizes="(max-width: 760px) 100vw, 140px"` : ''} alt="" style="object-fit:cover">` : '<span></span>'}
       <div class="col" style="gap:8px">
         <div style="font-size:22px;font-weight:800">${ymA(`/artist/${a.id}`, a.name)}</div>
         <div class="pl-meta">${(a.genres || []).map(g => `<span class="badge">${esc(g)}</span>`).join('')}

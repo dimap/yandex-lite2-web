@@ -507,6 +507,8 @@ class YandexMusic:
         counts = a.get("counts") or {}
         return {"id": str(a.get("id", aid)), "name": a.get("name"), "genres": a.get("genres", []),
                 "cover": self.cover((a.get("cover") or {}).get("uri"), 300), "likes": a.get("likesCount"),
+                # крупное фото — для телефона, где оно во всю ширину (сервер отдаёт до 1000 точек, в пропорциях оригинала)
+                "cover_big": self.cover((a.get("cover") or {}).get("uri"), 1000),
                 "tracks": counts.get("tracks"), "albums": counts.get("directAlbums"),
                 "popular": [self._short(t) for t in b.get("popularTracks", [])[:10]],
                 "similar": [{"id": str(x.get("id")), "name": x.get("name")} for x in b.get("similarArtists", [])[:12]],
