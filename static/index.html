@@ -3847,9 +3847,18 @@ async function plSwipeEnd(dx) {
   const ok = Math.abs(dx) > 80 && (dir === 'next' ? p?.hasNext : p?.hasPrev);
   cover.style.transition = 'transform .25s ease, opacity .25s ease';
   if (!ok) { cover.style.transform = cover.style.opacity = ''; return; }
-  const sign = dx < 0 ? -1 : 1, was = mu.trackId;
+  plCoverSwap(dir, () => musicAction(dir, null, true));
+}
+// Смена трека с анимацией обложки — и после свайпа, и по кнопкам «назад»/«вперёд»: старая уезжает
+// (вперёд — влево, назад — вправо), новая выезжает с другой стороны, когда колонка переключит трек
+let plSwapping = false;
+async function plCoverSwap(dir, send) {
+  const cover = $('#tab-player .pl-cover'), sign = dir === 'next' ? -1 : 1, was = mu.trackId;
+  if (plSwapping) return send();
+  plSwapping = true;
+  cover.style.transition = 'transform .25s ease, opacity .25s ease';
   cover.style.transform = `translateX(${sign * 120}%) rotate(${sign * 8}deg)`; cover.style.opacity = '0';
-  musicAction(dir, null);
+  send();
   // ждём новый трек (не дольше 3 с), потом новая обложка выезжает с другой стороны
   for (let i = 0; i < 30 && mu.trackId === was; i++) await new Promise(r => setTimeout(r, 100));
   await new Promise(r => setTimeout(r, 150));   // дать обложке смениться
@@ -3858,6 +3867,7 @@ async function plSwipeEnd(dx) {
   void cover.offsetWidth;
   cover.style.transition = 'transform .35s cubic-bezier(.2, .8, .2, 1), opacity .35s ease';
   cover.style.transform = cover.style.opacity = '';
+  plSwapping = false;
 }
 $('#pl-body').addEventListener('pointerdown', plGesture);
 // на телефоне подсказка короче: «Попросить Алису» и так написано на кнопке, а длинная не влезает
@@ -3932,8 +3942,12 @@ async function loadPlayerExtras() {
 }
 
 // ----- управление (общие обработчики) -----
-function musicAction(a, btn) {
+function musicAction(a, btn, noAnim) {
   const s = muState(), p = muPlayer();
+  // в плеере на телефоне «назад»/«вперёд» — с той же анимацией обложки, что и свайп
+  if ((a === 'prev' || a === 'next') && !noAnim && btn?.closest('#tab-player') && plMobile() && !$('#tab-player').hidden
+      && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    return plCoverSwap(a, () => musicAction(a, btn, true));
   if (a === 'play') {
     if (s?.playing) return muCmd(btn, { command: 'stop' });
     if (!muHas()) return muCmd(btn, { command: 'sendText', text: 'Включи мою волну' }, 'Включаю «Мою волну»');
