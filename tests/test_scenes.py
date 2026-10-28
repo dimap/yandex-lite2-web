@@ -37,6 +37,10 @@ class ScenesSave(unittest.TestCase):
                                  "N|ab1|3|if|time|22:00-07:00|4||0|0", "N|ab1|4|ring|6c47ff|600|||0|0",
                                  "N|ab1|5|note|заметка||||0|0"])
 
+    def test_field_is_endless_both_ways(self):
+        p = self.save([{"id": "1", "kind": "vol", "level": 2, "x": -340, "y": -99999}])
+        self.assertEqual(p.written[1][1], "N|ab1|1|vol|2|0|||-340|-20000")
+
     def test_anim_and_repeat_cap(self):
         p = panel()
         p.patterns = lambda: {"ring": ["timer.led"], "clock": ["blink.binscled.zst"]}

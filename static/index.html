@@ -416,11 +416,12 @@
   @media (max-width: 560px) { .al-row { flex-wrap: wrap; gap: 8px 14px; } .al-time { font-size: 28px; min-width: 0; } .al-row .actions { width: 100%; } }
   .sc-field { position: relative; height: 560px; resize: vertical; overflow: auto; border-radius: 14px; border: 1px solid var(--line);
     background: var(--field) radial-gradient(circle, var(--line) 1px, transparent 1.2px) 0 0 / 22px 22px; }
-  /* пальцем поле прокручивается, а ноды тянутся за заголовок и связи — от кружков */
-  .sc-field .sc-node header, .sc-field .port { touch-action: none; }
+  /* поле бесконечное: без прокрутки, холст сдвигается целиком — фон тянут мышью или пальцем */
+  .sc-field { overflow: hidden; touch-action: none; }
   @media (pointer: coarse) { .sc-node .port::after { content: ""; position: absolute; inset: -12px; border-radius: 50%; } }
   .sc-field[hidden] { display: none; }
-  .sc-canvas { position: relative; min-width: 100%; min-height: 100%; }
+  .sc-canvas { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }
+  .sc-canvas.glide { transition: transform .3s ease; }
   .sc-wires { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
   .sc-wires path { fill: none; stroke: var(--accent); stroke-width: 2.5; opacity: .75; }
   .sc-wires path.tmp { stroke-dasharray: 6 5; opacity: .9; }
@@ -463,7 +464,7 @@
   .sc-board.full-open .sc-palette .grp { flex-direction: column; align-items: stretch; gap: 6px; }
   .sc-board.full-open .sc-palette .grp .btn { justify-content: flex-start; }
   .sc-field.panning { cursor: grabbing; }
-  .sc-field .sc-canvas { cursor: grab; }
+  .sc-field { cursor: grab; }
   .sc-field .sc-node { cursor: default; }
   body.sc-full { overflow: hidden; }
   @media (max-width: 760px) {
@@ -1489,7 +1490,7 @@
           </div>
           <div class="row sc-arrange-row" style="justify-content:flex-end;margin-top:6px"><button type="button" class="btn sm" id="sc-arrange" hidden>Разложить по порядку</button>
             <button type="button" class="btn sm icon" data-sc-center aria-label="К нодам" title="К нодам — если поле уехало"><svg width="16" height="16" aria-hidden="true"><use href="#i-target"/></svg></button></div>
-          <p class="hint" id="sc-field-hint" hidden>Тяните за заголовок, чтобы переставить ноду. Связь — от кружка справа к другой ноде; отпустить
+          <p class="hint" id="sc-field-hint" hidden>Поле бесконечное: тяните за фон, чтобы его сдвинуть, «К нодам» вернёт обратно. Тяните за заголовок, чтобы переставить ноду. Связь — от кружка справа к другой ноде; отпустить
             на пустом месте — убрать связь. У условия и повтора два выхода. Новая нода сама цепляется к выбранной.</p>
           <div class="sc-palette" id="sc-add-step"></div>
         </div>
@@ -5455,6 +5456,7 @@ function renderScField() {
         ${def.noPorts ? '' : '<span class="port in"></span>' + (def.outs ? port('next', def.outs[0]) + port('else', def.outs[1]) : port('next'))}</div>`;
     }).join('') + '</div>';
   scSoundValues(f);
+  scApplyPan();
   scWires();
 }
 const scFieldStart = () => { const t = $('#sc-start-text'); if (t) t.textContent = scTrigText(); };
@@ -5466,10 +5468,6 @@ const scCurve = (a, b) => { const dx = Math.max(40, Math.abs(b.x - a.x) / 2); re
 function scWires(tmp) {
   const c = $('#sc-field .sc-canvas'); if (!c) return;
   const nodes = [...c.querySelectorAll('.sc-node')];
-  // запас на экран вправо и вниз: поле можно отвести фоном, а «К нодам» вернёт обратно
-  const f = c.parentElement;
-  c.style.width = Math.max(...nodes.map(n => n.offsetLeft + n.offsetWidth)) + Math.max(60, f.clientWidth * .75) + 'px';
-  c.style.height = Math.max(...nodes.map(n => n.offsetTop + n.offsetHeight)) + Math.max(60, f.clientHeight * .75) + 'px';
   const inOf = id => c.querySelector(`.sc-node[data-n="${CSS.escape(id)}"] .port.in`);
   const link = (from, port, to) => { const a = c.querySelector(`.sc-node[data-n="${CSS.escape(from)}"] [data-port="${port}"]`), b = to && inOf(to); return a && b ? `<path class="w-${port}" d="${scCurve(scPortXY(a), scPortXY(b))}"/>` : ''; };
   let d = link('start', 'start', scEdit.start);
@@ -5483,7 +5481,7 @@ function scSetLink(from, port, to) {
 }
 $('#sc-field').addEventListener('pointerdown', e => {
   const c = $('#sc-field .sc-canvas'), nodeEl = e.target.closest('.sc-node');
-  if (!nodeEl && !e.button && e.pointerType !== 'touch') return scPan(e);   // пальцем поле и так прокручивается
+  if (!nodeEl && !e.button) return scPan(e);
   if (!nodeEl || e.button) return;
   const id = nodeEl.dataset.n, cr = () => c.getBoundingClientRect();
   const portEl = e.target.closest('.port.out');
@@ -5515,7 +5513,7 @@ $('#sc-field').addEventListener('pointerdown', e => {
   const p = id === 'start' ? scStartPos() : scNode(scEdit, id), sx = e.clientX - p.x, sy = e.clientY - p.y;
   try { head.setPointerCapture(e.pointerId); } catch {}
   const move = ev => {
-    p.x = Math.max(0, Math.round(ev.clientX - sx)); p.y = Math.max(0, Math.round(ev.clientY - sy));
+    p.x = Math.round(ev.clientX - sx); p.y = Math.round(ev.clientY - sy);
     nodeEl.style.left = p.x + 'px'; nodeEl.style.top = p.y + 'px';
     scWires();
   };
@@ -5525,21 +5523,37 @@ $('#sc-field').addEventListener('pointerdown', e => {
   };
   head.addEventListener('pointermove', move); head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
 });
-// Тянем фон — двигаем поле (прокрутку), а не выделяем текст
+// Поле бесконечное: сдвиг холста хранится в редактируемом сценарии (на время правки), фон-сетка едет вместе с ним
+const scPanXY = () => scEdit._pan || (scEdit._pan = { x: 0, y: 0 });
+function scApplyPan(glide) {
+  const c = $('#sc-field .sc-canvas'), p = scPanXY();
+  if (!c) return;
+  c.classList.toggle('glide', !!glide);
+  c.style.transform = `translate(${p.x}px, ${p.y}px)`;
+  $('#sc-field').style.backgroundPosition = `${p.x}px ${p.y}px`;
+  if (glide) setTimeout(() => c.classList.remove('glide'), 320);
+}
+// Тянем фон — двигаем поле (мышью и пальцем), а не выделяем текст
 function scPan(e) {
-  const f = $('#sc-field');
-  if (e.offsetX > f.clientWidth || e.offsetY > f.clientHeight) return;   // это полоса прокрутки
+  const f = $('#sc-field'), p = scPanXY(), sx = e.clientX - p.x, sy = e.clientY - p.y;
   e.preventDefault();
-  const sx = e.clientX + f.scrollLeft, sy = e.clientY + f.scrollTop;
   try { f.setPointerCapture(e.pointerId); } catch {}
   f.classList.add('panning');
-  const move = ev => { f.scrollLeft = sx - ev.clientX; f.scrollTop = sy - ev.clientY; };
+  const move = ev => { p.x = Math.round(ev.clientX - sx); p.y = Math.round(ev.clientY - sy); scApplyPan(); };
   const up = () => {
     f.classList.remove('panning');
     f.removeEventListener('pointermove', move); f.removeEventListener('pointerup', up); f.removeEventListener('pointercancel', up);
   };
   f.addEventListener('pointermove', move); f.addEventListener('pointerup', up); f.addEventListener('pointercancel', up);
 }
+// На весь экран колесо и тачпад двигают поле; в обычном виде колесо прокручивает страницу
+$('#sc-field').addEventListener('wheel', e => {
+  if (!document.body.classList.contains('sc-full')) return;
+  e.preventDefault();
+  const p = scPanXY();
+  p.x -= e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX; p.y -= e.shiftKey && !e.deltaX ? 0 : e.deltaY;
+  scApplyPan();
+}, { passive: false });
 $('#sc-field').oninput = scInput;
 $('#sc-field').addEventListener('click', e => {
   const b = e.target.closest('[data-m="del"]'); if (!b) return;
@@ -5572,8 +5586,8 @@ $('#sc-add-step').onclick = e => {
     // поле: рядом с выбранной нодой и сразу с ней связанная, если у неё свободный выход
     const from = scSel && scNode(scEdit, scSel) || null, f = $('#sc-field');
     const base = (scXY(from) ? from : null) || (scEdit.nodes.length ? null : scStartPos());
-    n.x = base ? base.x + (base === scStartPos() ? 230 : SC_W + 40) : f.scrollLeft + 40;
-    n.y = base ? base.y : f.scrollTop + 60 + (scEdit.nodes.length % 4) * 40;
+    n.x = base ? base.x + (base === scStartPos() ? 230 : SC_W + 40) : 40 - scPanXY().x;
+    n.y = base ? base.y : 60 - scPanXY().y + (scEdit.nodes.length % 4) * 40;
     scEdit.nodes.push(n);
     if (n.kind !== 'note') {
       if (from && from.kind !== 'note' && !from.next) from.next = n.id;
@@ -5614,14 +5628,15 @@ function scFull(open) {
   if (scEdit && (open || $('#sc-field').offsetParent)) renderScField();   // размеры поля изменились — связи пересчитать
 }
 $('#sc-open-field').onclick = $('#sc-expand').onclick = () => scFull(true);
-// «К нодам»: поле прокручивается к нодам — по центру, а если они не влезают — к левому верхнему краю
+// «К нодам»: ноды — по центру поля, а если не влезают — от левого верхнего края
 function scCenter() {
   const f = $('#sc-field'), nodes = [...f.querySelectorAll('.sc-node')];
   if (!nodes.length) return;
   const x0 = Math.min(...nodes.map(n => n.offsetLeft)), y0 = Math.min(...nodes.map(n => n.offsetTop));
   const x1 = Math.max(...nodes.map(n => n.offsetLeft + n.offsetWidth)), y1 = Math.max(...nodes.map(n => n.offsetTop + n.offsetHeight));
-  const at = (a, b, size) => Math.max(0, b - a + 40 > size ? a - 20 : (a + b - size) / 2);
-  f.scrollTo({ left: at(x0, x1, f.clientWidth), top: at(y0, y1, f.clientHeight), behavior: 'smooth' });
+  const at = (a, b, size) => Math.round(b - a + 40 > size ? 20 - a : (size - a - b) / 2);
+  Object.assign(scPanXY(), { x: at(x0, x1, f.clientWidth), y: at(y0, y1, f.clientHeight) });
+  scApplyPan(true);
 }
 $$('[data-sc-center]').forEach(b => b.onclick = scCenter);
 $('#sc-full-close').onclick = () => scFull(false);

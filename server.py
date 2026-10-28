@@ -2943,7 +2943,7 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
                     a = num(n.get("count"), 1, 20)
                 two = kind in ("if", "repeat")
                 lines.append("|".join(["N", sid, nid, kind, str(a), str(b), "" if kind == "note" else link(n.get("next")),
-                                       link(n.get("else")) if two else "", str(num(n.get("x"), 0, 20000)), str(num(n.get("y"), 0, 20000))]))
+                                       link(n.get("else")) if two else "", str(num(n.get("x"), -20000, 20000)), str(num(n.get("y"), -20000, 20000))]))
         self._alarm_sounds_ready(sys_needed)
         # анимацию часов колонка сама не разберёт (zstd, свой формат кадров) — кладём готовый скрипт, как для «На колонке»
         if clock_anims:
