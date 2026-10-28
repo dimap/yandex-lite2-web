@@ -3454,9 +3454,11 @@ function showTab() {
   const from = document.body.dataset.tab;
   // другая вкладка — начинаем её сверху (например, переход в «Плеер» из нижнего плеера); но из плеера на
   // телефоне возвращаемся туда же, где были: плеер лишь «накрывал» вкладку
+  let scrollTo = null;
   if (online && shownTab && tab !== shownTab) {
     if (tab === 'player') plReturn = { tab: from, y: scrollY };
-    window.scrollTo({ top: from === 'player' && plReturn?.tab === tab ? plReturn.y : 0 });
+    scrollTo = from === 'player' && plReturn?.tab === tab ? plReturn.y : 0;
+    window.scrollTo({ top: 0 });
   }
   if (online) shownTab = tab;
   if (from && from !== tab) prevTab = from;
@@ -3468,6 +3470,8 @@ function showTab() {
   navSheet(false);
   $('#conn-screen').hidden = online;
   $$('main[data-page]').forEach(m => m.hidden = !online || m.id !== 'tab-' + tab);
+  // прокрутку возвращаем, когда вкладка уже показана: пока открыт плеер, страница закреплена и прокручивать некуда
+  if (scrollTo) window.scrollTo({ top: scrollTo });
   if (!online) return;
   // телефон: плеер выезжает снизу, а после него вкладка, панель и мини-плеер плавно проявляются
   if (plMobile() && from && from !== tab && (tab === 'player' || from === 'player')) {
@@ -3985,7 +3989,10 @@ async function loadPlayerExtras() {
     $('#pl-q-count').textContent = q.value.tracks.length > 3 ? `${q.value.tracks.length} треков` : '';
     const cur = q.value.current, tagOf = k => cur == null ? '' : k === cur ? 'сейчас' : k === cur + 1 ? 'далее' : k === cur - 1 ? 'было' : '';
     $('#pl-queue').innerHTML = q.value.tracks.map((t, k) => trackRow(t, k === cur, tagOf(k))).join('') || '<div class="empty">Пусто</div>';
-    $('#pl-queue .trow.cur')?.scrollIntoView({ block: 'nearest' });
+    // только сам список: scrollIntoView прокрутил бы и родителей — на телефоне закреплённую страницу плеера,
+    // и он при открытии улетал вверх и тут же возвращался
+    const row = $('#pl-queue .trow.cur'), list = $('#pl-queue');
+    if (row) list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - row.offsetHeight) / 2;
   } else $('#pl-queue').innerHTML = `<div class="empty">${esc(q.reason?.message || 'Не удалось')}</div>`;
   $('#pl-similar').innerHTML = sim.status === 'fulfilled' && sim.value.length ? sim.value.map(t => trackRow(t)).join('') : '<div class="empty">Нет</div>';
   if (isBt) return;
@@ -4436,7 +4443,7 @@ function renderYam() {
     if (a === 'run' && (inst[id]?.manifest.launch?.mode || 'oneshot') === 'oneshot') {
       await new Promise(r => setTimeout(r, 1500));
       await showLog(null, id);
-      $('#yam-log').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (!plMobile()) $('#yam-log').scrollIntoView({ behavior: 'smooth', block: 'nearest' });   // на телефоне лог — в листе
     }
   });
 
