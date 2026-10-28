@@ -343,6 +343,44 @@ class AdbError(Exception):
     pass
 
 
+# Состояние Bluetooth спрашиваем у bluetoothd по D-Bus одним запросом: каждый запуск bluetoothctl оставляет в
+# bluetoothd прошивки ~4 КБ навсегда (он запущен с -d), и частый опрос раздувал его на десятки мегабайт.
+BLUEZ_DUMP = "dbus-send --system --print-reply --dest=org.bluez / org.freedesktop.DBus.ObjectManager.GetManagedObjects 2>/dev/null"
+
+
+def parse_bluez(text):
+    """Вывод dbus-send GetManagedObjects → {путь объекта: {интерфейс: {свойство: значение}}} (только простые значения)."""
+    objs, path, iface, prop = {}, None, None, None
+    lines = [l.strip() for l in text.splitlines()]
+    for i, line in enumerate(lines):
+        m = re.match(r'object path "([^"]*)"$', line)
+        if m and (i + 1 < len(lines) and lines[i + 1] == "array ["):
+            path, iface = m.group(1), None
+            objs.setdefault(path, {})
+            continue
+        m = re.match(r'string "(.*)"$', line)
+        nxt = lines[i + 1] if i + 1 < len(lines) else ""
+        if m and path is not None:
+            if nxt == "array [" and m.group(1).startswith("org."):
+                iface = m.group(1)
+                objs[path].setdefault(iface, {})
+            elif nxt.startswith("variant") and iface:
+                prop = m.group(1)
+                v = re.match(r'variant\s+(string|object path|boolean|byte|u?int\d+|double)\s+(.*)$', nxt)
+                if v:
+                    kind, val = v.groups()
+                    if kind in ("string", "object path"):
+                        val = val[1:-1] if val.startswith('"') and val.endswith('"') else val
+                    elif kind == "boolean":
+                        val = val == "true"
+                    elif kind == "double":
+                        val = float(val)
+                    else:
+                        val = int(val)
+                    objs[path][iface][prop] = val
+    return objs
+
+
 def write_unix(path, text):
     r"""Файл для колонки: всегда UTF-8 и \n. write_text на Windows пишет \r\n, и sh на колонке такие скрипты не выполняет."""
     Path(path).write_bytes(text.encode("utf-8"))
@@ -1199,12 +1237,21 @@ echo "vol_master=$(amixer cget name='Master Playback Volume' | awk -F'[=,]' '/: 
 echo "vol_bt=$(amixer cget name='Bluetooth Master Playback Volume' | awk -F'[=,]' '/: values/{print $2}')"
 pidof quasar_launcher2 >/dev/null && echo quasar=running || echo quasar=stopped
 pidof aplay >/dev/null && echo playing=1 || echo playing=0
-bluetoothctl show 2>/dev/null | awk -F': ' '/Powered|Discoverable:|Pairable/{gsub(/\t/,"");print tolower($1)"="$2}'
-bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
-"""
+echo @@BLUEZ
+""" + BLUEZ_DUMP + "\n"
         out, _, _ = self.adb.shell(script)
+        out, _, bluez = strip_ansi(out).partition("@@BLUEZ")
         st = {"bt_connected": []}
-        for line in strip_ansi(out).splitlines():
+        for path, ifaces in parse_bluez(bluez).items():
+            if "org.bluez.Adapter1" in ifaces:
+                a = ifaces["org.bluez.Adapter1"]
+                for k in ("Powered", "Discoverable", "Pairable"):
+                    if k in a:
+                        st[k.lower()] = "yes" if a[k] else "no"
+            dev = ifaces.get("org.bluez.Device1")
+            if dev and dev.get("Connected"):
+                st["bt_connected"].append(f"{dev.get('Address', '')} {dev.get('Alias') or dev.get('Name') or ''}".strip())
+        for line in out.splitlines():
             if "=" not in line:
                 continue
             k, v = line.split("=", 1)
@@ -3629,9 +3676,10 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         c, now = self._bt_pos, time.time()
         if c and now - c[1] < 3 and c[2] == title:
             return c
-        out, _, _ = self.adb.shell("bluetoothctl player.show 2>/dev/null | grep -E 'Position:'; true", check=False, timeout=8)
-        m = re.search(r"Position:.*\((\d+)\)", strip_ansi(out))
-        self._bt_pos = (int(m.group(1)) / 1000, now, title) if m else None
+        out, _, _ = self.adb.shell(BLUEZ_DUMP + "; true", check=False, timeout=8)
+        pos = next((i["org.bluez.MediaPlayer1"]["Position"] for i in parse_bluez(strip_ansi(out)).values()
+                    if isinstance(i.get("org.bluez.MediaPlayer1", {}).get("Position"), int)), None)
+        self._bt_pos = (pos / 1000, now, title) if pos is not None else None
         return self._bt_pos
 
     def music_cmd(self, d):
@@ -3731,45 +3779,24 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
     BT_PAIR_FLAG = "/tmp/webpanel_bt_pair"
 
     def bt_state(self):
-        script = (
-            "bluetoothctl show; echo '@@DEVICES'; "
-            "for m in $(bluetoothctl devices | cut -d' ' -f2); do echo \"@@DEV $m\"; bluetoothctl info $m; done; "
-            f"echo '@@PAIR'; cat {self.BT_PAIR_FLAG} 2>/dev/null; true")
-        out = strip_ansi(self.adb.shell(script, check=False, timeout=20)[0])
-        sec, cur = "show", None
-        adapter, devices, pair_until = {}, [], None
-        for raw in out.splitlines():
-            line = raw.rstrip()
-            if line == "@@DEVICES":
-                sec = "dev"; continue
-            if line == "@@PAIR":
-                sec = "pair"; continue
-            if line.startswith("@@DEV "):
-                cur = {"mac": line[6:].strip(), "name": "", "icon": "", "paired": False, "trusted": False,
-                       "connected": False, "battery": None}
-                devices.append(cur); continue
-            k, _, v = line.strip().partition(": ")
-            if sec == "show" and v:
-                adapter.setdefault(k.lower(), v)
-            elif sec == "dev" and cur is not None and v:
-                k = k.lower()
-                if k == "alias":            # своё имя, если его переименовали, иначе совпадает с Name
-                    cur["name"] = v
-                elif k == "name":
-                    cur["name"] = cur["name"] or v
-                elif k == "icon":
-                    cur["icon"] = v
-                elif k in ("paired", "trusted", "connected"):
-                    cur[k] = v == "yes"
-                elif k.startswith("battery percentage"):
-                    m = re.search(r"\((\d+)\)", v) or re.search(r"(\d+)", v)
-                    cur["battery"] = int(m.group(1)) if m else None
-            elif sec == "pair" and line.strip().isdigit():
-                pair_until = int(line.strip())
+        out = strip_ansi(self.adb.shell(f"{BLUEZ_DUMP}; echo @@PAIR; cat {self.BT_PAIR_FLAG} 2>/dev/null; true",
+                                        check=False, timeout=20)[0])
+        bluez, _, pair = out.partition("@@PAIR")
+        adapter, devices = {}, []
+        for path, ifaces in parse_bluez(bluez).items():
+            if "org.bluez.Adapter1" in ifaces:
+                adapter = ifaces["org.bluez.Adapter1"]
+            d = ifaces.get("org.bluez.Device1")
+            if d and d.get("Address"):
+                battery = ifaces.get("org.bluez.Battery1", {}).get("Percentage")
+                devices.append({"mac": d["Address"], "name": d.get("Alias") or d.get("Name") or "", "icon": d.get("Icon", ""),
+                                "paired": bool(d.get("Paired")), "trusted": bool(d.get("Trusted")),
+                                "connected": bool(d.get("Connected")), "battery": battery})
+        pair_until = next((int(l) for l in pair.split() if l.isdigit()), None)
         devices.sort(key=lambda d: (not d["connected"], not d["paired"], d["name"].lower()))
         return {
-            "powered": adapter.get("powered") == "yes", "discoverable": adapter.get("discoverable") == "yes",
-            "pairable": adapter.get("pairable") == "yes", "alias": adapter.get("alias") or adapter.get("name"),
+            "powered": bool(adapter.get("Powered")), "discoverable": bool(adapter.get("Discoverable")),
+            "pairable": bool(adapter.get("Pairable")), "alias": adapter.get("Alias") or adapter.get("Name"),
             "pair_until": pair_until if pair_until and pair_until > time.time() else None,
             "devices": devices,
         }

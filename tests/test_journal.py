@@ -113,3 +113,87 @@ class SayOnSpeaker(unittest.TestCase):
         for bad in ("", "   ", "x" * 301):
             with self.assertRaises(server.AdbError):
                 p.say(bad)
+
+
+class Bluez(unittest.TestCase):
+    """Bluetooth — одним запросом по D-Bus: bluetoothctl на каждый опрос раздувал bluetoothd прошивки."""
+
+    SAMPLE = '''method return time=1 sender=:1.1 -> destination=:1.2 serial=3 reply_serial=2
+   array [
+      dict entry(
+         object path "/org/bluez/hci0"
+         array [
+            dict entry(
+               string "org.bluez.Adapter1"
+               array [
+                  dict entry(
+                     string "Alias"
+                     variant                         string "Колонка"
+                  )
+                  dict entry(
+                     string "Powered"
+                     variant                         boolean true
+                  )
+                  dict entry(
+                     string "Discoverable"
+                     variant                         boolean false
+                  )
+               ]
+            )
+         ]
+      )
+      dict entry(
+         object path "/org/bluez/hci0/dev_00_11_22_33_44_55"
+         array [
+            dict entry(
+               string "org.bluez.Device1"
+               array [
+                  dict entry(
+                     string "Address"
+                     variant                         string "00:11:22:33:44:55"
+                  )
+                  dict entry(
+                     string "Alias"
+                     variant                         string "Телефон "в кармане""
+                  )
+                  dict entry(
+                     string "Connected"
+                     variant                         boolean true
+                  )
+               ]
+            )
+            dict entry(
+               string "org.bluez.Battery1"
+               array [
+                  dict entry(
+                     string "Percentage"
+                     variant                         byte 87
+                  )
+               ]
+            )
+         ]
+      )
+   ]
+'''
+
+    def test_parse(self):
+        o = server.parse_bluez(self.SAMPLE)
+        self.assertEqual(o["/org/bluez/hci0"]["org.bluez.Adapter1"], {"Alias": "Колонка", "Powered": True, "Discoverable": False})
+        dev = o["/org/bluez/hci0/dev_00_11_22_33_44_55"]
+        self.assertEqual(dev["org.bluez.Device1"]["Alias"], 'Телефон "в кармане"')
+        self.assertTrue(dev["org.bluez.Device1"]["Connected"])
+        self.assertEqual(dev["org.bluez.Battery1"]["Percentage"], 87)
+
+    def test_status_and_widget_do_not_run_bluetoothctl(self):
+        p = server.Panel(Mock())
+        calls = []
+        p.adb.shell = lambda cmd, *a, **k: (calls.append(cmd), (self.SAMPLE + "\n@@PAIR\n", "", 0))[1]
+        st = p.bt_state()
+        self.assertEqual(st["devices"][0]["battery"], 87)
+        self.assertTrue(st["devices"][0]["connected"] and st["powered"])
+        p.version = lambda: {}
+        p.adb.shell = lambda cmd, *a, **k: (calls.append(cmd), ("hostname=x\n@@BLUEZ\n" + self.SAMPLE, "", 0))[1]
+        s = p.status()
+        self.assertEqual((s["powered"], s["discoverable"]), ("yes", "no"))
+        self.assertEqual(s["bt_connected"], ['00:11:22:33:44:55 Телефон "в кармане"'])
+        self.assertFalse(any("bluetoothctl" in c for c in calls))
