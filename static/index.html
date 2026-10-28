@@ -779,6 +779,8 @@
   .pl-kicker { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .card .pl-title { margin: 0; font-size: clamp(32px, 4.2vw, 56px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
   /* название — всегда одна строка (плеер не прыгает): не влезает — бегущая строка туда и обратно */
+  .mu-title, .mu-artist { transition: opacity .18s ease, transform .18s ease; }
+  .mu-title.tx-out, .mu-artist.tx-out { opacity: 0; transform: translateY(-5px); }
   .mq-line { white-space: nowrap; overflow: hidden; padding-bottom: .12em; }   /* хвосты g, у, р не срезаются */
   .mq-line .mq { display: inline-block; }
   .mq-line.run { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
@@ -788,7 +790,11 @@
   @media (prefers-reduced-motion: reduce) { .mq-line.run .mq { animation: none; } }
   .pl-artist { font-size: 20px; color: var(--text-2); font-weight: 600; }
   .pl-meta { display: flex; flex-wrap: wrap; gap: 6px; }
-  #pl-meta { min-height: 26px; }   /* пока не пришли подробности нового трека, строка пуста — место держим, плеер не прыгает */
+  /* теги альбома — одной строкой (не переносятся и не двигают плеер), лишнее гаснет справа; пока не пришли
+     подробности нового трека, строка пуста — место держим */
+  #pl-meta { min-height: 26px; flex-wrap: nowrap; overflow: hidden;
+             -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
+  #pl-meta > * { flex: none; white-space: nowrap; }
   .pl-controls { justify-content: flex-start; gap: 6px; margin-left: -6px; }
   .pl-controls .cbtn { width: 48px; height: 48px; }
   .pl-controls .cbtn.big { width: 64px; height: 64px; }
@@ -3560,6 +3566,18 @@ function ymSourcePath(p) {
   if (p.playlistType === 'Playlist') { const [owner, kind] = id.includes(':') ? id.split(':') : [p.playlistPuid, id]; return owner && kind ? `/users/${owner}/playlists/${kind}` : null; }
   return null;
 }
+// Название и исполнитель сменились — старый текст гаснет и уходит вверх, новый проявляется (во всех плеерах).
+// Та же надпись, только ставшая ссылкой (пришли подробности трека), — сразу, без мигания.
+function swapText(e, html, text, after) {
+  if (e._html === html) return;
+  if (e._next != null) { e._next = html; e._txt = text; return; }   // идёт смена — покажем уже последнее
+  if (e._txt === undefined || e._txt === text || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    e._txt = text; setHtml(e, html); after?.(); return;
+  }
+  e._txt = text; e._next = html;
+  e.classList.add('tx-out');
+  setTimeout(() => { setHtml(e, e._next); e._next = null; after?.(); e.classList.remove('tx-out'); }, 180);
+}
 // Ставим разметку, только если она поменялась: иначе renderMusic (4 раза в секунду) пересоздаёт ссылку под курсором и клик теряется.
 const setHtml = (e, html) => { if (e._html !== html) { e._html = html; e.innerHTML = html; } };
 
@@ -3595,12 +3613,13 @@ function renderMusic() {
   const links = !plMobile();   // на телефоне ссылок наружу нет: исполнитель открывает «Об исполнителе»
   $$('.mu-title').forEach(e => {
     const html = t && links && e.closest('#music-card, #tab-player') ? ymA(ymTrackPath(t), title) : esc(title);
-    if (e.classList.contains('mq-line')) { if (e._html !== `<span class="mq">${html}</span>`) { setHtml(e, `<span class="mq">${html}</span>`); mqFit(e); } }
-    else setHtml(e, html);
+    if (e.classList.contains('mq-line')) swapText(e, `<span class="mq">${html}</span>`, title, () => mqFit(e));
+    else swapText(e, html, title);
   });
+  const artists = t?.artistList?.length ? t.artistList.map(a => a.name).join(', ') : artist;
   $$('.mu-artist').forEach(e => {
-    if (t?.artistList?.length && links && e.closest('#music-card, #tab-player')) setHtml(e, t.artistList.map(a => ymA(`/artist/${a.id}`, a.name)).join(', '));
-    else setHtml(e, esc(t?.artistList?.length ? t.artistList.map(a => a.name).join(', ') : artist));
+    if (t?.artistList?.length && links && e.closest('#music-card, #tab-player')) swapText(e, t.artistList.map(a => ymA(`/artist/${a.id}`, a.name)).join(', '), artists);
+    else swapText(e, esc(artists), artists);
   });
   const cover = has && !isBt ? coverUrl(p.extra?.coverURI, 400) : '';
   $$('.mu-cover').forEach(e => {
@@ -3894,7 +3913,7 @@ async function plSwipeEnd(dx) {
 }
 // Смена трека с анимацией обложки — после свайпа и по кнопкам «назад»/«вперёд», на телефоне и на компьютере:
 // все видимые обложки (плеер, виджет, мини-плеер) уезжают (вперёд — влево, назад — вправо), а когда колонка
-// переключит трек, новые выезжают с другой стороны. В плеере на телефоне — далеко, за край; в остальных — коротко.
+// переключит трек, новые выезжают с другой стороны. В плеере на телефоне — далеко, за край; в остальных — коротко, не выходя за карточку.
 let plSwapping = false;
 async function plCoverSwap(dir, send) {
   const covers = $$('.mu-cover').filter(e => e.offsetParent), sign = dir === 'next' ? -1 : 1, was = mu.trackId;
@@ -3903,7 +3922,7 @@ async function plCoverSwap(dir, send) {
   const far = c => c.classList.contains('pl-cover') && plMobile();
   covers.forEach(c => {
     c.style.transition = 'transform .25s ease, opacity .25s ease';
-    c.style.transform = far(c) ? `translateX(${sign * 120}%) rotate(${sign * 8}deg)` : `translateX(${sign * 35}%) rotate(${sign * 6}deg) scale(.92)`;
+    c.style.transform = far(c) ? `translateX(${sign * 120}%) rotate(${sign * 8}deg)` : `translateX(${sign * 18}px) rotate(${sign * 6}deg) scale(.86)`;
     c.style.opacity = '0';
   });
   send();
@@ -3912,7 +3931,7 @@ async function plCoverSwap(dir, send) {
   await new Promise(r => setTimeout(r, 150));   // дать обложке смениться
   covers.forEach(c => {
     c.style.transition = 'none';
-    c.style.transform = far(c) ? `translateX(${-sign * 60}%)` : `translateX(${-sign * 30}%) rotate(${-sign * 5}deg) scale(.92)`;
+    c.style.transform = far(c) ? `translateX(${-sign * 60}%)` : `translateX(${-sign * 14}px) rotate(${-sign * 5}deg) scale(.86)`;
   });
   void document.body.offsetWidth;
   covers.forEach(c => {
