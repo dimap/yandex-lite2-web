@@ -69,6 +69,17 @@
       radial-gradient(820px 500px at -6% 108%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 66%); }
   button, input, select, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; }
+  /* на телефоне — как в приложении: без синей подсветки касания браузера, без задержки двойного тапа и выделения
+     подписей при долгом нажатии; нажатие видно по самой кнопке */
+  html { -webkit-tap-highlight-color: transparent; }
+  button, a, .chip, .cbtn, .btn, label.toggle, nav a, .trow { touch-action: manipulation; }
+  @media (hover: none) and (pointer: coarse) {
+    button, .btn, .chip, .cbtn, nav a, .mbar a, .mb-text, .mb-cover { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    .btn, .chip, .cbtn, .trow, .mbar a, .mbar button, nav.side a, .msheet-open, .sc-fab { transition: transform .12s ease, filter .12s ease, background-color .12s; }
+    .btn:active:not(:disabled), .chip:active, .cbtn:active:not(:disabled), .trow:active, .msheet-open:active, .sc-fab:active { transform: scale(.96); filter: brightness(.92); }
+    .mbar a:active svg, .mbar button:active svg { transform: scale(.9); }
+    nav.side a:active { background: var(--field); }
+  }
   button:disabled { opacity: .5; cursor: progress; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   svg { flex: none; }
