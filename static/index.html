@@ -789,6 +789,9 @@
     .msheet-head { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; background: var(--card); padding: 14px 0 6px; }
     .msheet-head b { flex: 1; font-size: 17px; }
     .msheet .sound-list, .msheet .pat-list, .msheet pre.out { max-height: none !important; overflow: visible; }
+    /* лист — колонка с ограниченной высотой: без этого содержимое ужималось бы (у журналов min-height 240px),
+       а текст вылезал из-под фона; пусть растёт, прокручивается сам лист */
+    .msheet > * { flex-shrink: 0; }
     .msheet-bg { display: block; position: fixed; inset: 0; z-index: 44; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .25s; }
     .msheet-bg.open { opacity: 1; pointer-events: auto; }
     body.msheet-on { overflow: hidden; }
