@@ -827,6 +827,11 @@
     #tab-player #pl-body { height: 100dvh; gap: 10px; padding: calc(6px + env(safe-area-inset-top)) 0 calc(12px + env(safe-area-inset-bottom));
                            transition: transform .25s ease, opacity .25s; }
     #tab-player #pl-body.dragging { transition: none; }
+    /* цвета обложки: мягкое пятно её цвета за обложкой и сверху */
+    body.pl-tinted[data-tab="player"]::before {
+      background: radial-gradient(1000px 560px at 88% -14%, color-mix(in srgb, var(--pl-tint) 26%, transparent), transparent 68%),
+        radial-gradient(820px 500px at -6% 108%, color-mix(in srgb, var(--pl-tint) 16%, transparent), transparent 66%); }
+    #tab-player.cover-tint #pl-body { background: radial-gradient(130% 75% at 50% 22%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 72%); }
     /* открытие плеера — снизу вверх с проявлением; после закрытия вкладка, панель и мини-плеер проявляются */
     body.pl-in #pl-body { animation: pl-up .38s cubic-bezier(.2, .8, .2, 1); }
     body.from-player main:not([hidden]), body.from-player aside { animation: tab-fade .4s ease; }
@@ -3590,6 +3595,7 @@ function renderMusic() {
     e.style.backgroundImage = url ? `url("${url}")` : '';
     if (e.firstElementChild) e.firstElementChild.style.display = url ? 'none' : '';
   });
+  plTint(has && !isBt ? coverUrl(p.extra?.coverURI, 50) : '');
 
   const playing = !!s?.playing, rep = p?.entityInfo?.repeatMode || 'None';
   $$('[data-mu="play"]').forEach(b => { b.innerHTML = icon(playing ? 'i-pause' : 'i-play', 24); b.setAttribute('aria-label', playing ? 'Пауза' : 'Играть'); });
@@ -3705,6 +3711,63 @@ mSheet([$('#sc-log')], 'Журнал сценариев', 'Журнал');
 mSheet([$('#y2-log')], 'Лог службы', 'Лог службы');
 mSheet([$('#yam-log')], 'Лог пакета', 'Лог пакета');
 
+// ---- телефон: плеер в цветах обложки ----
+// Маленькую обложку (её сервер разрешает читать) рисуем на холсте 24×24 и ищем самый «живой» цвет: оттенки
+// раскладываем по 12 корзинам, вес пикселя — насыщенность, слишком тёмные и светлые не считаем. Почти серая
+// обложка — оставляем обычный акцент. Из оттенка — акцент, мягкий фон и цвет текста под тему.
+let plTintFor = null, plTintHsl = null;
+function plTint(url) {
+  if (url === plTintFor) return;
+  plTintFor = url;
+  if (!url) return plTintApply(null);
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => {
+    if (plTintFor !== url) return;
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 24;
+      const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, 24, 24);
+      const d = g.getImageData(0, 0, 24, 24).data, bins = Array.from({ length: 12 }, () => ({ w: 0, h: 0, s: 0 }));
+      let total = 0;
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255, max = Math.max(r, gg, b), min = Math.min(r, gg, b), l = (max + min) / 2;
+        if (max === min || l < .12 || l > .92) continue;
+        const sat = (max - min) / (1 - Math.abs(2 * l - 1));
+        let h = max === r ? (gg - b) / (max - min) : max === gg ? 2 + (b - r) / (max - min) : 4 + (r - gg) / (max - min);
+        h = (h * 60 + 360) % 360;
+        const w = sat * sat * (1 - Math.abs(l - .5)), k = bins[Math.floor(h / 30) % 12];
+        k.w += w; k.h += h * w; k.s += sat * w; total += w;
+      }
+      const best = bins.reduce((a, b) => b.w > a.w ? b : a);
+      plTintApply(total < 25 ? null : { h: Math.round(best.h / best.w), s: Math.min(.9, Math.max(.45, best.s / best.w)) });
+    } catch { plTintApply(null); }
+  };
+  img.onerror = () => plTintApply(null);
+  img.src = url;
+}
+function plTintApply(hsl) {
+  plTintHsl = hsl;
+  const el = $('#tab-player'), on = !!hsl && plMobile();
+  el.classList.toggle('cover-tint', on);
+  document.body.classList.toggle('pl-tinted', on);
+  if (!on) { ['--accent', '--accent-soft', '--accent-ink', '--on-accent'].forEach(v => el.style.removeProperty(v)); return; }
+  const dark = getComputedStyle(document.documentElement).colorScheme.includes('dark'), { h, s } = hsl, S = Math.round(s * 100);
+  const yellow = h >= 40 && h <= 90;   // жёлтые и салатовые на белом светлее, чем кажутся по цифрам, — темнее их
+  const L = dark ? 62 : yellow ? 38 : 46;
+  // цвет значков на акценте — по настоящей яркости цвета: на светлом тёмный, на тёмном белый
+  const k = n => (n + h / 30) % 12, a = s * Math.min(L / 100, 1 - L / 100);
+  const ch = n => { const v = L / 100 - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+  const lum = .2126 * ch(0) + .7152 * ch(8) + .0722 * ch(4);
+  el.style.setProperty('--accent', `hsl(${h} ${S}% ${L}%)`);
+  el.style.setProperty('--accent-soft', `hsl(${h} ${Math.round(S * .6)}% ${dark ? 20 : 92}%)`);
+  el.style.setProperty('--accent-ink', `hsl(${h} ${S}% ${dark ? 78 : yellow ? 28 : 32}%)`);
+  el.style.setProperty('--on-accent', lum > .32 ? '#16161C' : '#FFFFFF');
+  document.body.style.setProperty('--pl-tint', `hsl(${h} ${S}% ${L}%)`);
+}
+const plTintColor = () => plTintHsl && plMobile() ? getComputedStyle($('#tab-player')).getPropertyValue('--accent').trim() : null;
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => plTintApply(plTintHsl));
+addEventListener('themechange', () => plTintApply(plTintHsl));
+
 // Бегущая строка: сдвиг — на сколько текст длиннее строки, скорость ~40 px/с
 function plMarquee() {
   const el = $('#tab-player .pl-title'), inner = el?.querySelector('.mq');
@@ -3759,7 +3822,7 @@ $('#pl-back').onclick = plClose;
 // на телефоне подсказка короче: «Попросить Алису» и так написано на кнопке, а длинная не влезает
 const plPlaceholder = () => { $('#pl-command textarea').placeholder = plMobile() ? 'Например, «включи джаз»' : 'Попросить Алису: «включи джаз»'; };
 plPlaceholder();
-matchMedia('(max-width: 760px)').addEventListener('change', () => { plSheet(''); plPlaceholder(); renderMusic(); });
+matchMedia('(max-width: 760px)').addEventListener('change', () => { plSheet(''); plPlaceholder(); plTintApply(plTintHsl); renderMusic(); });
 // ручная прокрутка текста (колесо, тач, перетаскивание полосы) — ставит автопрокрутку на паузу
 ['wheel', 'touchmove', 'pointerdown'].forEach(ev => $('#pl-lyrics').addEventListener(ev, () => { $('#pl-lyrics')._userScroll = Date.now(); }, { passive: true }));
 const trackRow = (t, cur, tag) => `<button class="trow${cur ? ' cur' : ''}" data-play="${esc(t.id)}" ${t.available === false ? 'disabled' : ''}>
@@ -6306,7 +6369,7 @@ import { bindVoiceInput } from './static/voice-input.js';
 import { startAsciiBackground } from './static/ascii-background.js';
 // фон плеера на телефоне — тот же ASCII-визуализатор: спектр с часов колонки, пока играет музыка
 startAsciiBackground(document.querySelector('#pl-viz'), { playing: () => !!muState()?.playing, spectrum: () => window.__spectrum,
-  disabled: () => !!window.__vizOff || !plMobile(), size: 1.1, alpha: .8 });
+  disabled: () => !!window.__vizOff || !plMobile(), size: 1.1, alpha: .8, color: () => plTintColor() });
 // Пауза «Авто»: 0–3 с с шагом 0,5; сохранённое раньше значение вне списка — к ближайшему
 const pause = document.querySelector('#alice-pause');
 const saved = Number(store.get('ui.alice.pause') ?? 1.5);

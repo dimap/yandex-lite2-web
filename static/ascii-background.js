@@ -1,6 +1,7 @@
 // Shared lightweight background for the live panel and the model gallery.
 // size — во сколько раз дальше от центра расходится узор, alpha — насколько он ярче обычного
-export function startAsciiBackground(canvas, {playing = () => false, spectrum = () => null, disabled = () => false, size = 1, alpha = 1} = {}) {
+// color — свой цвет узора вместо акцента темы (например, цвет обложки), null — акцент
+export function startAsciiBackground(canvas, {playing = () => false, spectrum = () => null, disabled = () => false, size = 1, alpha = 1, color: colorOf = () => null} = {}) {
   const ctx = canvas?.getContext('2d');
   if (!ctx) return;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -27,7 +28,7 @@ export function startAsciiBackground(canvas, {playing = () => false, spectrum = 
     bands.forEach((_, i) => { bands[i] += ((live ? sample.bands[i] : 0) - bands[i]) * .3; });
     const fs = 13, col = fs * .62, row = fs * 1.1;
     const cx = width / 2, cy = height / 2, radius = Math.min(width, height) * .63 * size;
-    ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = color;
+    ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = colorOf() || color;
     for (let y = row / 2; y < height; y += row) for (let x = col / 2; x < width; x += col) {
       const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy) / radius, a = Math.atan2(dy, dx);
       const wave = .78 + .12 * Math.sin(a * 3 + t * .8) + .07 * Math.sin(a * 7 - t);
