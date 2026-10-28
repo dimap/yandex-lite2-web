@@ -788,6 +788,15 @@
     /* ссылок в Яндекс Музыку на телефоне нет */
     #tab-player a.ym { pointer-events: none; }
     #tab-player #pl-artist a.btn[href^="https://music.yandex"] { display: none; }
+    /* «Об исполнителе»: без заголовка, фото во всю ширину листа и тает книзу, имя — по центру поверх затухания */
+    #pl-artist-card { padding-top: 0; }
+    #pl-artist-card > h2 { display: none; }
+    #pl-artist-card .artist-grid { display: block; }
+    #pl-artist-card .artist-grid > img { display: block; width: calc(100% + 40px); height: auto; aspect-ratio: 1; margin: 0 -20px; border-radius: 0;
+      -webkit-mask-image: linear-gradient(to bottom, #000 45%, transparent); mask-image: linear-gradient(to bottom, #000 45%, transparent); }
+    #pl-artist-card .artist-grid > img + .col > div:first-child { position: relative; margin-top: -56px; }
+    #pl-artist-card .artist-grid > .col > div:first-child { text-align: center; font-size: 30px !important; line-height: 1.1; }
+    #pl-artist-card .artist-grid .pl-meta { justify-content: center; }
     #tab-player .pl-main { flex: none; gap: 8px !important; }
     #tab-player .pl-kicker, #tab-player .pl-meta { display: none; }
     #tab-player .card .pl-title { font-size: 22px; letter-spacing: -0.02em; line-height: 1.15; overflow: hidden; display: -webkit-box;
