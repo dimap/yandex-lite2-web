@@ -785,7 +785,7 @@
     /* обложка — квадрат по свободному месту: коробка занимает остаток высоты, обложка — меньшая из её сторон */
     #tab-player .pl-cover-box { flex: 1 1 0; min-height: 0; align-self: stretch; container-type: size; display: grid; place-items: center; }
     #tab-player .pl-cover-box { position: relative; }
-    #tab-player .pl-cover { position: relative; z-index: 1; width: min(68cqw, 68cqh); height: min(68cqw, 68cqh); touch-action: none;
+    #tab-player .pl-cover { position: relative; z-index: 1; width: min(78cqw, 78cqh); height: min(78cqw, 78cqh); touch-action: none;
                             border-radius: 18px; background-size: cover; background-position: center; }
     /* за обложкой — ASCII-визуализатор, как за моделью на «Обзоре»: пульсирует под музыку */
     #tab-player .pl-viz { display: block; position: absolute; left: -16px; right: -16px; top: 0; bottom: 0; width: calc(100% + 32px); height: 100%; }
@@ -6182,7 +6182,7 @@ import { bindVoiceInput } from './static/voice-input.js';
 import { startAsciiBackground } from './static/ascii-background.js';
 // фон плеера на телефоне — тот же ASCII-визуализатор: спектр с часов колонки, пока играет музыка
 startAsciiBackground(document.querySelector('#pl-viz'), { playing: () => !!muState()?.playing, spectrum: () => window.__spectrum,
-  disabled: () => !!window.__vizOff || !plMobile(), size: 1.35, alpha: 1.4 });
+  disabled: () => !!window.__vizOff || !plMobile(), size: 1.1, alpha: .8 });
 // Пауза «Авто»: 0–3 с с шагом 0,5; сохранённое раньше значение вне списка — к ближайшему
 const pause = document.querySelector('#alice-pause');
 const saved = Number(store.get('ui.alice.pause') ?? 1.5);
