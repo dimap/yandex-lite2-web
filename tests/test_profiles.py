@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -149,9 +150,11 @@ class ProfileTests(unittest.TestCase):
             profiles.install(s, model)
             def run(cmd, **kwargs):
                 text = 'ok\r\r\n'
-                if "printf '" in cmd[-1]:   # обёртка других моделей — с маркерами
-                    marker = cmd[-1].split("'")[1].split('\\n')[0]
+                found = re.search(r'__PANEL_[0-9a-f]+__', cmd[-1])
+                if found:   # обёртка других моделей — с маркерами
+                    marker = found.group(0)
                     text = f'{marker}\r\r\nok\r\r\n{marker}RC=0\r\r\n'
+                text += f'\r\r\n{s.Adb.RC_MARK}0\r\r\n'   # код выхода из Adb.shell
                 return Mock(returncode=0, stdout=text.encode(), stderr=b'')
             with patch.object(s.subprocess, 'run', run):
                 out, _, code = s.Adb.shell(s.Adb('adb', 'device'), 'echo ok')

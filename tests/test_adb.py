@@ -77,3 +77,27 @@ class AdbVersionTests(unittest.TestCase):
         dump = "Android Debug Bridge version 1.0.31\n\n" + " -a - directs adb to listen on all interfaces\n" * 20
         self.assertIn("слишком старый", server.adb_usage_error(dump, "pull -a"))
         self.assertEqual(server.adb_usage_error("error: device offline", "pull -a"), "error: device offline")
+
+
+class ShellExitCode(unittest.TestCase):
+    """Старый adbd Лайт 2 без shell_v2: код команды приходит меткой в конце вывода."""
+
+    def run_shell(self, stdout, rc=0):
+        import server
+        from unittest.mock import Mock, patch
+        a = server.Adb('adb', 'dev')
+        with patch.object(server.subprocess, 'run', return_value=Mock(returncode=rc, stdout=stdout.encode(), stderr=b'')) as r:
+            res = a.shell('exit 3', check=False)
+        return res, r.call_args.args[0][-1]
+
+    def test_marker_gives_code_and_is_stripped(self):
+        import server
+        (out, _, code), cmd = self.run_shell(f'hello\r\n\r\n{server.Adb.RC_MARK}3\r\n')
+        self.assertEqual((out, code), ('hello\n', 3))
+        self.assertTrue(cmd.startswith('(\nexit 3\n); printf '))
+        (out, _, code), _ = self.run_shell(f'noeol\r\n{server.Adb.RC_MARK}0\r\n')
+        self.assertEqual((out, code), ('noeol', 0))
+
+    def test_no_marker_keeps_adb_code(self):
+        (out, _, code), _ = self.run_shell('partial', rc=1)
+        self.assertEqual((out, code), ('partial', 1))

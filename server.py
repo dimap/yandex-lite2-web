@@ -532,9 +532,14 @@ class Adb:
     def _base(self):
         return [self.adb] + (["-s", self.serial] if self.serial else [])
 
+    # Старый adbd (Лайт 2) не знает shell_v2: adb shell всегда завершается с 0, а код команды теряется.
+    # Поэтому команда идёт в подоболочке, а её код печатается меткой в конце вывода (exit внутри тоже ловится).
+    RC_MARK = "@@webpanel-rc="
+
     def shell(self, cmd, timeout=15, check=True):
         try:
-            p = subprocess.run(self._base() + ["shell", cmd], capture_output=True, timeout=timeout)
+            p = subprocess.run(self._base() + ["shell", f"(\n{cmd}\n); printf '\\n{self.RC_MARK}%d\\n' $?"],
+                               capture_output=True, timeout=timeout)
         except subprocess.TimeoutExpired:
             # Чаще всего это выключенная колонка при «зависшем» соединении adb — пусть Connection проверит.
             if self.conn:
@@ -542,16 +547,20 @@ class Adb:
             raise AdbError(f"Колонка не ответила за {timeout} с")
         out = p.stdout.decode("utf-8", "replace")
         err = p.stderr.decode("utf-8", "replace")
+        rc = p.returncode
+        m = re.search(r"\r*\n" + re.escape(self.RC_MARK) + r"(\d+)\r*\n?\Z", out)
+        if m:
+            out, rc = out[:m.start()], rc or int(m.group(1))
         if p.returncode != 0 and not out and any(s in err.lower() for s in ADB_LOST):
             # Переподключением занимается Connection; пользователю — без сырого текста adb.
             if self.conn:
                 self.conn.lost(err.strip())
             raise AdbError("Связь с колонкой потеряна")
-        if check and p.returncode != 0 and not out and err:
+        if check and rc != 0 and not out and err:
             raise AdbError(err.strip())
         # псевдотерминал колонки даёт \r\n, а adb.exe на Windows бывает дописывает ещё \r — \r\r\n
         crlf = lambda s: re.sub(r"\r+\n", "\n", s)
-        return crlf(out), crlf(err), p.returncode
+        return crlf(out), crlf(err), rc
 
     def pull(self, remote, local, timeout=300):
         # exec-out этот adbd не поддерживает ("error: closed"), а shell идёт через pty
