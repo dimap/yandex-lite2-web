@@ -35,6 +35,11 @@ controls.enablePan = false;
 controls.minDistance = 130;
 controls.maxDistance = 450;
 controls.target.set(0, 0, 0);
+// На телефоне модель не крутится: палец по ней должен прокручивать страницу
+if (matchMedia('(hover: none) and (pointer: coarse)').matches) {
+  controls.enabled = false;
+  renderer.domElement.style.touchAction = 'pan-y';
+}
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x3a3a48, 1.6));
 const key = new THREE.DirectionalLight(0xffffff, 2.4);
