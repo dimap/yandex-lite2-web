@@ -780,7 +780,8 @@
   #toast.show { opacity: 1; transform: translate(-50%, 0); }
   #toast.err { background: var(--danger); color: #fff; }
 </style>
-<link rel="stylesheet" href="static/model.css"><style>[data-profile-hidden]{display:none!important}</style></head>
+<link rel="stylesheet" href="static/model.css"><style>[data-profile-hidden]{display:none!important}</style>
+<script type="importmap">{ "imports": { "three": "./static/vendor/three/three.module.js" } }</script></head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
@@ -5854,7 +5855,6 @@ voiceInput = bindVoiceInput(document, { store, ready: () => !!(online && mu.info
 <script src="static/vendor/qrcode.js"></script>
 <script src="static/vendor/xterm/xterm.js"></script>
 <script src="static/vendor/xterm/addon-fit.js"></script>
-<script type="importmap">{ "imports": { "three": "./static/vendor/three/three.module.js" } }</script>
 <script type="module" src="static/model.js"></script>
 </body>
 </html>
