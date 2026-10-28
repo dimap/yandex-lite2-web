@@ -3715,8 +3715,8 @@ mSheet([$('#yam-log')], 'Лог пакета', 'Лог пакета');
 
 // ---- телефон: плеер в цветах обложки ----
 // Маленькую обложку (её сервер разрешает читать) рисуем на холсте 24×24 и ищем самый «живой» цвет: оттенки
-// раскладываем по 12 корзинам, вес пикселя — насыщенность, слишком тёмные и светлые не считаем. Почти серая
-// обложка — оставляем обычный акцент. Из оттенка — акцент, мягкий фон и цвет текста под тему.
+// раскладываем по 12 корзинам, вес пикселя — насыщенность и сила цвета (тёмные цветные тоже идут, чуть легче).
+// Бесцветная (чёрно-белая) обложка — оставляем обычный акцент. Из оттенка — акцент, мягкий фон и цвет текста под тему.
 let plTintFor = null, plTintHsl = null;
 function plTint(url) {
   if (url === plTintFor) return;
@@ -3729,19 +3729,27 @@ function plTint(url) {
     try {
       const c = document.createElement('canvas'); c.width = c.height = 24;
       const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0, 24, 24);
-      const d = g.getImageData(0, 0, 24, 24).data, bins = Array.from({ length: 12 }, () => ({ w: 0, h: 0, s: 0 }));
-      let total = 0;
-      for (let i = 0; i < d.length; i += 4) {
-        const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255, max = Math.max(r, gg, b), min = Math.min(r, gg, b), l = (max + min) / 2;
-        if (max === min || l < .12 || l > .92) continue;
-        const sat = (max - min) / (1 - Math.abs(2 * l - 1));
-        let h = max === r ? (gg - b) / (max - min) : max === gg ? 2 + (b - r) / (max - min) : 4 + (r - gg) / (max - min);
-        h = (h * 60 + 360) % 360;
-        const w = sat * sat * (1 - Math.abs(l - .5)), k = bins[Math.floor(h / 30) % 12];
-        k.w += w; k.h += h * w; k.s += sat * w; total += w;
-      }
-      const best = bins.reduce((a, b) => b.w > a.w ? b : a);
-      plTintApply(total < 25 ? null : { h: Math.round(best.h / best.w), s: Math.min(.9, Math.max(.45, best.s / best.w)) });
+      const d = g.getImageData(0, 0, 24, 24).data;
+      // сначала яркие цвета; нет их — приглушённые (серо-бирюзовая, тёмная обложка тоже со своим оттенком)
+      const pass = minChroma => {
+        const bins = Array.from({ length: 12 }, () => ({ w: 0, h: 0, s: 0 }));
+        let total = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255, max = Math.max(r, gg, b), min = Math.min(r, gg, b), l = (max + min) / 2;
+          // почти чёрное, почти белое и серое без оттенка (шум JPEG) не считаем; тёмные цветные — считаем
+          if (max - min < minChroma || l < .04 || l > .95) continue;
+          const sat = (max - min) / (1 - Math.abs(2 * l - 1));
+          let h = max === r ? (gg - b) / (max - min) : max === gg ? 2 + (b - r) / (max - min) : 4 + (r - gg) / (max - min);
+          h = (h * 60 + 360) % 360;
+          const w = sat * (max - min) * (.4 + .6 * (1 - Math.abs(l - .5) * 2)), k = bins[Math.floor(h / 30) % 12];
+          k.w += w; k.h += h * w; k.s += sat * w; total += w;
+        }
+        const best = bins.reduce((x, y) => y.w > x.w ? y : x);
+        return { total, h: best.w ? Math.round(best.h / best.w) : 0, s: best.w ? best.s / best.w : 0 };
+      };
+      let col = pass(.07), muted = false;
+      if (col.total < 3) { col = pass(.025); muted = true; }
+      plTintApply(col.total < (muted ? .6 : 3) ? null : { h: col.h, s: Math.min(.9, Math.max(muted ? .3 : .45, col.s)) });
     } catch { plTintApply(null); }
   };
   img.onerror = () => plTintApply(null);
