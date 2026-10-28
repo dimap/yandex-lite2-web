@@ -827,11 +827,12 @@
     #tab-player #pl-body { height: 100dvh; gap: 10px; padding: calc(6px + env(safe-area-inset-top)) 0 calc(12px + env(safe-area-inset-bottom));
                            transition: transform .25s ease, opacity .25s; }
     #tab-player #pl-body.dragging { transition: none; }
-    /* цвета обложки: мягкое пятно её цвета за обложкой и сверху */
+    /* цвет обложки — только фон страницы (пятно за обложкой и в углах) и визуализатор; кнопки — в акценте темы.
+       Пятно — на фоне всей страницы: у колонки плеера оно давало полосы по краям экрана */
     body.pl-tinted[data-tab="player"]::before {
-      background: radial-gradient(1000px 560px at 88% -14%, color-mix(in srgb, var(--pl-tint) 26%, transparent), transparent 68%),
+      background: radial-gradient(130% 60% at 50% 28%, color-mix(in srgb, var(--pl-tint) 30%, transparent), transparent 72%),
+        radial-gradient(1000px 560px at 88% -14%, color-mix(in srgb, var(--pl-tint) 26%, transparent), transparent 68%),
         radial-gradient(820px 500px at -6% 108%, color-mix(in srgb, var(--pl-tint) 16%, transparent), transparent 66%); }
-    #tab-player.cover-tint #pl-body { background: radial-gradient(130% 75% at 50% 22%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 72%); }
     /* открытие плеера — снизу вверх с проявлением; после закрытия вкладка, панель и мини-плеер проявляются */
     body.pl-in #pl-body { animation: pl-up .38s cubic-bezier(.2, .8, .2, 1); }
     body.from-player main:not([hidden]), body.from-player aside { animation: tab-fade .4s ease; }
@@ -863,6 +864,7 @@
     #tab-player .pl-main { flex: none; gap: 8px !important; align-self: stretch; min-width: 0; }
     #tab-player .pl-kicker, #tab-player .pl-meta { display: none; }
     #tab-player .card .pl-title { font-size: 22px; letter-spacing: -0.02em; }
+    #tab-player .pl-title, #tab-player .pl-artist { touch-action: none; }
     #tab-player .pl-artist { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
     #tab-player .pl-controls { justify-content: space-between; margin: 0; }
     #tab-player .pl-controls .cbtn { width: 44px; height: 44px; }
@@ -3747,24 +3749,14 @@ function plTint(url) {
 }
 function plTintApply(hsl) {
   plTintHsl = hsl;
-  const el = $('#tab-player'), on = !!hsl && plMobile();
-  el.classList.toggle('cover-tint', on);
+  const on = !!hsl && plMobile();
   document.body.classList.toggle('pl-tinted', on);
-  if (!on) { ['--accent', '--accent-soft', '--accent-ink', '--on-accent'].forEach(v => el.style.removeProperty(v)); return; }
-  const dark = getComputedStyle(document.documentElement).colorScheme.includes('dark'), { h, s } = hsl, S = Math.round(s * 100);
-  const yellow = h >= 40 && h <= 90;   // жёлтые и салатовые на белом светлее, чем кажутся по цифрам, — темнее их
-  const L = dark ? 62 : yellow ? 38 : 46;
-  // цвет значков на акценте — по настоящей яркости цвета: на светлом тёмный, на тёмном белый
-  const k = n => (n + h / 30) % 12, a = s * Math.min(L / 100, 1 - L / 100);
-  const ch = n => { const v = L / 100 - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1)); return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
-  const lum = .2126 * ch(0) + .7152 * ch(8) + .0722 * ch(4);
-  el.style.setProperty('--accent', `hsl(${h} ${S}% ${L}%)`);
-  el.style.setProperty('--accent-soft', `hsl(${h} ${Math.round(S * .6)}% ${dark ? 20 : 92}%)`);
-  el.style.setProperty('--accent-ink', `hsl(${h} ${S}% ${dark ? 78 : yellow ? 28 : 32}%)`);
-  el.style.setProperty('--on-accent', lum > .32 ? '#16161C' : '#FFFFFF');
-  document.body.style.setProperty('--pl-tint', `hsl(${h} ${S}% ${L}%)`);
+  if (!on) return;
+  // кнопки остаются в акценте темы — в цвет обложки только фон и визуализатор
+  const dark = getComputedStyle(document.documentElement).colorScheme.includes('dark'), { h, s } = hsl;
+  document.body.style.setProperty('--pl-tint', `hsl(${h} ${Math.round(s * 100)}% ${dark ? 60 : 50}%)`);
 }
-const plTintColor = () => plTintHsl && plMobile() ? getComputedStyle($('#tab-player')).getPropertyValue('--accent').trim() : null;
+const plTintColor = () => plTintHsl && plMobile() ? document.body.style.getPropertyValue('--pl-tint') : null;
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => plTintApply(plTintHsl));
 addEventListener('themechange', () => plTintApply(plTintHsl));
 
@@ -3803,22 +3795,53 @@ function plClose() {
   setTimeout(() => { plBack(); body.style.transform = body.style.opacity = ''; }, 230);
 }
 $('#pl-back').onclick = plClose;
-// Смахнуть плеер вниз — вернуться туда, откуда пришли (тянуть за верх или обложку)
-['.pl-mtop', '#tab-player .pl-cover-box'].forEach(sel => $(sel).addEventListener('pointerdown', e => {
-  if (!plMobile() || e.pointerType === 'mouse' || e.target.closest('button')) return;
-  const body = $('#pl-body'), y0 = e.clientY, el = e.currentTarget;
+// Жесты плеера на телефоне. Вниз (за верх, обложку или название) — закрыть плеер и вернуться назад.
+// Вбок по обложке или названию — сменить трек: влево следующий, вправо предыдущий; обложка уезжает за пальцем,
+// а новая выезжает с другой стороны, когда колонка переключит трек. Направление — по первым ~10 px движения.
+function plGesture(e, allowSide) {
+  if (!plMobile() || e.pointerType === 'mouse' || e.target.closest('button, input, a')) return;
+  const body = $('#pl-body'), cover = $('#tab-player .pl-cover'), el = e.currentTarget, x0 = e.clientX, y0 = e.clientY;
   try { el.setPointerCapture(e.pointerId); } catch {}
-  body.classList.add('dragging');
-  let dy = 0;
-  const move = ev => { dy = Math.max(0, ev.clientY - y0); body.style.transform = `translateY(${dy}px)`; body.style.opacity = String(1 - Math.min(dy / 600, .5)); };
+  let mode = '', dx = 0, dy = 0;
+  const move = ev => {
+    dx = ev.clientX - x0; dy = ev.clientY - y0;
+    if (!mode && Math.hypot(dx, dy) > 10) mode = allowSide && Math.abs(dx) > Math.abs(dy) ? 'side' : 'down';
+    if (mode === 'down') {
+      body.classList.add('dragging');
+      body.style.transform = `translateY(${Math.max(0, dy)}px)`; body.style.opacity = String(1 - Math.min(Math.max(0, dy) / 600, .5));
+    } else if (mode === 'side') {
+      cover.style.transition = 'none';
+      cover.style.transform = `translateX(${dx}px) rotate(${dx / 40}deg)`; cover.style.opacity = String(1 - Math.min(Math.abs(dx) / 400, .6));
+    }
+  };
   const up = () => {
     el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
-    body.classList.remove('dragging');
-    if (dy > 120) plClose();
-    else body.style.transform = body.style.opacity = '';
+    if (mode === 'down') {
+      body.classList.remove('dragging');
+      if (dy > 120) plClose(); else body.style.transform = body.style.opacity = '';
+    } else if (mode === 'side') plSwipeEnd(dx);
   };
   el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
-}));
+}
+async function plSwipeEnd(dx) {
+  const cover = $('#tab-player .pl-cover'), p = muPlayer(), dir = dx < 0 ? 'next' : 'prev';
+  const ok = Math.abs(dx) > 80 && (dir === 'next' ? p?.hasNext : p?.hasPrev);
+  cover.style.transition = 'transform .25s ease, opacity .25s ease';
+  if (!ok) { cover.style.transform = cover.style.opacity = ''; return; }
+  const sign = dx < 0 ? -1 : 1, was = mu.trackId;
+  cover.style.transform = `translateX(${sign * 120}%) rotate(${sign * 8}deg)`; cover.style.opacity = '0';
+  musicAction(dir, null);
+  // ждём новый трек (не дольше 3 с), потом новая обложка выезжает с другой стороны
+  for (let i = 0; i < 30 && mu.trackId === was; i++) await new Promise(r => setTimeout(r, 100));
+  await new Promise(r => setTimeout(r, 150));   // дать обложке смениться
+  cover.style.transition = 'none';
+  cover.style.transform = `translateX(${-sign * 60}%)`;
+  void cover.offsetWidth;
+  cover.style.transition = 'transform .35s cubic-bezier(.2, .8, .2, 1), opacity .35s ease';
+  cover.style.transform = cover.style.opacity = '';
+}
+$('.pl-mtop').addEventListener('pointerdown', e => plGesture(e, false));
+['#tab-player .pl-cover-box', '#tab-player .pl-title', '#tab-player .pl-artist'].forEach(sel => $(sel).addEventListener('pointerdown', e => plGesture(e, true)));
 // на телефоне подсказка короче: «Попросить Алису» и так написано на кнопке, а длинная не влезает
 const plPlaceholder = () => { $('#pl-command textarea').placeholder = plMobile() ? 'Например, «включи джаз»' : 'Попросить Алису: «включи джаз»'; };
 plPlaceholder();
