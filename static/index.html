@@ -64,6 +64,11 @@
   /* цвет обложки в плеере на телефоне — свойство-цвет, чтобы при смене трека фон перетекал, а не прыгал */
   @property --pl-tint { syntax: '<color>'; inherits: true; initial-value: transparent; }
   body { transition: --pl-tint 1.2s ease; }
+  /* компьютер: за обложкой в виджете и большом плеере — мягкое пятно её цвета */
+  @media (min-width: 761px) {
+    body.pl-tinted #music-card { background: radial-gradient(380px 300px at 110px 120px, color-mix(in srgb, var(--pl-tint) 26%, transparent), transparent 75%), var(--card); }
+    body.pl-tinted #tab-player .pl-hero { background: radial-gradient(520px 420px at 180px 50%, color-mix(in srgb, var(--pl-tint) 28%, transparent), transparent 75%), var(--card); }
+  }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 Manrope, system-ui, sans-serif; }
   /* мягкие пятна цвета акцента в углах — глубина без перекраски; фон стоит на месте при прокрутке */
@@ -710,11 +715,11 @@
   .cover { flex: none; width: 180px; aspect-ratio: 1; border-radius: 16px; background: var(--field) center / cover no-repeat;
            display: grid; place-items: center; color: var(--muted); }
   .np-info { min-width: 0; }
-  .np-title { font-size: 48px; font-weight: 800; line-height: 1.05; letter-spacing: -0.03em; overflow: hidden;
-              display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  /* название — одна строка (виджет не прыгает от длины), длинное бежит */
+  .np-title { font-size: 34px; font-weight: 800; line-height: 1.15; letter-spacing: -0.03em; }
   .np-artist { color: var(--muted); font-size: 16px; margin-top: 6px; overflow: hidden;
                display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
-  @media (max-width: 480px) { .mu-top { flex-direction: column; } .cover { width: 100%; } .np-title { font-size: 34px; } }
+  @media (max-width: 480px) { .mu-top { flex-direction: column; } .cover { width: 100%; } .np-title { font-size: 30px; } }
   .progress { display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
   .progress input { flex: 1; }
   .controls { display: flex; align-items: center; justify-content: space-between; gap: 2px; margin-left: -8px; }
@@ -774,15 +779,16 @@
   .pl-kicker { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .card .pl-title { margin: 0; font-size: clamp(32px, 4.2vw, 56px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; }
   /* название — всегда одна строка (плеер не прыгает): не влезает — бегущая строка туда и обратно */
-  .pl-title { white-space: nowrap; overflow: hidden; padding-bottom: .12em; }   /* хвосты g, у, р не срезаются */
-  .pl-title .mq { display: inline-block; }
-  .pl-title.run { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
+  .mq-line { white-space: nowrap; overflow: hidden; padding-bottom: .12em; }   /* хвосты g, у, р не срезаются */
+  .mq-line .mq { display: inline-block; }
+  .mq-line.run { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent);
                   mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 12px), transparent); }
-  .pl-title.run .mq { padding: 0 12px; margin-left: -12px; animation: pl-mq var(--mqt, 8s) ease-in-out infinite alternate; }
+  .mq-line.run .mq { padding: 0 12px; margin-left: -12px; animation: pl-mq var(--mqt, 8s) ease-in-out infinite alternate; }
   @keyframes pl-mq { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(var(--mq, 0)); } }
-  @media (prefers-reduced-motion: reduce) { .pl-title.run .mq { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .mq-line.run .mq { animation: none; } }
   .pl-artist { font-size: 20px; color: var(--text-2); font-weight: 600; }
   .pl-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+  #pl-meta { min-height: 26px; }   /* пока не пришли подробности нового трека, строка пуста — место держим, плеер не прыгает */
   .pl-controls { justify-content: flex-start; gap: 6px; margin-left: -6px; }
   .pl-controls .cbtn { width: 48px; height: 48px; }
   .pl-controls .cbtn.big { width: 64px; height: 64px; }
@@ -1319,7 +1325,7 @@
             <div class="mu-top">
               <a class="cover mu-cover" href="#player" title="Открыть плеер"><svg width="40" height="40" aria-hidden="true"><use href="#i-music"/></svg></a>
               <div class="mu-side">
-                <div class="np-info"><div class="np-title mu-title">Ничего не играет</div><div class="np-artist mu-artist"></div></div>
+                <div class="np-info"><div class="np-title mu-title mq-line">Ничего не играет</div><div class="np-artist mu-artist"></div></div>
                 <div class="controls" data-mu-controls="full"></div>
               </div>
             </div>
@@ -1476,7 +1482,7 @@
         <div class="pl-cover-box"><canvas class="pl-viz" id="pl-viz" aria-hidden="true"></canvas><div class="pl-cover mu-cover"><svg width="64" height="64" aria-hidden="true"><use href="#i-music"/></svg></div></div>
         <div class="col pl-main" style="gap:12px">
           <div class="pl-kicker" id="pl-kind">Трек</div>
-          <h2 class="pl-title mu-title">Ничего не играет</h2>
+          <h2 class="pl-title mu-title mq-line">Ничего не играет</h2>
           <div class="pl-artist mu-artist"></div>
           <div class="pl-meta" id="pl-meta"></div>
           <div class="progress"><span class="mu-pos">0:00</span><input type="range" class="mu-seek" min="0" max="100" value="0" step="1" aria-label="Позиция в треке"><span class="mu-dur">0:00</span></div>
@@ -3589,7 +3595,7 @@ function renderMusic() {
   const links = !plMobile();   // на телефоне ссылок наружу нет: исполнитель открывает «Об исполнителе»
   $$('.mu-title').forEach(e => {
     const html = t && links && e.closest('#music-card, #tab-player') ? ymA(ymTrackPath(t), title) : esc(title);
-    if (e.classList.contains('pl-title')) { if (e._html !== `<span class="mq">${html}</span>`) { setHtml(e, `<span class="mq">${html}</span>`); plMarquee(); } }
+    if (e.classList.contains('mq-line')) { if (e._html !== `<span class="mq">${html}</span>`) { setHtml(e, `<span class="mq">${html}</span>`); mqFit(e); } }
     else setHtml(e, html);
   });
   $$('.mu-artist').forEach(e => {
@@ -3794,9 +3800,7 @@ function plTint(url) {
 }
 function plTintApply(hsl) {
   plTintHsl = hsl;
-  const on = plMobile();
-  document.body.classList.toggle('pl-tinted', on);
-  if (!on) return;
+  document.body.classList.add('pl-tinted');
   // кнопки остаются в акценте темы — в цвет обложки только фон и визуализатор; у чёрно-белой обложки фон
   // плавно возвращается к акценту, а не переключается скачком
   const dark = getComputedStyle(document.documentElement).colorScheme.includes('dark');
@@ -3809,8 +3813,8 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => plTi
 addEventListener('themechange', () => plTintApply(plTintHsl));
 
 // Бегущая строка: сдвиг — на сколько текст длиннее строки, скорость ~40 px/с
-function plMarquee() {
-  const el = $('#tab-player .pl-title'), inner = el?.querySelector('.mq');
+function mqFit(el) {
+  const inner = el?.querySelector('.mq');
   if (!inner || !el.clientWidth) return;
   el.classList.remove('run');
   const d = inner.scrollWidth - el.clientWidth;
@@ -3819,7 +3823,8 @@ function plMarquee() {
   el.style.setProperty('--mqt', (3 + d / 40).toFixed(1) + 's');
   el.classList.add('run');
 }
-new ResizeObserver(() => plMarquee()).observe($('#tab-player .pl-title'));
+const mqObserver = new ResizeObserver(entries => entries.forEach(x => mqFit(x.target)));
+$$('.mq-line').forEach(el => mqObserver.observe(el));
 function plMobile() { return matchMedia('(max-width: 760px)').matches; }
 var plOpen = '';   // var: showTab может вызвать plSheet раньше, чем дойдёт до этой строки
 function plSheet(name) {
@@ -3898,7 +3903,7 @@ async function plCoverSwap(dir, send) {
   const far = c => c.classList.contains('pl-cover') && plMobile();
   covers.forEach(c => {
     c.style.transition = 'transform .25s ease, opacity .25s ease';
-    c.style.transform = far(c) ? `translateX(${sign * 120}%) rotate(${sign * 8}deg)` : `translateX(${sign * 35}%) scale(.92)`;
+    c.style.transform = far(c) ? `translateX(${sign * 120}%) rotate(${sign * 8}deg)` : `translateX(${sign * 35}%) rotate(${sign * 6}deg) scale(.92)`;
     c.style.opacity = '0';
   });
   send();
@@ -3907,7 +3912,7 @@ async function plCoverSwap(dir, send) {
   await new Promise(r => setTimeout(r, 150));   // дать обложке смениться
   covers.forEach(c => {
     c.style.transition = 'none';
-    c.style.transform = far(c) ? `translateX(${-sign * 60}%)` : `translateX(${-sign * 30}%) scale(.92)`;
+    c.style.transform = far(c) ? `translateX(${-sign * 60}%)` : `translateX(${-sign * 30}%) rotate(${-sign * 5}deg) scale(.92)`;
   });
   void document.body.offsetWidth;
   covers.forEach(c => {
