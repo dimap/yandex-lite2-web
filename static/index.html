@@ -463,6 +463,10 @@
   .sc-board.full-open .sc-palette { grid-column: 1; grid-row: 1; margin: 0; overflow-y: auto; gap: 14px; padding-right: 4px; }
   .sc-board.full-open .sc-palette .grp { flex-direction: column; align-items: stretch; gap: 6px; }
   .sc-board.full-open .sc-palette .grp .btn { justify-content: flex-start; }
+  .sc-fab, .sc-pal-backdrop { display: none; }
+  .sc-fab { position: absolute; z-index: 5; right: 22px; bottom: calc(22px + env(safe-area-inset-bottom)); width: 58px; height: 58px;
+            border-radius: 50%; border: 0; place-items: center; background: var(--accent); color: var(--on-accent);
+            box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 45%, transparent); }
   .sc-field.panning { cursor: grabbing; }
   .sc-field { cursor: grab; }
   .sc-field .sc-node { cursor: default; }
@@ -477,10 +481,19 @@
     .sc-board.full-open .sc-field-wrap { flex: 1; }
     .sc-board.full-open .sc-board-top { top: calc(20px + env(safe-area-inset-top)); right: 20px; }
     .sc-board-top .sc-long { display: none; }
-    .sc-board.full-open .sc-palette { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; max-height: none; gap: 14px; padding-bottom: 4px; }
-    .sc-board.full-open .sc-palette .grp { flex-direction: row; align-items: center; flex-wrap: nowrap; flex: none; }
-    .sc-board.full-open .sc-palette .grp > .meta { min-width: auto; }
-    .sc-board.full-open .sc-palette .btn { white-space: nowrap; }
+    /* кнопки нод — листом снизу по кнопке «＋»: всё видно сразу, крупно, а поле занимает весь экран */
+    .sc-board.full-open .sc-fab { display: grid; }
+    .sc-board.full-open .sc-palette { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; max-height: 70%; overflow-y: auto;
+      overscroll-behavior: contain; background: var(--card); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25);
+      padding: 18px 14px calc(16px + env(safe-area-inset-bottom)); gap: 14px;
+      transform: translateY(105%); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
+    .sc-board.full-open.pal-open .sc-palette { transform: none; visibility: visible; transition: transform .25s ease; }
+    .sc-board.full-open .sc-palette .grp { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .sc-board.full-open .sc-palette .grp > .meta { grid-column: 1 / -1; min-width: 0; }
+    .sc-board.full-open .sc-palette .btn { min-height: 48px; font-size: 14px; justify-content: flex-start; text-align: left; line-height: 1.2; }
+    .sc-board.full-open .sc-pal-backdrop { display: block; position: absolute; inset: 0; z-index: 6; background: rgba(0,0,0,.35);
+      opacity: 0; pointer-events: none; transition: opacity .25s; }
+    .sc-board.full-open.pal-open .sc-pal-backdrop { opacity: 1; pointer-events: auto; }
   }
   .sc-palette .grp { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .sc-palette .grp > .meta { min-width: 92px; font-weight: 600; }
@@ -1488,6 +1501,8 @@
             <div class="sc-field" id="sc-field" hidden></div>
             <button type="button" class="btn sm icon sc-expand" id="sc-expand" aria-label="Открыть поле на весь экран" title="На весь экран"><svg width="16" height="16" aria-hidden="true"><use href="#i-expand"/></svg></button>
           </div>
+          <button type="button" class="sc-fab" id="sc-fab" aria-label="Добавить ноду" aria-controls="sc-add-step"><svg width="26" height="26" aria-hidden="true"><use href="#i-plus"/></svg></button>
+          <div class="sc-pal-backdrop" id="sc-pal-backdrop"></div>
           <div class="row sc-arrange-row" style="justify-content:flex-end;margin-top:6px"><button type="button" class="btn sm" id="sc-arrange" hidden>Разложить по порядку</button>
             <button type="button" class="btn sm icon" data-sc-center aria-label="К нодам" title="К нодам — если поле уехало"><svg width="16" height="16" aria-hidden="true"><use href="#i-target"/></svg></button></div>
           <p class="hint" id="sc-field-hint" hidden>Поле бесконечное: тяните за фон, чтобы его сдвинуть, «К нодам» вернёт обратно. Тяните за заголовок, чтобы переставить ноду. Связь — от кружка справа к другой ноде; отпустить
@@ -5596,7 +5611,20 @@ $('#sc-add-step').onclick = e => {
     scSel = n.id;
   }
   scRender();
+  if (!$('#sc-field').hidden) scReveal(n.id);
+  $('#sc-board').classList.remove('pal-open');
 };
+// Новая нода могла встать за краем видимой части поля — подвигаем поле к ней
+function scReveal(id) {
+  const f = $('#sc-field'), el = f.querySelector(`.sc-node[data-n="${CSS.escape(id)}"]`);
+  if (!el) return;
+  const r = el.getBoundingClientRect(), fr = f.getBoundingClientRect();
+  if (r.left >= fr.left && r.right <= fr.right && r.top >= fr.top && r.bottom <= fr.bottom) return;
+  const p = scPanXY();
+  p.x = Math.round(fr.width / 2 - el.offsetLeft - el.offsetWidth / 2);
+  p.y = Math.round(fr.height / 3 - el.offsetTop);
+  scApplyPan(true);
+}
 
 // ---- вид, открытие, сохранение ----
 function scRender() {
@@ -5624,6 +5652,7 @@ $('#sc-arrange').onclick = $('#sc-arrange-full').onclick = () => { scLayout(true
 function scFull(open) {
   if (open) scView('field');
   $('#sc-board').classList.toggle('full-open', open);
+  if (!open) $('#sc-board').classList.remove('pal-open');
   document.body.classList.toggle('sc-full', open);
   if (scEdit && (open || $('#sc-field').offsetParent)) renderScField();   // размеры поля изменились — связи пересчитать
 }
@@ -5640,7 +5669,12 @@ function scCenter() {
 }
 $$('[data-sc-center]').forEach(b => b.onclick = scCenter);
 $('#sc-full-close').onclick = () => scFull(false);
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('sc-full')) scFull(false); });
+$('#sc-fab').onclick = () => $('#sc-board').classList.toggle('pal-open');
+$('#sc-pal-backdrop').onclick = () => $('#sc-board').classList.remove('pal-open');
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !document.body.classList.contains('sc-full')) return;
+  if ($('#sc-board').classList.contains('pal-open')) $('#sc-board').classList.remove('pal-open'); else scFull(false);
+});
 addEventListener('hashchange', () => { if (document.body.classList.contains('sc-full')) scFull(false); });
 // Ноды без места (из списка) — по порядку цепочки змейкой; all — разложить заново все.
 // Ноды, оказавшиеся в одной точке, тоже разводим: иначе верхняя закрывает остальные.
