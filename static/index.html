@@ -3887,24 +3887,33 @@ async function plSwipeEnd(dx) {
   if (!ok) { cover.style.transform = cover.style.opacity = ''; return; }
   plCoverSwap(dir, () => musicAction(dir, null, true));
 }
-// Смена трека с анимацией обложки — и после свайпа, и по кнопкам «назад»/«вперёд»: старая уезжает
-// (вперёд — влево, назад — вправо), новая выезжает с другой стороны, когда колонка переключит трек
+// Смена трека с анимацией обложки — после свайпа и по кнопкам «назад»/«вперёд», на телефоне и на компьютере:
+// все видимые обложки (плеер, виджет, мини-плеер) уезжают (вперёд — влево, назад — вправо), а когда колонка
+// переключит трек, новые выезжают с другой стороны. В плеере на телефоне — далеко, за край; в остальных — коротко.
 let plSwapping = false;
 async function plCoverSwap(dir, send) {
-  const cover = $('#tab-player .pl-cover'), sign = dir === 'next' ? -1 : 1, was = mu.trackId;
-  if (plSwapping) return send();
+  const covers = $$('.mu-cover').filter(e => e.offsetParent), sign = dir === 'next' ? -1 : 1, was = mu.trackId;
+  if (plSwapping || !covers.length) return send();
   plSwapping = true;
-  cover.style.transition = 'transform .25s ease, opacity .25s ease';
-  cover.style.transform = `translateX(${sign * 120}%) rotate(${sign * 8}deg)`; cover.style.opacity = '0';
+  const far = c => c.classList.contains('pl-cover') && plMobile();
+  covers.forEach(c => {
+    c.style.transition = 'transform .25s ease, opacity .25s ease';
+    c.style.transform = far(c) ? `translateX(${sign * 120}%) rotate(${sign * 8}deg)` : `translateX(${sign * 35}%) scale(.92)`;
+    c.style.opacity = '0';
+  });
   send();
   // ждём новый трек (не дольше 3 с), потом новая обложка выезжает с другой стороны
   for (let i = 0; i < 30 && mu.trackId === was; i++) await new Promise(r => setTimeout(r, 100));
   await new Promise(r => setTimeout(r, 150));   // дать обложке смениться
-  cover.style.transition = 'none';
-  cover.style.transform = `translateX(${-sign * 60}%)`;
-  void cover.offsetWidth;
-  cover.style.transition = 'transform .35s cubic-bezier(.2, .8, .2, 1), opacity .35s ease';
-  cover.style.transform = cover.style.opacity = '';
+  covers.forEach(c => {
+    c.style.transition = 'none';
+    c.style.transform = far(c) ? `translateX(${-sign * 60}%)` : `translateX(${-sign * 30}%) scale(.92)`;
+  });
+  void document.body.offsetWidth;
+  covers.forEach(c => {
+    c.style.transition = 'transform .35s cubic-bezier(.2, .8, .2, 1), opacity .35s ease';
+    c.style.transform = c.style.opacity = '';
+  });
   plSwapping = false;
 }
 $('#pl-body').addEventListener('pointerdown', plGesture);
@@ -3982,8 +3991,8 @@ async function loadPlayerExtras() {
 // ----- управление (общие обработчики) -----
 function musicAction(a, btn, noAnim) {
   const s = muState(), p = muPlayer();
-  // в плеере на телефоне «назад»/«вперёд» — с той же анимацией обложки, что и свайп
-  if ((a === 'prev' || a === 'next') && !noAnim && btn?.closest('#tab-player') && plMobile() && !$('#tab-player').hidden
+  // «назад»/«вперёд» — с анимацией обложки (как свайп на телефоне), везде, где есть обложка
+  if ((a === 'prev' || a === 'next') && !noAnim && btn && (a === 'next' ? p?.hasNext : p?.hasPrev)
       && !matchMedia('(prefers-reduced-motion: reduce)').matches)
     return plCoverSwap(a, () => musicAction(a, btn, true));
   if (a === 'play') {
