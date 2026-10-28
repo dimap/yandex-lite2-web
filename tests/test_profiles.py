@@ -157,6 +157,30 @@ class ProfileTests(unittest.TestCase):
                 s.Handler.do_POST(SimpleNamespace(path=path, _guard=lambda _:False, _send=Mock()))
             self.assertEqual(original.call_count, 4)
 
+    def test_led_panel_only_on_station2(self):
+        # LED-панель (/dev/fb0 через led-play) есть только у Станции 2: другим моделям — 400 до обращения к adb
+        for model, allowed in (('station2', True), ('lite2', False), ('mini3pro', False), ('mini3', False), ('mini2', False)):
+            s = fresh_server()
+            s.Handler.do_POST, s.Handler.do_GET = Mock(), Mock()
+            post, get = s.Handler.do_POST, s.Handler.do_GET
+            profiles.install(s, model)
+            for path, handler in (('/api/led', s.Handler.do_POST), ('/api/led/gif', s.Handler.do_POST),
+                                  ('/api/led/patterns', s.Handler.do_GET)):
+                request = SimpleNamespace(path=path, _guard=lambda _: False, _send=Mock())
+                handler(request)
+                if allowed:
+                    request._send.assert_not_called()
+                else:
+                    self.assertEqual(request._send.call_args.args[0], 400, (model, path))
+            self.assertEqual((post.call_count, get.call_count), (2, 1) if allowed else (0, 0), model)
+            # /api/leds/live — не LED-панель, проходит на всех моделях
+            s.Handler.do_GET(SimpleNamespace(path='/api/leds/live', _guard=lambda _: False, _send=Mock()))
+            self.assertEqual(get.call_count, 2 if allowed else 1, model)
+            # фронт прячет пункт меню по флагу из /api/profile
+            request = SimpleNamespace(path='/api/profile', _guard=lambda _: False, _send=Mock())
+            s.Handler.do_GET(request)
+            self.assertEqual(request._send.call_args.args[1]['ledpanel'], allowed, model)
+
 
 class ConfigTests(unittest.TestCase):
     def load(self, speakers):
