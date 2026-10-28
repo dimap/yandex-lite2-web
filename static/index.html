@@ -127,7 +127,7 @@
     .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .25s; }
     body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
     body.nav-open { overflow: hidden; }
-    .mbar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+    .mbar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
             height: var(--mbar-h); padding: 0 4px env(safe-area-inset-bottom); background: var(--card); border-top: 1px solid var(--line); }
     .mbar a, .mbar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0;
             border: 0; background: none; color: var(--muted); font-size: 11.5px; font-weight: 600; text-decoration: none; padding: 0 2px; }
@@ -751,7 +751,7 @@
   .mb-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--muted); }
   .mb-right input { width: 130px; }
   @media (max-width: 760px) { .minibar { grid-template-columns: minmax(0, 1fr) auto; height: 72px; bottom: var(--mbar-h); padding: 0 12px; }
-                              .mb-right, .mb-center .progress { display: none; }
+                              .mb-right, .mb-center .progress, #minibar [data-mu="like"], #minibar [data-mu="shuffle"], #minibar [data-mu="repeat"] { display: none; }
                               body.has-minibar { padding-bottom: calc(var(--mbar-h) + 76px); } }
   /* страница плеера */
   .pl-hero { display: grid; grid-template-columns: minmax(200px, 320px) minmax(0, 1fr); gap: 28px; align-items: center; }
@@ -1031,7 +1031,6 @@
   <div class="nav-backdrop" id="nav-backdrop"></div>
   <nav class="mbar" aria-label="Главные разделы">
     <a href="#overview" data-tab="overview"><svg aria-hidden="true"><use href="#i-grid"/></svg><span>Обзор</span></a>
-    <a href="#player" data-tab="player"><svg aria-hidden="true"><use href="#i-music"/></svg><span>Плеер</span></a>
     <a href="#alarm" data-tab="alarm"><svg aria-hidden="true"><use href="#i-alarm"/></svg><span>Будильник</span></a>
     <a href="#scenes" data-tab="scenes"><svg aria-hidden="true"><use href="#i-flow"/></svg><span>Сценарии</span></a>
     <button type="button" id="mbar-more" aria-expanded="false" aria-controls="nav-sheet"><svg aria-hidden="true"><use href="#i-more"/></svg><span>Ещё</span></button>
@@ -1332,7 +1331,7 @@
             <button class="sw" style="--c:#E0457B" data-v="#E0457B" aria-label="Розовый"></button>
             <button class="sw" style="--c:#52525B" data-v="#52525B" aria-label="Графит"></button>
           </div></div></div>
-        <label class="set-item"><div class="set-label"><b>Плеер внизу страницы</b><small>Мини-плеер на всех вкладках, кроме «Плеера». Появляется после входа в Яндекс</small></div>
+        <label class="set-item"><div class="set-label"><b>Плеер внизу страницы</b><small>Мини-плеер на всех вкладках, кроме «Плеера». Появляется после входа в Яндекс. На телефоне он есть всегда</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-minibar"></div></label>
         <div class="set-item"><div class="set-label"><b>«Обзор»</b><small>Виджеты, 3D-модель и визуализатор</small></div>
           <div class="set-ctl"><button class="btn sm" id="set-layout-edit">Настроить «Обзор»</button><button class="btn sm" id="set-layout-reset">По умолчанию</button></div></div>
@@ -3426,7 +3425,8 @@ const fmtDur = s => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(
 const muState = () => mu.info?.glagol?.state;
 const muPlayer = () => muState()?.playerState;
 const muHas = () => { const p = muPlayer(); return !!(p && (p.title || p.subtitle)); };
-const minibarOn = () => store.get('ui.minibar') !== '0';
+// на телефоне мини-плеер есть всегда: кнопки «Плеер» в нижней панели нет, в плеер ведёт он
+const minibarOn = () => store.get('ui.minibar') !== '0' || plMobile();
 const coverUrl = (uri, size) => uri ? (uri.includes('://') ? uri : 'https://' + uri.replace('%%', `${size}x${size}`)) : '';
 const muCmd = (btn, payload, msg) => act(btn, async () => {
   const r = await api('/api/music/cmd', payload);
@@ -4540,7 +4540,7 @@ function applyUI() {
   $('#log-mask').checked = !privateOff;
   applyPrivate();
   if (logText) renderLog();
-  $('#set-minibar').checked = minibarOn();
+  $('#set-minibar').checked = store.get('ui.minibar') !== '0';
   updateMinibar();
   window.dispatchEvent(new Event('themechange'));
 }
