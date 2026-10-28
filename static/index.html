@@ -61,6 +61,9 @@
       --display: #0B0B0F; --display-text: #F2F2F5; --shadow: none;
       color-scheme: dark;
   }
+  /* цвет обложки в плеере на телефоне — свойство-цвет, чтобы при смене трека фон перетекал, а не прыгал */
+  @property --pl-tint { syntax: '<color>'; inherits: true; initial-value: transparent; }
+  body { transition: --pl-tint 1.2s ease; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 Manrope, system-ui, sans-serif; }
   /* мягкие пятна цвета акцента в углах — глубина без перекраски; фон стоит на месте при прокрутке */
@@ -3759,14 +3762,17 @@ function plTint(url) {
 }
 function plTintApply(hsl) {
   plTintHsl = hsl;
-  const on = !!hsl && plMobile();
+  const on = plMobile();
   document.body.classList.toggle('pl-tinted', on);
   if (!on) return;
-  // кнопки остаются в акценте темы — в цвет обложки только фон и визуализатор
-  const dark = getComputedStyle(document.documentElement).colorScheme.includes('dark'), { h, s } = hsl;
-  document.body.style.setProperty('--pl-tint', `hsl(${h} ${Math.round(s * 100)}% ${dark ? 60 : 50}%)`);
+  // кнопки остаются в акценте темы — в цвет обложки только фон и визуализатор; у чёрно-белой обложки фон
+  // плавно возвращается к акценту, а не переключается скачком
+  const dark = getComputedStyle(document.documentElement).colorScheme.includes('dark');
+  document.body.style.setProperty('--pl-tint', hsl ? `hsl(${hsl.h} ${Math.round(hsl.s * 100)}% ${dark ? 60 : 50}%)`
+    : getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
 }
-const plTintColor = () => plTintHsl && plMobile() ? document.body.style.getPropertyValue('--pl-tint') : null;
+// визуализатор берёт текущий (перетекающий) цвет, а не конечный
+const plTintColor = () => plMobile() && document.body.classList.contains('pl-tinted') ? getComputedStyle(document.body).getPropertyValue('--pl-tint').trim() || null : null;
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => plTintApply(plTintHsl));
 addEventListener('themechange', () => plTintApply(plTintHsl));
 
