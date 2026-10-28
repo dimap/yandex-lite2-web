@@ -768,6 +768,7 @@
      текст, очередь, похожие, исполнитель и просьба Алисе — листами снизу; смахнуть вниз — назад ---- */
   .pl-mtop, .pl-mtabs, .pl-sheet-bg { display: none; }
   .pl-cover-box { display: contents; }
+  .pl-viz { display: none; }
   @media (max-width: 760px) {
     body[data-tab="player"] aside, body[data-tab="player"] .mbar, body[data-tab="player"] #tab-player > .page-head,
     body[data-tab="player"] #minibar, body[data-tab="player"] .pl-raw-card { display: none !important; }
@@ -783,8 +784,11 @@
                            box-shadow: none; }
     /* обложка — квадрат по свободному месту: коробка занимает остаток высоты, обложка — меньшая из её сторон */
     #tab-player .pl-cover-box { flex: 1 1 0; min-height: 0; align-self: stretch; container-type: size; display: grid; place-items: center; }
-    #tab-player .pl-cover { width: min(100cqw, 100cqh); height: min(100cqw, 100cqh); touch-action: none;
+    #tab-player .pl-cover-box { position: relative; }
+    #tab-player .pl-cover { position: relative; z-index: 1; width: min(68cqw, 68cqh); height: min(68cqw, 68cqh); touch-action: none;
                             border-radius: 18px; background-size: cover; background-position: center; }
+    /* за обложкой — ASCII-визуализатор, как за моделью на «Обзоре»: пульсирует под музыку */
+    #tab-player .pl-viz { display: block; position: absolute; left: -16px; right: -16px; top: 0; bottom: 0; width: calc(100% + 32px); height: 100%; }
     /* ссылок в Яндекс Музыку на телефоне нет */
     #tab-player a.ym { pointer-events: none; }
     #tab-player #pl-artist a.btn[href^="https://music.yandex"] { display: none; }
@@ -1404,7 +1408,7 @@
         <span id="pl-msrc"></span><span class="cbtn" aria-hidden="true"></span>
       </div>
       <section class="card pl-hero">
-        <div class="pl-cover-box"><div class="pl-cover mu-cover"><svg width="64" height="64" aria-hidden="true"><use href="#i-music"/></svg></div></div>
+        <div class="pl-cover-box"><canvas class="pl-viz" id="pl-viz" aria-hidden="true"></canvas><div class="pl-cover mu-cover"><svg width="64" height="64" aria-hidden="true"><use href="#i-music"/></svg></div></div>
         <div class="col pl-main" style="gap:12px">
           <div class="pl-kicker" id="pl-kind">Трек</div>
           <h2 class="pl-title mu-title">Ничего не играет</h2>
@@ -2794,7 +2798,8 @@ pollLeds();
 const isSpectrum = v => [0, 1, 2, 3].every(p => !v[p * 8 + 1] && !v[p * 8 + 2] && !v[p * 8 + 4] && !v[p * 8 + 5] && !v[p * 8 + 7])
   && !v[X_DEG] && !v[X_DH] && !v[X_DL] && !v[X_DM];
 async function liveLeds() {
-  const want = online && !document.hidden && !$('#tab-overview').hidden && !window.__vizOff && !!muState()?.playing;
+  const want = online && !document.hidden && (!$('#tab-overview').hidden || (!$('#tab-player').hidden && plMobile()))
+    && !window.__vizOff && !!muState()?.playing;
   if (want) {
     try {
       const r = await api('/api/leds/live');
@@ -3627,7 +3632,10 @@ $('#pl-back').onclick = plBack;
   };
   el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
 }));
-matchMedia('(max-width: 760px)').addEventListener('change', () => { plSheet(''); renderMusic(); });
+// на телефоне подсказка короче: «Попросить Алису» и так написано на кнопке, а длинная не влезает
+const plPlaceholder = () => { $('#pl-command textarea').placeholder = plMobile() ? 'Например, «включи джаз»' : 'Попросить Алису: «включи джаз»'; };
+plPlaceholder();
+matchMedia('(max-width: 760px)').addEventListener('change', () => { plSheet(''); plPlaceholder(); renderMusic(); });
 // ручная прокрутка текста (колесо, тач, перетаскивание полосы) — ставит автопрокрутку на паузу
 ['wheel', 'touchmove', 'pointerdown'].forEach(ev => $('#pl-lyrics').addEventListener(ev, () => { $('#pl-lyrics')._userScroll = Date.now(); }, { passive: true }));
 const trackRow = (t, cur, tag) => `<button class="trow${cur ? ' cur' : ''}" data-play="${esc(t.id)}" ${t.available === false ? 'disabled' : ''}>
@@ -6171,6 +6179,10 @@ document.addEventListener('DOMContentLoaded',()=>{if(online&&!$('#tab-console').
 </script>
 <script type="module">
 import { bindVoiceInput } from './static/voice-input.js';
+import { startAsciiBackground } from './static/ascii-background.js';
+// фон плеера на телефоне — тот же ASCII-визуализатор: спектр с часов колонки, пока играет музыка
+startAsciiBackground(document.querySelector('#pl-viz'), { playing: () => !!muState()?.playing, spectrum: () => window.__spectrum,
+  disabled: () => !!window.__vizOff || !plMobile(), size: 1.35, alpha: 1.4 });
 // Пауза «Авто»: 0–3 с с шагом 0,5; сохранённое раньше значение вне списка — к ближайшему
 const pause = document.querySelector('#alice-pause');
 const saved = Number(store.get('ui.alice.pause') ?? 1.5);

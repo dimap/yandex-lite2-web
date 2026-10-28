@@ -1,5 +1,6 @@
 // Shared lightweight background for the live panel and the model gallery.
-export function startAsciiBackground(canvas, {playing = () => false, spectrum = () => null, disabled = () => false} = {}) {
+// size — во сколько раз дальше от центра расходится узор, alpha — насколько он ярче обычного
+export function startAsciiBackground(canvas, {playing = () => false, spectrum = () => null, disabled = () => false, size = 1, alpha = 1} = {}) {
   const ctx = canvas?.getContext('2d');
   if (!ctx) return;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -25,7 +26,7 @@ export function startAsciiBackground(canvas, {playing = () => false, spectrum = 
     const live = sample?.bands?.length === 4 && now - sample.t < 700;
     bands.forEach((_, i) => { bands[i] += ((live ? sample.bands[i] : 0) - bands[i]) * .3; });
     const fs = 13, col = fs * .62, row = fs * 1.1;
-    const cx = width / 2, cy = height / 2, radius = Math.min(width, height) * .63;
+    const cx = width / 2, cy = height / 2, radius = Math.min(width, height) * .63 * size;
     ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = color;
     for (let y = row / 2; y < height; y += row) for (let x = col / 2; x < width; x += col) {
       const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy) / radius, a = Math.atan2(dy, dx);
@@ -34,7 +35,7 @@ export function startAsciiBackground(canvas, {playing = () => false, spectrum = 
       const reach = wave + (active ? .08 : 0) + band * .2;
       const v = Math.max(0, 1 - (r / reach) ** 2);
       if (v < .07) continue;
-      ctx.globalAlpha = Math.min(.65, v * (active ? .65 : .5));
+      ctx.globalAlpha = Math.min(.65 * alpha, v * (active ? .65 : .5) * alpha);
       ctx.fillText(ramp[Math.min(ramp.length - 1, Math.floor(v * ramp.length))], x, y);
     }
     ctx.globalAlpha = 1;
