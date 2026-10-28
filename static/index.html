@@ -100,12 +100,43 @@
   .dot.on { animation: live-dot 2.4s ease-out infinite; }
   @keyframes live-dot { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 70%, 100% { box-shadow: 0 0 0 7px transparent; } }
   @media (prefers-reduced-motion: reduce) { .dot.on { animation: none; } }
+  /* телефон: сверху — название и связь, внизу — четыре главные вкладки и «Ещё» (лист со всеми разделами) */
+  .mbar, .nav-backdrop, .sheet-head { display: none; }
   @media (max-width: 760px) {
-    aside { padding: 16px; gap: 14px; }
-    nav.side { flex-direction: row; flex-wrap: wrap; }
-    nav.side a { min-height: 40px; padding: 0 12px; }
-    .nav-group, .nav-sep { display: none; }
-    .conn { flex-direction: row; flex-wrap: wrap; gap: 4px 12px; padding: 10px 12px; }
+    :root { --mbar-h: calc(62px + env(safe-area-inset-bottom)); }
+    body { padding-bottom: var(--mbar-h); }
+    aside { flex-basis: 100%; flex-direction: row; align-items: center; justify-content: space-between; padding: 12px 16px 4px; gap: 12px; }
+    .brand { min-width: 0; }
+    .brand-logo { width: 32px; height: 32px; }
+    .brand b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .conn { flex: none; flex-direction: row; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; }
+    .conn small { display: none; }
+    .conn b { font-size: 12.5px; }
+    nav.side { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: min(78vh, 640px); overflow-y: auto;
+               overscroll-behavior: contain; padding: 8px 12px calc(16px + env(safe-area-inset-bottom)); background: var(--card);
+               border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25); display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+               transform: translateY(105%); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
+    body.nav-open nav.side { transform: none; visibility: visible; transition: transform .25s ease; }
+    nav.side > * { grid-column: span 1; }
+    nav.side .nav-group, nav.side .nav-sep, nav.side .sheet-head, nav.side .speaker-picker { grid-column: 1 / -1; }
+    nav.side .nav-group { margin: 10px 6px 2px; }
+    nav.side .nav-sep { margin: 6px; }
+    nav.side a { min-height: 48px; padding: 0 12px; background: var(--field); }
+    .sheet-head { display: flex; justify-content: center; padding: 4px 0 8px; }
+    .sheet-head span { width: 40px; height: 4px; border-radius: 2px; background: var(--line); }
+    .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .25s; }
+    body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
+    body.nav-open { overflow: hidden; }
+    .mbar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+            height: var(--mbar-h); padding: 0 4px env(safe-area-inset-bottom); background: var(--card); border-top: 1px solid var(--line); }
+    .mbar a, .mbar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0;
+            border: 0; background: none; color: var(--muted); font-size: 11.5px; font-weight: 600; text-decoration: none; padding: 0 2px; }
+    .mbar span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mbar svg { width: 24px; height: 24px; padding: 2px 10px; box-sizing: content-box; border-radius: 999px; transition: background .15s; }
+    .mbar .active { color: var(--accent-ink); }
+    .mbar .active svg { background: var(--accent-soft); }
+    #toast { bottom: calc(var(--mbar-h) + 12px); }
+    body.has-minibar #toast { bottom: calc(var(--mbar-h) + 84px); }
   }
 
   /* контент */
@@ -118,6 +149,15 @@
   /* место под кольцо «живой» точки: overflow строки иначе обрезает его */
   #ov-sub { padding: 8px 0 8px 9px; margin: -6px 0 -8px -9px; }
   .page-head > .actions { flex: none; }
+  @media (max-width: 760px) {
+    .page-head { align-items: stretch; gap: 10px; }
+    .page-head h1 { font-size: 26px; }
+    .page-head > .actions { flex: 1 1 100%; min-width: 0; }
+    #tab-overview .page-head > .actions { flex-wrap: nowrap; gap: 6px; }
+    #tab-overview .page-head > .actions > .btn { flex: 1 1 0; min-width: 0; justify-content: center; white-space: normal; line-height: 1.2;
+                                   text-align: center; padding: 6px 8px; font-size: 13px; }
+    #tab-overview .page-head > .actions > .btn svg { display: none; }
+  }
   .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 
   .grid { display: grid; gap: 14px; align-items: start; }
@@ -143,6 +183,7 @@
   .hint a { color: var(--accent-ink); }
 
   .stat { gap: 6px; padding: 16px 18px; position: relative; }
+  @media (max-width: 760px) { .grid.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .stat { padding: 14px; } }
   .stat > :not(.spark) { position: relative; }
   /* мини-график за 15 минут — на всю ширину внизу плитки; слева проявляется из прозрачности, чтобы не мешать тексту */
   /* скругление снизу — обрезкой самого графика: overflow у плитки срезал бы и подсветку края */
@@ -374,7 +415,10 @@
   .al-row input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); }
   @media (max-width: 560px) { .al-row { flex-wrap: wrap; gap: 8px 14px; } .al-time { font-size: 28px; min-width: 0; } .al-row .actions { width: 100%; } }
   .sc-field { position: relative; height: 560px; resize: vertical; overflow: auto; border-radius: 14px; border: 1px solid var(--line);
-    background: var(--field) radial-gradient(circle, var(--line) 1px, transparent 1.2px) 0 0 / 22px 22px; touch-action: none; }
+    background: var(--field) radial-gradient(circle, var(--line) 1px, transparent 1.2px) 0 0 / 22px 22px; }
+  /* пальцем поле прокручивается, а ноды тянутся за заголовок и связи — от кружков */
+  .sc-field .sc-node header, .sc-field .port { touch-action: none; }
+  @media (pointer: coarse) { .sc-node .port::after { content: ""; position: absolute; inset: -12px; border-radius: 50%; } }
   .sc-field[hidden] { display: none; }
   .sc-canvas { position: relative; min-width: 100%; min-height: 100%; }
   .sc-wires { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
@@ -436,6 +480,8 @@
   .al-form .field { width: 100%; }
   .al-form input[type=time] { font-size: 28px; font-weight: 800; min-height: 56px; font-variant-numeric: tabular-nums; }
   @media (max-width: 640px) { .al-form { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 760px) { .day-chips { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+                              .day-chips .chip { padding: 0; min-height: 38px; } }
   .day-chips .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
   .al-note { background: var(--accent-soft); border-radius: 12px; padding: 12px 14px; color: var(--text-2); font-size: 14px; }
   .al-note b { color: var(--text); }
@@ -651,8 +697,9 @@
   .mb-center .progress { font-size: 11px; }
   .mb-right { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--muted); }
   .mb-right input { width: 130px; }
-  @media (max-width: 760px) { .minibar { grid-template-columns: minmax(0, 1fr) auto; height: 72px; } .mb-right, .mb-center .progress { display: none; }
-                              body.has-minibar { padding-bottom: 82px; } }
+  @media (max-width: 760px) { .minibar { grid-template-columns: minmax(0, 1fr) auto; height: 72px; bottom: var(--mbar-h); padding: 0 12px; }
+                              .mb-right, .mb-center .progress { display: none; }
+                              body.has-minibar { padding-bottom: calc(var(--mbar-h) + 76px); } }
   /* страница плеера */
   .pl-hero { display: grid; grid-template-columns: minmax(200px, 320px) minmax(0, 1fr); gap: 28px; align-items: center; }
   @media (max-width: 820px) { .pl-hero { grid-template-columns: 1fr; } }
@@ -821,6 +868,7 @@
     <symbol id="i-alarm" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M5 3 2 6M19 3l3 3"/></g></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></g></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></g></symbol>
   </defs>
 </svg>
 
@@ -830,7 +878,8 @@
       <svg class="brand-logo" viewBox="-50 -50 100 100" aria-hidden="true"><path fill-rule="evenodd" d="M0-46a46 46 0 1 1 0 92a46 46 0 1 1 0-92ZM0-25c3.5 0 5.6 2 7.6 5.5l13 22.5c2 3.5 2 6.4.3 9.3c-1.8 3-4.4 4.2-8.4 4.2h-25c-4 0-6.6-1.2-8.4-4.2c-1.7-2.9-1.7-5.8.3-9.3l13-22.5C-5.6-23-3.5-25 0-25Z"/></svg>
       <div><b id="model-name">Станция Лайт 2</b><small>Панель управления</small></div>
     </a>
-    <nav class="side" aria-label="Разделы">
+    <nav class="side" id="nav-sheet" aria-label="Разделы">
+      <div class="sheet-head" role="presentation"><span></span></div>
       <a href="#overview" data-tab="overview"><svg width="20" height="20" aria-hidden="true"><use href="#i-grid"/></svg>Обзор</a>
       <a href="#player" data-tab="player"><svg width="20" height="20" aria-hidden="true"><use href="#i-music"/></svg>Плеер</a>
       <!-- «Радио» временно скрыто: проигрыватель своих станций ломал общий микшер звука колонки (см. radio.go) -->
@@ -854,6 +903,14 @@
       <small id="conn-ip">—</small>
     </div>
   </aside>
+  <div class="nav-backdrop" id="nav-backdrop"></div>
+  <nav class="mbar" aria-label="Главные разделы">
+    <a href="#overview" data-tab="overview"><svg aria-hidden="true"><use href="#i-grid"/></svg><span>Обзор</span></a>
+    <a href="#player" data-tab="player"><svg aria-hidden="true"><use href="#i-music"/></svg><span>Плеер</span></a>
+    <a href="#alarm" data-tab="alarm"><svg aria-hidden="true"><use href="#i-alarm"/></svg><span>Будильник</span></a>
+    <a href="#scenes" data-tab="scenes"><svg aria-hidden="true"><use href="#i-flow"/></svg><span>Сценарии</span></a>
+    <button type="button" id="mbar-more" aria-expanded="false" aria-controls="nav-sheet"><svg aria-hidden="true"><use href="#i-more"/></svg><span>Ещё</span></button>
+  </nav>
 
   <!-- ================= ПОДКЛЮЧЕНИЕ ================= -->
   <main id="conn-screen">
@@ -3153,13 +3210,32 @@ const TABS = ['overview', 'player', 'alarm', 'scenes', 'assistant', 'charts', 'b
 let bootLoaded = false;
 let logsLoaded = false;
 let shownTab = null;
+// Телефон: «Ещё» открывает лист со всеми разделами. Если открыт раздел не из нижней панели — «Ещё» показывает его.
+function mbarMore(tab) {
+  const b = $('#mbar-more'), main = $$('.mbar a').some(a => a.dataset.tab === tab);
+  const link = main ? null : $(`nav.side a[data-tab="${tab}"]`);
+  b.classList.toggle('active', !!link);
+  b.querySelector('use').setAttribute('href', link ? link.querySelector('use').getAttribute('href') : '#i-more');
+  b.querySelector('span').textContent = link ? link.textContent.trim() : 'Ещё';
+}
+function navSheet(open) {
+  document.body.classList.toggle('nav-open', open);
+  $('#mbar-more').setAttribute('aria-expanded', open);
+}
+$('#mbar-more').onclick = () => navSheet(!document.body.classList.contains('nav-open'));
+$('#nav-backdrop').onclick = () => navSheet(false);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('nav-open')) navSheet(false); });
+$('#nav-sheet').addEventListener('click', e => { if (e.target.closest('a')) navSheet(false); });
+
 function showTab() {
   const h = location.hash.slice(1);
   const tab = TABS.includes(h) ? h : 'overview';
   // другая вкладка — начинаем её сверху (например, переход в «Плеер» из нижнего плеера)
   if (online && shownTab && tab !== shownTab) window.scrollTo({ top: 0 });
   if (online) shownTab = tab;
-  $$('nav.side a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
+  $$('nav.side a, .mbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
+  mbarMore(tab);
+  navSheet(false);
   $('#conn-screen').hidden = online;
   $$('main[data-page]').forEach(m => m.hidden = !online || m.id !== 'tab-' + tab);
   if (!online) return;
