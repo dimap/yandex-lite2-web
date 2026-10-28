@@ -935,7 +935,8 @@
 
   /* логи / консоль */
   pre.out { font-family: var(--mono); font-size: 12px; line-height: 1.6; background: var(--field); border: 1px solid var(--line); border-radius: 12px;
-            padding: 12px 14px; margin: 0; max-height: calc(100vh - 260px); min-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+            padding: 12px 14px; margin: 0; max-height: calc(100vh - 260px); min-height: 240px; overflow: auto; white-space: pre-wrap;
+            word-break: break-word; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }   /* break-word — для браузеров без anywhere */
   /* терминал: тёмный в обеих темах — так привычнее и так задуманы цвета программ */
   .term-card { padding: 0; overflow: hidden; background: #111116; border-color: #111116; }
   .term { height: calc(100vh - 230px); min-height: 320px; padding: 12px 6px 6px 14px; }
