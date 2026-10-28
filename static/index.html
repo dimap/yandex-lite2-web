@@ -447,15 +447,24 @@
   .sc-field-wrap { position: relative; }
   .sc-expand { position: absolute; top: 10px; right: 10px; z-index: 3; box-shadow: var(--shadow); }
   .sc-field[hidden] + .sc-expand, .sc-board-top, .sc-open { display: none; }
-  .sc-board.full-open { position: fixed; inset: 0; z-index: 60; margin: 0; background: var(--bg); display: flex; flex-direction: column; gap: 8px;
-                        padding: calc(10px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom)); }
-  .sc-board.full-open .sc-board-top { display: flex; align-items: center; gap: 8px; }
-  .sc-board.full-open .sc-board-top b { flex: 1; font-size: 16px; }
-  .sc-board.full-open .sc-field-wrap { flex: 1; min-height: 0; }
+  .sc-board.full-open { position: fixed; inset: 0; z-index: 60; margin: 0; background: var(--bg); display: grid; gap: 12px;
+                        grid-template-columns: 250px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
+                        padding: calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)); }
+  /* кнопки — поверх поля, в его правом верхнем углу */
+  .sc-board.full-open .sc-board-top { display: flex; gap: 6px; position: absolute; z-index: 5;
+                                      top: calc(22px + env(safe-area-inset-top)); right: 22px; }
+  .sc-board.full-open .sc-board-top .btn { box-shadow: var(--shadow); }
+  .sc-board.full-open .sc-field-wrap { grid-column: 2; grid-row: 1; min-height: 0; }
   .sc-board.full-open .sc-field { height: 100%; resize: none; }
   .sc-board.full-open .sc-expand, .sc-board.full-open .sc-arrange-row, .sc-board.full-open #sc-field-hint,
   .sc-board.full-open .sc-steps { display: none; }
-  .sc-board.full-open .sc-palette { flex: none; margin: 0; max-height: 30vh; overflow-y: auto; }
+  /* на компьютере — кнопки нод колонкой слева */
+  .sc-board.full-open .sc-palette { grid-column: 1; grid-row: 1; margin: 0; overflow-y: auto; gap: 14px; padding-right: 4px; }
+  .sc-board.full-open .sc-palette .grp { flex-direction: column; align-items: stretch; gap: 6px; }
+  .sc-board.full-open .sc-palette .grp .btn { justify-content: flex-start; }
+  .sc-field.panning { cursor: grabbing; }
+  .sc-field .sc-canvas { cursor: grab; }
+  .sc-field .sc-node { cursor: default; }
   body.sc-full { overflow: hidden; }
   @media (max-width: 760px) {
     /* на телефоне поле в форме не рисуем — только кнопка, поле открывается на весь экран */
@@ -463,8 +472,12 @@
     .sc-board.fieldmode:not(.full-open) #sc-field-hint, .sc-board.fieldmode:not(.full-open) .sc-palette { display: none; }
     .sc-board.fieldmode:not(.full-open) .sc-open { display: flex; width: 100%; justify-content: center; min-height: 48px; }
     .sc-expand { display: none; }
-    .sc-board.full-open .sc-palette { flex-direction: row; overflow-x: auto; overflow-y: hidden; max-height: none; gap: 14px; padding-bottom: 4px; }
-    .sc-board.full-open .sc-palette .grp { flex-wrap: nowrap; flex: none; }
+    .sc-board.full-open { display: flex; flex-direction: column; gap: 8px; }
+    .sc-board.full-open .sc-field-wrap { flex: 1; }
+    .sc-board.full-open .sc-board-top { top: calc(20px + env(safe-area-inset-top)); right: 20px; }
+    .sc-board-top .sc-long { display: none; }
+    .sc-board.full-open .sc-palette { flex: none; flex-direction: row; overflow-x: auto; overflow-y: hidden; max-height: none; gap: 14px; padding-bottom: 4px; }
+    .sc-board.full-open .sc-palette .grp { flex-direction: row; align-items: center; flex-wrap: nowrap; flex: none; }
     .sc-board.full-open .sc-palette .grp > .meta { min-width: auto; }
     .sc-board.full-open .sc-palette .btn { white-space: nowrap; }
   }
@@ -894,6 +907,7 @@
     <symbol id="i-alarm" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M5 3 2 6M19 3l3 3"/></g></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></g></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></g></symbol>
     <symbol id="i-more" viewBox="0 0 24 24"><g fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></g></symbol>
   </defs>
 </svg>
@@ -1463,9 +1477,9 @@
         <p class="hint full" id="sc-boot-hint" hidden>Запустится примерно через минуту после того, как Алиса загрузится, — при каждом включении колонки.</p>
         <div class="full sc-board" id="sc-board">
           <div class="sc-board-top">
-            <b>Поле нод</b>
-            <button type="button" class="btn sm" id="sc-arrange-full">Разложить по порядку</button>
-            <button type="button" class="btn sm icon" id="sc-full-close" aria-label="Закрыть поле">✕</button>
+            <button type="button" class="btn sm" id="sc-arrange-full">Разложить<span class="sc-long"> по порядку</span></button>
+            <button type="button" class="btn sm icon" data-sc-center aria-label="К нодам" title="К нодам — если поле уехало"><svg width="16" height="16" aria-hidden="true"><use href="#i-target"/></svg></button>
+            <button type="button" class="btn sm icon" id="sc-full-close" aria-label="Закрыть поле" title="Закрыть">✕</button>
           </div>
           <div class="sc-steps" id="sc-steps"></div>
           <button type="button" class="btn sc-open" id="sc-open-field"><svg width="18" height="18" aria-hidden="true"><use href="#i-flow"/></svg>Открыть поле нод</button>
@@ -1473,7 +1487,8 @@
             <div class="sc-field" id="sc-field" hidden></div>
             <button type="button" class="btn sm icon sc-expand" id="sc-expand" aria-label="Открыть поле на весь экран" title="На весь экран"><svg width="16" height="16" aria-hidden="true"><use href="#i-expand"/></svg></button>
           </div>
-          <div class="row sc-arrange-row" style="justify-content:flex-end;margin-top:6px"><button type="button" class="btn sm" id="sc-arrange" hidden>Разложить по порядку</button></div>
+          <div class="row sc-arrange-row" style="justify-content:flex-end;margin-top:6px"><button type="button" class="btn sm" id="sc-arrange" hidden>Разложить по порядку</button>
+            <button type="button" class="btn sm icon" data-sc-center aria-label="К нодам" title="К нодам — если поле уехало"><svg width="16" height="16" aria-hidden="true"><use href="#i-target"/></svg></button></div>
           <p class="hint" id="sc-field-hint" hidden>Тяните за заголовок, чтобы переставить ноду. Связь — от кружка справа к другой ноде; отпустить
             на пустом месте — убрать связь. У условия и повтора два выхода. Новая нода сама цепляется к выбранной.</p>
           <div class="sc-palette" id="sc-add-step"></div>
@@ -5451,8 +5466,10 @@ const scCurve = (a, b) => { const dx = Math.max(40, Math.abs(b.x - a.x) / 2); re
 function scWires(tmp) {
   const c = $('#sc-field .sc-canvas'); if (!c) return;
   const nodes = [...c.querySelectorAll('.sc-node')];
-  c.style.width = Math.max(...nodes.map(n => n.offsetLeft + n.offsetWidth)) + 60 + 'px';
-  c.style.height = Math.max(...nodes.map(n => n.offsetTop + n.offsetHeight)) + 60 + 'px';
+  // запас на экран вправо и вниз: поле можно отвести фоном, а «К нодам» вернёт обратно
+  const f = c.parentElement;
+  c.style.width = Math.max(...nodes.map(n => n.offsetLeft + n.offsetWidth)) + Math.max(60, f.clientWidth * .75) + 'px';
+  c.style.height = Math.max(...nodes.map(n => n.offsetTop + n.offsetHeight)) + Math.max(60, f.clientHeight * .75) + 'px';
   const inOf = id => c.querySelector(`.sc-node[data-n="${CSS.escape(id)}"] .port.in`);
   const link = (from, port, to) => { const a = c.querySelector(`.sc-node[data-n="${CSS.escape(from)}"] [data-port="${port}"]`), b = to && inOf(to); return a && b ? `<path class="w-${port}" d="${scCurve(scPortXY(a), scPortXY(b))}"/>` : ''; };
   let d = link('start', 'start', scEdit.start);
@@ -5466,6 +5483,7 @@ function scSetLink(from, port, to) {
 }
 $('#sc-field').addEventListener('pointerdown', e => {
   const c = $('#sc-field .sc-canvas'), nodeEl = e.target.closest('.sc-node');
+  if (!nodeEl && !e.button && e.pointerType !== 'touch') return scPan(e);   // пальцем поле и так прокручивается
   if (!nodeEl || e.button) return;
   const id = nodeEl.dataset.n, cr = () => c.getBoundingClientRect();
   const portEl = e.target.closest('.port.out');
@@ -5507,6 +5525,21 @@ $('#sc-field').addEventListener('pointerdown', e => {
   };
   head.addEventListener('pointermove', move); head.addEventListener('pointerup', up); head.addEventListener('pointercancel', up);
 });
+// Тянем фон — двигаем поле (прокрутку), а не выделяем текст
+function scPan(e) {
+  const f = $('#sc-field');
+  if (e.offsetX > f.clientWidth || e.offsetY > f.clientHeight) return;   // это полоса прокрутки
+  e.preventDefault();
+  const sx = e.clientX + f.scrollLeft, sy = e.clientY + f.scrollTop;
+  try { f.setPointerCapture(e.pointerId); } catch {}
+  f.classList.add('panning');
+  const move = ev => { f.scrollLeft = sx - ev.clientX; f.scrollTop = sy - ev.clientY; };
+  const up = () => {
+    f.classList.remove('panning');
+    f.removeEventListener('pointermove', move); f.removeEventListener('pointerup', up); f.removeEventListener('pointercancel', up);
+  };
+  f.addEventListener('pointermove', move); f.addEventListener('pointerup', up); f.addEventListener('pointercancel', up);
+}
 $('#sc-field').oninput = scInput;
 $('#sc-field').addEventListener('click', e => {
   const b = e.target.closest('[data-m="del"]'); if (!b) return;
@@ -5566,6 +5599,7 @@ function scView(v) {
   store.set('sc.view', v);
   $('#sc-steps').hidden = v === 'field';
   $('#sc-field').hidden = $('#sc-field-hint').hidden = $('#sc-arrange').hidden = v !== 'field';
+  $$('.sc-arrange-row [data-sc-center]').forEach(b => b.hidden = v !== 'field');
   $('#sc-board').classList.toggle('fieldmode', v === 'field');
   if (v === 'field') scLayout();   // ноды, добавленные в списке, места на поле ещё не имеют
   scRender();
@@ -5580,6 +5614,16 @@ function scFull(open) {
   if (scEdit && (open || $('#sc-field').offsetParent)) renderScField();   // размеры поля изменились — связи пересчитать
 }
 $('#sc-open-field').onclick = $('#sc-expand').onclick = () => scFull(true);
+// «К нодам»: поле прокручивается к нодам — по центру, а если они не влезают — к левому верхнему краю
+function scCenter() {
+  const f = $('#sc-field'), nodes = [...f.querySelectorAll('.sc-node')];
+  if (!nodes.length) return;
+  const x0 = Math.min(...nodes.map(n => n.offsetLeft)), y0 = Math.min(...nodes.map(n => n.offsetTop));
+  const x1 = Math.max(...nodes.map(n => n.offsetLeft + n.offsetWidth)), y1 = Math.max(...nodes.map(n => n.offsetTop + n.offsetHeight));
+  const at = (a, b, size) => Math.max(0, b - a + 40 > size ? a - 20 : (a + b - size) / 2);
+  f.scrollTo({ left: at(x0, x1, f.clientWidth), top: at(y0, y1, f.clientHeight), behavior: 'smooth' });
+}
+$$('[data-sc-center]').forEach(b => b.onclick = scCenter);
 $('#sc-full-close').onclick = () => scFull(false);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('sc-full')) scFull(false); });
 addEventListener('hashchange', () => { if (document.body.classList.contains('sc-full')) scFull(false); });
