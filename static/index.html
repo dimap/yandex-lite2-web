@@ -774,6 +774,11 @@
   .pl-controls .cbtn.big { width: 64px; height: 64px; }
   /* ---- плеер на телефоне: как обычный плеер — всё управление на одном экране, без шапки и нижней панели;
      текст, очередь, похожие, исполнитель и просьба Алисе — листами снизу; смахнуть вниз — назад ---- */
+  @keyframes pl-up { from { transform: translateY(70%); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes tab-fade { from { opacity: 0; transform: scale(.985); } to { opacity: 1; transform: none; } }
+  @keyframes bar-up { from { transform: translateY(100%); } to { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { body.pl-in #pl-body, body.from-player main, body.from-player aside,
+    body.from-player .mbar, body.from-player #minibar { animation: none !important; } }
   .pl-mtop, .pl-mtabs, .pl-sheet-bg { display: none; }
   .pl-cover-box { display: contents; }
   .pl-viz { display: none; }
@@ -785,6 +790,10 @@
     #tab-player #pl-body { height: 100dvh; gap: 10px; padding: calc(6px + env(safe-area-inset-top)) 0 calc(12px + env(safe-area-inset-bottom));
                            transition: transform .25s ease, opacity .25s; }
     #tab-player #pl-body.dragging { transition: none; }
+    /* открытие плеера — снизу вверх с проявлением; после закрытия вкладка, панель и мини-плеер проявляются */
+    body.pl-in #pl-body { animation: pl-up .38s cubic-bezier(.2, .8, .2, 1); }
+    body.from-player main:not([hidden]), body.from-player aside { animation: tab-fade .4s ease; }
+    body.from-player .mbar, body.from-player #minibar { animation: bar-up .4s cubic-bezier(.2, .8, .2, 1); }
     .pl-mtop { display: flex; align-items: center; gap: 6px; flex: none; touch-action: none; }
     .pl-mtop #pl-msrc { flex: 1; min-width: 0; text-align: center; font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
                         color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3375,14 +3384,19 @@ $('#nav-backdrop').onclick = () => navSheet(false);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('nav-open')) navSheet(false); });
 $('#nav-sheet').addEventListener('click', e => { if (e.target.closest('a')) navSheet(false); });
 
-let prevTab = 'overview';
+let prevTab = 'overview', plReturn = null;
 function showTab() {
   const h = location.hash.slice(1);
   const tab = TABS.includes(h) ? h : 'overview';
-  // другая вкладка — начинаем её сверху (например, переход в «Плеер» из нижнего плеера)
-  if (online && shownTab && tab !== shownTab) window.scrollTo({ top: 0 });
+  const from = document.body.dataset.tab;
+  // другая вкладка — начинаем её сверху (например, переход в «Плеер» из нижнего плеера); но из плеера на
+  // телефоне возвращаемся туда же, где были: плеер лишь «накрывал» вкладку
+  if (online && shownTab && tab !== shownTab) {
+    if (tab === 'player') plReturn = { tab: from, y: scrollY };
+    window.scrollTo({ top: from === 'player' && plReturn?.tab === tab ? plReturn.y : 0 });
+  }
   if (online) shownTab = tab;
-  if (document.body.dataset.tab && document.body.dataset.tab !== tab) prevTab = document.body.dataset.tab;
+  if (from && from !== tab) prevTab = from;
   document.body.dataset.tab = tab;
   if (tab !== 'player') plSheet('');
   $$('nav.side a, .mbar a').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
@@ -3391,6 +3405,14 @@ function showTab() {
   $('#conn-screen').hidden = online;
   $$('main[data-page]').forEach(m => m.hidden = !online || m.id !== 'tab-' + tab);
   if (!online) return;
+  // телефон: плеер выезжает снизу, а после него вкладка, панель и мини-плеер плавно проявляются
+  if (plMobile() && from && from !== tab && (tab === 'player' || from === 'player')) {
+    const cls = tab === 'player' ? 'pl-in' : 'from-player';
+    document.body.classList.remove('pl-in', 'from-player');
+    void document.body.offsetWidth;   // перезапуск анимации
+    document.body.classList.add(cls);
+    clearTimeout(showTab.anim); showTab.anim = setTimeout(() => document.body.classList.remove(cls), 450);
+  }
   if (tab === 'files' && !fs.loaded) fsOpen(store.get('fs.cwd') || '/data/quasar');
   if (tab === 'logs' && !logsLoaded) {
     logsLoaded = true;
@@ -3635,7 +3657,14 @@ $('#pl-sheet-bg').onclick = () => plSheet('');
 $('#tab-player .pl-artist').addEventListener('click', () => { if (plMobile() && !document.body.classList.contains('mu-bt') && muHas()) plSheet('artist'); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && plOpen) plSheet(''); });
 const plBack = () => { location.hash = prevTab && prevTab !== 'player' ? prevTab : 'overview'; };
-$('#pl-back').onclick = plBack;
+// закрыть плеер: уезжает вниз и гаснет (как после смахивания), потом — прошлая вкладка
+function plClose() {
+  const body = $('#pl-body');
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return plBack();
+  body.style.transform = 'translateY(100%)'; body.style.opacity = '0';
+  setTimeout(() => { plBack(); body.style.transform = body.style.opacity = ''; }, 230);
+}
+$('#pl-back').onclick = plClose;
 // Смахнуть плеер вниз — вернуться туда, откуда пришли (тянуть за верх или обложку)
 ['.pl-mtop', '#tab-player .pl-cover-box'].forEach(sel => $(sel).addEventListener('pointerdown', e => {
   if (!plMobile() || e.pointerType === 'mouse' || e.target.closest('button')) return;
@@ -3647,7 +3676,7 @@ $('#pl-back').onclick = plBack;
   const up = () => {
     el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up);
     body.classList.remove('dragging');
-    if (dy > 120) { body.style.transform = 'translateY(100%)'; setTimeout(() => { plBack(); body.style.transform = body.style.opacity = ''; }, 200); }
+    if (dy > 120) plClose();
     else body.style.transform = body.style.opacity = '';
   };
   el.addEventListener('pointermove', move); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
