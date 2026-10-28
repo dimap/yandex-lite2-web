@@ -863,9 +863,11 @@
     #pl-artist-card .artist-grid .pl-meta { justify-content: center; }
     #tab-player .pl-main { flex: none; gap: 8px !important; align-self: stretch; min-width: 0; }
     #tab-player .pl-kicker, #tab-player .pl-meta { display: none; }
-    #tab-player .card .pl-title { font-size: 22px; letter-spacing: -0.02em; }
-    #tab-player .pl-title, #tab-player .pl-artist { touch-action: none; }
-    #tab-player .pl-artist { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    #tab-player .card .pl-title { font-size: 44px; letter-spacing: -0.03em; line-height: 1.1; }
+    /* жесты ведёт сам плеер: иначе браузер забирает касание фона себе и обрывает свайп (pointercancel) */
+    #tab-player #pl-body { touch-action: none; }
+    #tab-player [data-pl-sec], #tab-player #pl-command { touch-action: pan-y; }
+    #tab-player .pl-artist { margin-bottom: 14px; font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
     #tab-player .pl-controls { justify-content: space-between; margin: 0; }
     #tab-player .pl-controls .cbtn { width: 44px; height: 44px; }
     #tab-player .pl-controls .cbtn.big { width: 64px; height: 64px; }
@@ -3806,8 +3808,11 @@ $('#pl-back').onclick = plClose;
 // Жесты плеера на телефоне. Вниз (за верх, обложку или название) — закрыть плеер и вернуться назад.
 // Вбок по обложке или названию — сменить трек: влево следующий, вправо предыдущий; обложка уезжает за пальцем,
 // а новая выезжает с другой стороны, когда колонка переключит трек. Направление — по первым ~10 px движения.
-function plGesture(e, allowSide) {
-  if (!plMobile() || e.pointerType === 'mouse' || e.target.closest('button, input, a')) return;
+function plGesture(e) {
+  if (!plMobile() || e.pointerType === 'mouse' || e.button || e.target.closest('button, input, textarea, a, [data-pl-sec], .pl-mtabs, .pl-controls, .mu-volrow, .progress'))
+    return;
+  // вбок — только над перемоткой: обложка с фоном вокруг неё и название; вниз — откуда угодно
+  const allowSide = !!e.target.closest('.pl-cover-box, .pl-title, .pl-artist');
   const body = $('#pl-body'), cover = $('#tab-player .pl-cover'), el = e.currentTarget, x0 = e.clientX, y0 = e.clientY;
   try { el.setPointerCapture(e.pointerId); } catch {}
   let mode = '', dx = 0, dy = 0;
@@ -3848,8 +3853,7 @@ async function plSwipeEnd(dx) {
   cover.style.transition = 'transform .35s cubic-bezier(.2, .8, .2, 1), opacity .35s ease';
   cover.style.transform = cover.style.opacity = '';
 }
-$('.pl-mtop').addEventListener('pointerdown', e => plGesture(e, false));
-['#tab-player .pl-cover-box', '#tab-player .pl-title', '#tab-player .pl-artist'].forEach(sel => $(sel).addEventListener('pointerdown', e => plGesture(e, true)));
+$('#pl-body').addEventListener('pointerdown', plGesture);
 // на телефоне подсказка короче: «Попросить Алису» и так написано на кнопке, а длинная не влезает
 const plPlaceholder = () => { $('#pl-command textarea').placeholder = plMobile() ? 'Например, «включи джаз»' : 'Попросить Алису: «включи джаз»'; };
 plPlaceholder();
