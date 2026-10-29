@@ -5,11 +5,19 @@
   [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). The panel only loads and colours it in the
   browser (`model-lite2.js`). The MIT license of the panel code does not apply to this file. The STEP source
   is available on the Thingiverse page.
-- Station 2, Mini 3 Pro, Mini 3, Mini 2 and Station Lite (1st gen): original approximate visual reconstructions in
+- Station 2, Mini 3 Pro, Mini 3 and Station Lite (1st gen): original approximate visual reconstructions in
   model-studio.js (MIT), based on the manufacturer's public product photographs.
   They are not official CAD, downloaded commercial meshes, or manufacturing drawings.
+- Station Mini 2 with clock (YNDX-00020): original approximate reconstruction in model-studio.js (MIT)
+  from the owner's photographs and caliper measurements of a white unit, checked against the official
+  97 × 54 mm, 260 g specification
+  (https://alice.yandex.ru/support/ru/station/meet/characteristics-mini2). Four official colours:
+  white, black, red and blue. The clock display uses the panel's shared clock geometry
+  (`clock-geometry.js`): 4 × 7 segments, colon, hyphen and degree sign — 32 white LEDs, no decimal points.
+  The central Alice diffuser is driven by the native six RGB zones; their mean colour is an approximation.
+  The photographs are not bundled.
 
-- Gallery placeholders (Max, Station 3, Midi, Street, Duo Max, Station, Mini 2 with/without clock, Mini gen 1,
+- Gallery placeholders (Max, Station 3, Midi, Street, Duo Max, Station, Mini 2 without clock, Mini gen 1,
   all TV Station models and Drops): simplified original shapes in model-concepts.js (MIT) after the
   manufacturer's public photographs. They only help future contributors start; hardware support is not implied.
   Lite 2 without clock reuses lite2.stl with the display off.
@@ -31,7 +39,8 @@ References:
 
 Mini 3 has a lower 102 × 60.5 mm body and central indicator; Mini 3 Pro has a
 102 × 71 mm body and perimeter light strip. Mini 2 is a straight 97 × 54 mm fabric cylinder with a flat
-perforated black top, a large clock on the side and six LEDs only in the central Alice logo. Station Lite is an 88 mm puck on a ribbed
+perforated top, a large clock behind the fabric on the side and six RGB LEDs behind the central Alice
+diffuser; four official colours are selectable in the model settings. Station Lite is an 88 mm puck on a ribbed
 black base; the edge slots are decorative, only the Alice logo in the centre lights up (no clock). Details and colours are approximate.
 Product photographs are not bundled or used as textures. All models use lightweight
 materials with no shadows, ground plane, bump mapping or physical materials. Lite 2

@@ -16,10 +16,12 @@ for(const [label,models]of[['Поддерживаются панелью',suppor
 picker.value=id;
 picker.addEventListener('change',()=>{const url=new URL(location.href);url.searchParams.set('model',picker.value);location.assign(url);});
 const lite2=id==='lite2'||id==='lite2nc';
-window.clockGeom=geometry;window.__deviceColor=id==='lite2'?'copper':id==='lite2nc'?'blue':id==='lite'?'purple':CONCEPTS[id]?Object.keys(CONCEPTS[id].colors)[0]:'black';
+window.clockGeom=geometry;window.__deviceColor=id==='lite2'?'copper':id==='lite2nc'?'blue':id==='lite'?'purple':id==='mini2'?'white':CONCEPTS[id]?Object.keys(CONCEPTS[id].colors)[0]:'black';
 document.getElementById('model-description').textContent=id in concepts
   ?'Заготовка: приблизительная форма по фото производителя, чтобы будущим участникам не пришлось рисовать модель. Совместимость с настоящей колонкой не проверена, панель её пока не поддерживает.'
-  :id==='lite2'?'Авторская STL vanyabeat, CC BY-SA 4.0. Геометрия, материалы и свет исходного рендера сохранены.':'Приблизительная визуальная реконструкция по официальным ракурсам. Лёгкие материалы без теней. Это не официальный CAD-файл.';
+  :id==='lite2'?'Авторская STL vanyabeat, CC BY-SA 4.0. Геометрия, материалы и свет исходного рендера сохранены.'
+  :id==='mini2'?'Приблизительная реконструкция Станции Мини 2 с часами по фото и замерам владельца (97 × 54 мм): дисплей часов сквозь ткань, кольцо Алисы на 6 RGB и четыре официальных цвета. Это не официальный CAD-файл.'
+  :'Приблизительная визуальная реконструкция по официальным ракурсам. Лёгкие материалы без теней. Это не официальный CAD-файл.';
 const demo=()=>{if(id!=='lite2nc')window.modelShow?.(geometry.textToFrame('12:34',190));window.modelRing?.(Array.from({length:id==='mini3pro'?16:id==='mini2'?6:id==='lite'?12:3},(_,i)=>[90+i*3,45,170+i*4]));};
 document.getElementById('model-view').addEventListener('modelready',demo,{once:true});
 if(lite2)await import('./model-lite2.js');

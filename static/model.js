@@ -68,12 +68,33 @@ if(!profile.boot)hide(document.getElementById('privacy-row'));
 if(profile.id!=='lite2'){
   hide(document.getElementById('pat-play'));
   document.querySelectorAll('[data-k="clock"]').forEach(e=>{if(!profile.clock)hide(e);});
-  document.querySelector('[data-widget="light"] .hint').textContent=profile.light_note;
+  const lightHint=document.querySelector('[data-widget="light"] .hint');
+  if(lightHint)lightHint.textContent=profile.light_note;
 }
 // У Лайт первого поколения нет дисплея: только светящийся логотип Алисы — прячем всё про часы.
 if(visual.id==='lite'){
   hide(document.querySelector('[data-widget="clock"]'));hide(document.getElementById('pat-play'));
   document.querySelectorAll('[data-k="clock"]').forEach(hide);
 }
-if(visual.id==='lite2')await import('./model-lite2.js');
-else{const {createModel}=await import('./model-studio.js');createModel(visual);}
+try{
+  if(visual.id==='lite2')await import('./model-lite2.js');
+  else{
+    let studio;
+    try{studio=await import('./model-studio.js');}
+    catch(e){try{e.panelStage='import model-studio';}catch{}throw e;}
+    try{studio.createModel(visual);}
+    catch(e){try{e.panelStage='createModel';}catch{}throw e;}
+  }
+}catch(e){
+  // Пустой виджет без объяснения — худший вариант: показываем причину и даём перезагрузиться.
+  // stages и полный стек складываем в localStorage, чтобы причину можно было прочитать без консоли.
+  const detail=String(e?.message||e), stage=e?.panelStage?e.panelStage+': ':'';
+  try{localStorage.setItem('model.lastError',stage+detail+'\n'+(e?.stack||''));}catch{}
+  window.__modelError=stage+detail;
+  console.error('3D-модель:',stage+detail,e);
+  const box=document.createElement('p');box.className='studio-error';
+  box.append('Не удалось показать 3D-модель. '+(stage+detail).slice(0,260)+' ');
+  const btn=document.createElement('button');btn.className='btn sm';btn.type='button';btn.textContent='Перезагрузить';btn.onclick=()=>location.reload();
+  box.append(btn);
+  view.append(box);
+}

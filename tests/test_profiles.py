@@ -119,6 +119,9 @@ class ProfileTests(unittest.TestCase):
     def test_mini2_profile_reports_clock_maximum(self):
         self.assertEqual(profiles.PROFILES['mini2']['clock_max'], 170)
 
+    def test_mini2_say_is_confirmed(self):
+        self.assertIn('say', profiles.PROFILES['mini2']['tested'])
+
     def test_mini2_uses_common_volume_instead_of_unsupported_bt_mixer(self):
         s = fresh_server()
         profiles.install(s, 'mini2')

@@ -1,5 +1,5 @@
 .studio-view .studio-canvas{z-index:1;outline:none}
-.studio-error,.studio-caption{position:absolute;inset:45% 12px auto;text-align:center}
+.studio-error,.studio-caption{position:absolute;inset:45% 12px auto;text-align:center;z-index:2}
 /* Только страница предпросмотра моделей: в панели строки настроек оформлены её общими стилями (.set-item). */
 .preview-settings .set-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--border,#8885)}
 .preview-settings .set-label b{display:block}.preview-settings .set-label small{display:block;color:var(--muted,#a5a5b2);font-size:12px;margin-top:2px}
