@@ -33,6 +33,7 @@ if(tried('alarm'))
 const note=(sel,text)=>{const w=document.querySelector(sel);if(!w)return;const p=document.createElement('p');p.className='hint untested-note';p.textContent=text;w.querySelector('.card-head')?.after(p);};
 if(tried('sounds'))note('[data-widget="sounds"]','На этой модели замена звуков не тестировалась — проверьте после замены и напишите в Issues, заработало ли.');
 if(tried('yam2'))note('#y2-card','yam 2 через панель на этой модели не проверялся: установка, каталог и службы пакетов. Напишите в Issues, заработало ли.');
+if(tried('btout')){const r=document.getElementById('bt-out-row');if(r){const p=document.createElement('p');p.className='hint untested-note';p.textContent='Звук через Bluetooth-колонку на этой модели не проверялся — напишите в Issues, заработало ли.';r.after(p);}}
 if(tried('say'))note('[data-widget="say"]','На этой модели не тестировалось — напишите в Issues, заработало ли.');
 const view=document.getElementById('model-view');
 const loading=document.createElement('p');loading.className='studio-caption';loading.textContent='Ожидаю данные колонки…';view.append(loading);

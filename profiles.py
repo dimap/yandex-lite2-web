@@ -11,7 +11,7 @@ from pathlib import Path
 # работает на модели, — впишите её в tested этой модели: предупреждение пропадёт. Новые функции — сюда же.
 # Работа с экраном (заставка, анимации и дисплей часов) — не здесь: у моделей разные экраны, её открывают флаги
 # clock/boot только после проверки.
-TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2")
+TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2", "btout")
 
 PROFILES = {
     # Лайт первого поколения (PR #6): дисплея нет, кольцо из трёх RGB-диодов micro:*:ring1–3 через /dev/fb0, как у Лайт 2.

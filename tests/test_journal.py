@@ -197,3 +197,51 @@ class Bluez(unittest.TestCase):
         self.assertEqual((s["powered"], s["discoverable"]), ("yes", "no"))
         self.assertEqual(s["bt_connected"], ['00:11:22:33:44:55 Телефон "в кармане"'])
         self.assertFalse(any("bluetoothctl" in c for c in calls))
+
+
+class BtOut(unittest.TestCase):
+    """Звук через Bluetooth-колонку: подмена конца цепочки ALSA + регулятор громкости с явной картой."""
+    MAC = "C2:43:82:76:70:6D"
+
+    def panel(self, info):
+        p = server.Panel(Mock())
+        self.cmds, self.pushed = [], {}
+        p.adb.shell = lambda cmd, *a, **k: (self.cmds.append(cmd), (info if "bluetoothctl info" in cmd else "", "", 0))[1]
+        p.adb.push = lambda local, remote, **k: self.pushed.__setitem__(remote, Path(local).read_text())
+        p._original_bytes = lambda path: b"pcm.!default {\n  type asym\n}\n"
+        p._ensure_hook = lambda: None
+        p.bt_state = lambda: {"ok": True}
+        return p
+
+    def test_use_builds_override_and_starts_watchdog(self):
+        p = self.panel("\tConnected: yes\n\tUUID: Audio Sink (0000110b)\n")
+        p.btout_use(self.MAC.lower())
+        conf = self.pushed[server.BTOUT_CONF]
+        self.assertIn(f'slave.pcm "bluealsa:DEV={self.MAC},PROFILE=a2dp"', conf)
+        self.assertIn("card 0", conf)                     # без карты softvol плеер Алисы не открывает вывод
+        self.assertIn(server.BTOUT_MARK, conf)
+        self.assertTrue(conf.startswith("pcm.!default"))  # исходная настройка — целиком, подмена дописана в конец
+        self.assertEqual(self.pushed[server.BTOUT_MAC].strip(), self.MAC)
+        sh = self.pushed[server.BTOUT_SH]
+        self.assertNotIn("__", sh)
+        self.assertIn("dev_$(echo", sh)
+        code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
+        self.assertNotIn("bluetoothctl", code)   # сторож проверяет по D-Bus, без утечки
+        self.assertTrue(any("start-stop-daemon -S" in c and server.BTOUT_SH in c for c in self.cmds))
+        import subprocess
+        self.assertEqual(subprocess.run(["sh", "-n"], input=sh.encode()).returncode, 0)
+
+    def test_refuses_without_connection_or_a2dp(self):
+        with self.assertRaisesRegex(server.AdbError, "не подключилась"):
+            self.panel("\tConnected: no\n").btout_use(self.MAC)
+        with self.assertRaisesRegex(server.AdbError, "A2DP"):
+            self.panel("\tConnected: yes\n").btout_use(self.MAC)
+        with self.assertRaises(server.AdbError):
+            self.panel("").btout_use("C2:43;reboot")
+
+    def test_info(self):
+        devs = [{"mac": self.MAC, "name": "Fiero", "connected": True}]
+        self.assertEqual(server.Panel._btout_info("", devs), {"on": False})
+        o = server.Panel._btout_info(f"\n{self.MAC}\nbt\nwatch\n", devs)
+        self.assertEqual((o["on"], o["name"], o["state"], o["watch"]), (True, "Fiero", "bt", True))
+        self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n\n", devs)["state"], "waiting")

@@ -1383,6 +1383,14 @@
           </div>
           <div class="bt-list" id="bt-list"><div class="empty">Загрузка…</div></div>
           <div class="vol-bt"><label for="vol-bt">Громкость</label><input type="range" id="vol-bt" min="0" max="255"><span id="vol-bt-v">—</span></div>
+          <div class="bt-pair bt-out" id="bt-out-row">
+            <div class="info"><b id="bt-out-text">Звук — встроенный динамик</b><span class="meta" id="bt-out-hint">Можно играть через Bluetooth-колонку: Алиса слушает и отвечает, а звук — из неё</span></div>
+            <button class="btn sm" id="bt-out-btn">Выбрать колонку</button>
+          </div>
+          <div id="bt-out-pick" hidden>
+            <p class="hint">Включите на Bluetooth-колонке режим сопряжения — панель поищет её рядом. Колонки и наушники — первыми.</p>
+            <div class="bt-list" id="bt-out-list"></div>
+          </div>
         </section>
 
         <section class="card" data-widget="device" data-title="Об устройстве">
@@ -3291,6 +3299,7 @@ function renderBt() {
   $('#bt-pair-btn').textContent = vis ? 'Скрыть' : 'Сделать видимой';
   $('#bt-pair-btn').classList.toggle('primary', !vis);
   btLeft();
+  renderBtOut();
   $('#bt-list').innerHTML = d.devices.length ? d.devices.map(x => `<div class="bt-row${x.connected ? ' on' : ''}" data-mac="${esc(x.mac)}">
       <div class="bt-ic">${icon(BT_ICONS[x.icon] || 'i-bt', 18)}</div>
       <div class="info"><b>${x.name ? secret('btn-' + x.mac, x.name) : 'Без имени'}</b>
@@ -3300,6 +3309,42 @@ function renderBt() {
     : '<div class="empty">Сопряжённых устройств нет</div>';
 }
 const btDo = (btn, body, msg) => act(btn, async () => { btData = await api('/api/bt', body); renderBt(); }, msg);
+// ---- звук через Bluetooth-колонку ----
+function renderBtOut() {
+  const o = btData?.out || { on: false };
+  $('#bt-out-row').classList.toggle('on', !!o.on);
+  $('#bt-out-text').innerHTML = !o.on ? 'Звук — встроенный динамик'
+    : `Звук через «${esc(o.name)}»` + (o.state === 'bt' ? '' : ' · ждём колонку');
+  $('#bt-out-hint').textContent = !o.on ? 'Можно играть через Bluetooth-колонку: Алиса слушает и отвечает, а звук — из неё'
+    : o.state === 'bt' ? 'Алиса, музыка и её звуки — из Bluetooth-колонки. Громкость — как обычно, голосом или здесь. Звуки панели (будильник, «Сказать», проигрывание) в это время могут не звучать'
+    : 'Колонка не подключена — пока звук из встроенного динамика. Включите её: подключение и звук вернутся сами';
+  $('#bt-out-btn').textContent = o.on ? 'Вернуть встроенный динамик' : 'Выбрать колонку';
+  $('#bt-out-btn').classList.toggle('primary', !o.on);
+  if (o.on) $('#bt-out-pick').hidden = true;
+}
+$('#bt-out-btn').onclick = e => {
+  const b = e.currentTarget;
+  if (btData?.out?.on) {
+    if (!confirm('Вернуть звук во встроенный динамик? Алиса перезапустится (~30 с).')) return;
+    return act(b, async () => { btData = await api('/api/btout/off', {}); renderBt(); }, 'Звук возвращается во встроенный динамик, Алиса перезапускается');
+  }
+  const pick = $('#bt-out-pick'); pick.hidden = false;
+  $('#bt-out-list').innerHTML = '<div class="empty">Ищу устройства рядом… ~15 с</div>';
+  act(b, async () => {
+    const r = await api('/api/btout/scan', { seconds: 12 });
+    $('#bt-out-list').innerHTML = r.devices.length ? r.devices.map(x => `<div class="bt-row" data-mac="${esc(x.mac)}">
+        <div class="bt-ic">${icon(BT_ICONS[x.icon] || 'i-bt', 18)}</div>
+        <div class="info"><b>${esc(x.name || 'Без имени')}</b><span class="meta">${[x.audio ? 'колонка или наушники' : 'другое устройство', x.paired ? 'сопряжено' : '', x.rssi != null ? `сигнал ${x.rssi} dBm` : ''].filter(Boolean).join(' · ')}</span></div>
+        <div class="actions"><button class="btn sm${x.audio ? ' primary' : ''}">Играть через неё</button></div></div>`).join('')
+      : '<div class="empty">Ничего не нашлось — колонка в режиме сопряжения? Попробуйте ещё раз</div>';
+  });
+};
+$('#bt-out-list').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const mac = b.closest('.bt-row').dataset.mac;
+  toast('Подключаю колонку… затем Алиса перезапустится и заговорит из неё');
+  act(b, async () => { btData = await api('/api/btout/use', { mac }); renderBt(); }, 'Звук переходит на Bluetooth-колонку');
+};
 $('#bt-pair-btn').onclick = e => btDo(e.currentTarget, { action: btData?.discoverable ? 'pair_off' : 'pair_on' },
   btData?.discoverable ? 'Колонка скрыта' : 'Колонка видна 3 минуты');
 $('#bt-list').onclick = e => {

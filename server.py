@@ -278,6 +278,47 @@ ASSIST_CMD = "/tmp/webpanel_assistant.cmd"
 ASSIST_SD = "/tmp/webpanel_assistant.sd"
 ASSIST_RUN = f"exec {ASSISTD} -dir {ASSIST_DIR} >{ASSIST_DIR}/assistant.log 2>&1"
 ASSIST_SRC = Path(__file__).resolve().parent / "device" / "assistant"
+# Звук через Bluetooth-колонку: колонка остаётся «мозгом» (слушает, отвечает), а играет подключённая по Bluetooth.
+# Весь звук Quasar держит один процесс (maind --mediad); конец его цепочки ALSA (dmix_spk_plug) подменяем на
+# bluealsa своим asound.conf через bind mount. Регулятору громкости Алисы (softvol «Master») карту указываем явно:
+# по цепочке, которая кончается Bluetooth, он её не находит, и плеер Алисы не открывает вывод.
+# Сторож на колонке держит подмену, только пока Bluetooth-колонка подключена, иначе — встроенный динамик.
+BTOUT_DIR = f"{WEB_DIR}/btout"
+BTOUT_MAC = f"{BTOUT_DIR}/device"      # MAC выбранной колонки: есть файл — звук через неё
+BTOUT_CONF = f"{BTOUT_DIR}/asound.conf"
+BTOUT_SH = f"{BTOUT_DIR}/watch.sh"
+BTOUT_SD = "/tmp/webpanel_btout.sd"
+BTOUT_STATE = "/tmp/webpanel_btout.state"   # bt — играет через неё; waiting — ждём её, звук на встроенном
+BTOUT_MARK = "# webpanel: btout"
+BTOUT_WATCH = r"""#!/bin/sh
+# Веб-панель: звук через Bluetooth-колонку. Пока она подключена — своя /etc/asound.conf (выход на bluealsa)
+# и перезапуск Алисы; пропала (2 проверки подряд) — встроенный динамик. Подключение проверяем по D-Bus:
+# каждый bluetoothctl оставляет в bluetoothd прошивки немного памяти навсегда.
+D=__DIR__
+M=$(cat $D/device 2>/dev/null) || exit 0
+P=/org/bluez/hci0/dev_$(echo "$M" | tr : _)
+S=__STATE__
+conn() { dbus-send --system --print-reply --dest=org.bluez "$P" org.freedesktop.DBus.Properties.Get   string:org.bluez.Device1 string:Connected 2>/dev/null | grep -q 'boolean true'; }
+ours() { grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '__MARK__' /etc/asound.conf; }
+quasar() { /system/vendor/quasar/q restart >/dev/null 2>&1; }
+miss=0; n=0
+while [ -f $D/device ]; do
+  if conn; then
+    miss=0
+    ours || { mount --bind $D/asound.conf /etc/asound.conf && quasar; }
+    echo bt > $S
+  else
+    miss=$((miss + 1))
+    if ours && [ $miss -ge 2 ]; then umount /etc/asound.conf || umount -l /etc/asound.conf; quasar; fi
+    ours || echo waiting > $S
+    # раз в 30 с просим колонку подключиться: включили её снова — звук вернётся на неё сам
+    [ $((n % 6)) -eq 0 ] && dbus-send --system --dest=org.bluez "$P" org.bluez.Device1.Connect >/dev/null 2>&1 &
+  fi
+  n=$((n + 1)); sleep 5
+done
+ours && { umount /etc/asound.conf || umount -l /etc/asound.conf; quasar; }
+rm -f $S
+"""
 
 BOOT_HOOK_SCRIPT = (
     "#!/bin/sh\n"
@@ -297,6 +338,7 @@ BOOT_HOOK_SCRIPT = (
     f"start-stop-daemon -S -b -m -p /tmp/webpanel_yamd.sd -x /bin/sh -- -c {shlex.quote(YAMD_CMD)}\n"
     f"[ -f {ALARM_CONF} ] && [ -f {ALARMD} ] && start-stop-daemon -S -b -m -p {ALARM_SD} -x /bin/sh -- {ALARMD}\n"
     f"[ -f {ASSIST_CONF} ] && [ -x {ASSISTD} ] && start-stop-daemon -S -b -m -p {ASSIST_SD} -x /bin/sh -- -c {shlex.quote(ASSIST_RUN)}\n"
+    f"[ -f {BTOUT_MAC} ] && [ -f {BTOUT_SH} ] && start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}\n"
     # службы пакетов yam 2, отмеченные «при загрузке»
     f"for f in {YAM2_SVC_DIR}/boot/*; do [ -f \"$f\" ] && [ -f \"{YAM2_SVC_DIR}/${{f##*/}}.sh\" ] && "
     f"start-stop-daemon -S -b -m -p \"{YAM2_SVC_PID}${{f##*/}}.pid\" -x /bin/sh -- \"{YAM2_SVC_DIR}/${{f##*/}}.sh\"; done\n"
@@ -1747,7 +1789,7 @@ echo @@BLUEZ
     # Что держится на хуке: без него после перезагрузки колонки пропадает
     HOOK_USERS = (("заставка", BOOT_CUSTOM), ("звук запуска", SOUND_CUSTOM), ("заставка при каждой загрузке", BOOT_ALWAYS),
                   ("автозапуск yamd", YAM_AUTOSTART), ("будильник", ALARM_CONF), ("блокировка аналитики", HOSTS_CUSTOM),
-                  ("ассистент", ASSIST_CONF))
+                  ("ассистент", ASSIST_CONF), ("звук через Bluetooth-колонку", BTOUT_MAC))
 
     def _hook_users_script(self):
         """Печатает по строке на каждую функцию, которой нужен хук."""
@@ -2494,9 +2536,9 @@ echo @@BLUEZ
             f"[ -d {OVR_DIR}/sounds ] && du -sk {OVR_DIR}/sounds | cut -f1 || echo 0",
             f"find {OVR_DIR}/ledpatterns -type f 2>/dev/null | wc -l",
             f"find {MY_ANIM_DIR} -type f 2>/dev/null | wc -l",
-            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2)])
+            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC)])
         v = self.adb.shell(cmd, check=False)[0].split()
-        v = (v + ["0"] * 25)[:25]
+        v = (v + ["0"] * 26)[:26]
         b = [x == "1" for x in v]
         n = lambda x: int(x) if x.isdigit() else 0
         items = [
@@ -2509,6 +2551,7 @@ echo @@BLUEZ
             {"key": "always", "name": "Заставка при каждой загрузке", "on": b[4]},
             {"key": "yamd", "name": "Автозапуск yamd", "on": b[5]},
             {"key": "yam2", "name": "Автозапуск служб yam 2", "on": n(v[23]) > 0, "detail": f"служб: {n(v[23])}"},
+            {"key": "btout", "name": "Звук через Bluetooth-колонку", "on": b[25], "detail": "сторож и своя /etc/asound.conf, пока колонка подключена"},
             {"key": "privacy", "name": "Блокировка аналитики", "on": b[15] or b[16], "detail": "свой /etc/hosts"},
             {"key": "assistant", "name": "Голосовой помощник", "on": b[17], "size_kb": n(v[18])},
             {"key": "alarm", "name": "Будильник и сценарии", "on": b[6],
@@ -2526,6 +2569,8 @@ echo @@BLUEZ
         self.adb.shell(
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; start-stop-daemon -K -p {ASSIST_SD} 2>/dev/null; "
+            f"start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
+            f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; ( {QUASAR}/q restart >/dev/null 2>&1 & ); }}; "
             # службы yam 2 запускала панель — гасим их группы процессов (сами пакеты остаются в yam)
             f"for f in {YAM2_SVC_PID}*.pid; do [ -f \"$f\" ] && p=$(cat \"$f\") && kill -0 \"$p\" 2>/dev/null && {{ {YAM2_KILL}; }}; "
             f"rm -f \"$f\"; done 2>/dev/null; "
@@ -3780,15 +3825,19 @@ echo @@BLUEZ
     BT_PAIR_FLAG = "/tmp/webpanel_bt_pair"
 
     def bt_state(self):
-        out = strip_ansi(self.adb.shell(f"{BLUEZ_DUMP}; echo @@PAIR; cat {self.BT_PAIR_FLAG} 2>/dev/null; true",
+        out = strip_ansi(self.adb.shell(f"{BLUEZ_DUMP}; echo @@PAIR; cat {self.BT_PAIR_FLAG} 2>/dev/null; "
+                                        f"echo @@OUT; cat {BTOUT_MAC} 2>/dev/null; echo; cat {BTOUT_STATE} 2>/dev/null; "
+                                        f"p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch; true",
                                         check=False, timeout=20)[0])
+        out, _, outinfo = out.partition("@@OUT")
         bluez, _, pair = out.partition("@@PAIR")
         adapter, devices = {}, []
         for path, ifaces in parse_bluez(bluez).items():
             if "org.bluez.Adapter1" in ifaces:
                 adapter = ifaces["org.bluez.Adapter1"]
             d = ifaces.get("org.bluez.Device1")
-            if d and d.get("Address"):
+            # только сопряжённые и подключённые: найденные поиском рядом bluez тоже помнит, но это не «свои» устройства
+            if d and d.get("Address") and (d.get("Paired") or d.get("Connected")):
                 battery = ifaces.get("org.bluez.Battery1", {}).get("Percentage")
                 devices.append({"mac": d["Address"], "name": d.get("Alias") or d.get("Name") or "", "icon": d.get("Icon", ""),
                                 "paired": bool(d.get("Paired")), "trusted": bool(d.get("Trusted")),
@@ -3799,8 +3848,87 @@ echo @@BLUEZ
             "powered": bool(adapter.get("Powered")), "discoverable": bool(adapter.get("Discoverable")),
             "pairable": bool(adapter.get("Pairable")), "alias": adapter.get("Alias") or adapter.get("Name"),
             "pair_until": pair_until if pair_until and pair_until > time.time() else None,
-            "devices": devices,
+            "devices": devices, "out": self._btout_info(outinfo, devices),
         }
+
+    @staticmethod
+    def _btout_info(text, devices):
+        words = text.split()
+        mac = next((w for w in words if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", w)), None)
+        if not mac:
+            return {"on": False}
+        dev = next((d for d in devices if d["mac"] == mac), {})
+        state = "bt" if "bt" in words else "waiting"
+        return {"on": True, "mac": mac, "name": dev.get("name") or mac, "connected": bool(dev.get("connected")),
+                "state": state, "watch": "watch" in words}
+
+    # ---------- звук через Bluetooth-колонку ----------
+    @staticmethod
+    def _bt_mac(mac):
+        mac = str(mac or "").upper()
+        if not re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac):
+            raise AdbError("плохой адрес устройства")
+        return mac
+
+    def btout_scan(self, seconds=12):
+        """Ищем устройства рядом (колонку надо заранее перевести в режим сопряжения). Колонки и наушники — первыми."""
+        seconds = max(5, min(20, int(seconds)))
+        self.adb.shell(f"bluetoothctl --timeout {seconds} scan on >/dev/null 2>&1; true", check=False, timeout=seconds + 15)
+        found = []
+        for path, ifaces in parse_bluez(strip_ansi(self.adb.shell(BLUEZ_DUMP + "; true", check=False, timeout=20)[0])).items():
+            d = ifaces.get("org.bluez.Device1")
+            if not d or not d.get("Address"):
+                continue
+            cls = d.get("Class") or 0
+            audio = str(d.get("Icon") or "").startswith("audio") or (cls >> 8) & 0x1F == 4
+            found.append({"mac": d["Address"], "name": d.get("Alias") or d.get("Name") or "", "audio": audio,
+                          "paired": bool(d.get("Paired")), "connected": bool(d.get("Connected")), "rssi": d.get("RSSI"),
+                          "icon": d.get("Icon") or ""})
+        found.sort(key=lambda x: (not x["audio"], x["rssi"] is None, -(x["rssi"] or -999)))
+        return {"devices": found}
+
+    def btout_use(self, mac):
+        """Сопрягаем (если ещё нет), доверяем, подключаем — и включаем сторож: он переводит звук на колонку."""
+        mac = self._bt_mac(mac)
+        out, _, _ = self.adb.shell(
+            f"bluetoothctl info {mac} 2>/dev/null | grep -q 'Paired: yes' || bluetoothctl --timeout 25 pair {mac} 2>&1 | tail -2; "
+            f"bluetoothctl trust {mac} >/dev/null 2>&1; bluetoothctl --timeout 15 connect {mac} 2>&1 | tail -1; sleep 2; "
+            f"bluetoothctl info {mac} 2>/dev/null | grep -E 'Connected|UUID: Audio Sink'; true", check=False, timeout=60)
+        out = strip_ansi(out)
+        if "Connected: yes" not in out:
+            raise AdbError("колонка не подключилась: включите на ней режим сопряжения и попробуйте ещё раз")
+        if "Audio Sink" not in out:
+            raise AdbError("это устройство не принимает звук по Bluetooth (нет профиля A2DP)")
+        conf = self._original_bytes("/etc/asound.conf").decode("utf-8", "replace").rstrip("\n") + (
+            f"\n\n{BTOUT_MARK} — звук на Bluetooth-колонку\n"
+            "pcm.!speakers {\n  type softvol\n  min_dB -60.0\n  slave.pcm \"playback_metrics_tap\"\n"
+            "  control {\n    name \"Master Playback Volume\"\n    card 0\n  }\n}\n"
+            f"pcm.!dmix_spk_plug {{\n  type plug\n  slave.pcm \"bluealsa:DEV={mac},PROFILE=a2dp\"\n}}\n")
+        script = BTOUT_WATCH.replace("__DIR__", BTOUT_DIR).replace("__STATE__", BTOUT_STATE).replace("__MARK__", BTOUT_MARK)
+        with tempfile.TemporaryDirectory() as td:
+            write_unix(Path(td) / "conf", conf)
+            write_unix(Path(td) / "sh", script)
+            write_unix(Path(td) / "mac", mac + "\n")
+            self.adb.shell(f"mkdir -p {BTOUT_DIR}")
+            self.adb.push(Path(td) / "conf", BTOUT_CONF)
+            self.adb.push(Path(td) / "sh", BTOUT_SH)
+            self.adb.push(Path(td) / "mac", BTOUT_MAC)
+        self._ensure_hook()
+        # сторож сам включит подмену и перезапустит Алису (секунд через 5)
+        self.adb.shell(f"chmod 755 {BTOUT_SH}; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; sleep 1; "
+                       f"start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}")
+        return self.bt_state()
+
+    def btout_off(self):
+        """Встроенный динамик: убираем выбор — сторож снимет подмену, перезапустит Алису и выйдет."""
+        out, _, _ = self.adb.shell(
+            f"rm -f {BTOUT_MAC}; p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch || "
+            f"{{ grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
+            f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; echo restart; }}; }}; true", check=False, timeout=30)
+        if "restart" in out:   # сторожа нет (например, после сброса) — подмену сняли сами, Алису перезапускаем тоже
+            self.detach("quasar", f"{QUASAR}/q restart >/dev/null 2>&1")
+        self._drop_hook_if_unused()
+        return self.bt_state()
 
     def bt_action(self, data):
         act, mac = data.get("action"), str(data.get("mac") or "")
@@ -4600,6 +4728,9 @@ class Handler(BaseHTTPRequestHandler):
             "/api/yam2/pkg": lambda: p.yam2_pkg(d.get("action"), d["name"], bool(d.get("yes"))),
             "/api/yam2/service": lambda: p.yam2_service(d["id"], d["action"], bool(d.get("stop_legacy"))),
             "/api/bt": lambda: p.bt_action(d),
+            "/api/btout/scan": lambda: p.btout_scan(d.get("seconds", 12)),
+            "/api/btout/use": lambda: p.btout_use(d.get("mac")),
+            "/api/btout/off": p.btout_off,
             "/api/system": lambda: p.system(d["action"]),
             "/api/fs/write": lambda: p.fs_write(d["path"], d["text"]),
             "/api/fs/delete": lambda: p.fs_delete(d["path"]),
