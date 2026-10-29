@@ -206,7 +206,8 @@ class BtOut(unittest.TestCase):
     def panel(self, info):
         p = server.Panel(Mock())
         self.cmds, self.pushed = [], {}
-        p.adb.shell = lambda cmd, *a, **k: (self.cmds.append(cmd), (info if "bluetoothctl info" in cmd else "", "", 0))[1]
+        p.adb.shell = lambda cmd, *a, **k: (self.cmds.append(cmd), (info if "bluetoothctl info" in cmd
+                                                                    else "changed" if "mount --bind" in cmd else "", "", 0))[1]
         p.adb.push = lambda local, remote, **k: self.pushed.__setitem__(remote, Path(local).read_text())
         p._original_bytes = lambda path: b"pcm.!default {\n  type asym\n}\n"
         p._ensure_hook = lambda: None
@@ -231,6 +232,8 @@ class BtOut(unittest.TestCase):
         code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
         self.assertNotIn("bluetoothctl", code)   # сторож проверяет по D-Bus, без утечки
         self.assertTrue(any("start-stop-daemon -S" in c and server.BTOUT_SH in c for c in self.cmds))
+        import subprocess
+        self.assertEqual(subprocess.run(["sh", "-n"], input=sh.encode()).returncode, 0)
         p.adb.shell = lambda cmd, *a, **k: (self.cmds.append(cmd), ("changed" if "umount" in cmd else "", "", 0))[1]
         self.cmds.clear(); p.btout_off()
         self.assertTrue(any("umount /etc/asound.conf" in c for c in self.cmds) and any("q restart" in c for c in self.cmds))
@@ -249,8 +252,6 @@ class BtOut(unittest.TestCase):
         self.assertEqual(calls, ["off"])
         p.bt_action({"action": "disconnect", "mac": "11:22:33:44:55:66"})
         self.assertEqual(calls, ["off"])
-        import subprocess
-        self.assertEqual(subprocess.run(["sh", "-n"], input=sh.encode()).returncode, 0)
 
     def test_refuses_without_connection_or_a2dp(self):
         with self.assertRaisesRegex(server.AdbError, "не подключилась"):
