@@ -1216,6 +1216,10 @@ def adb_usage_error(text, what):
 
 
 def find_adb():
+    # Телефон (APK) или компьютер без adb: протокол adb на чистом Python (pyadb.py), только по сети
+    if os.environ.get("PANEL_PYADB"):
+        import pyadb
+        return pyadb.install()
     exe = "adb.exe" if os.name == "nt" else "adb"
     cands = [os.environ.get("ADB"), shutil.which("adb"), str(ROOT / "platform-tools" / exe),
              str(Path.home() / "Android/Sdk/platform-tools" / exe)]
@@ -4937,7 +4941,7 @@ class PanelUpdater:
     """Проверка новых релизов панели на GitHub и обновление — в зависимости от того, как панель установлена:
     zip (Windows-сборка, Download ZIP) — скачать релиз и заменить файлы панели; git — git pull --ff-only;
     docker — только подсказать команду (образ изнутри не обновить)."""
-    FILES = ("server.py", "access.py", "glagol.py", "profiles.py", "managed_yam.py", "multi.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
+    FILES = ("server.py", "access.py", "glagol.py", "profiles.py", "managed_yam.py", "multi.py", "pyadb.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
              "Dockerfile", "docker-compose.yml")
     DIRS = ("static", "device")
     OBSOLETE = ("3d", "tools", "docs")  # папки прежних версий: модель переехала в static/models, остальное не нужно
