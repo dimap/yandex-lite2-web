@@ -3625,6 +3625,55 @@ bluetoothctl devices Connected 2>/dev/null | sed 's/^Device /bt_conn=/'
         self._bt_pos = (int(m.group(1)) / 1000, now, title) if m else None
         return self._bt_pos
 
+    # ---------- мост YouTube→колонка (quasard-youtube) ----------
+    # Отдельный локальный сервис на этом же компьютере: тянет звук с YouTube и кормит
+    # Станцию HTTP-потоком. Панель спрашивает у него, что сейчас играет, и отдаёт ответ
+    # браузеру со своего origin (страница может быть на HTTPS, мост — на HTTP).
+    BRIDGE_URL = os.environ.get("PANEL_YT_BRIDGE", "http://127.0.0.1:8099")
+    BRIDGE_ACTIONS = ("play", "pause", "resume", "stop", "next", "volume")
+
+    def _bridge(self, path, payload=None, timeout=30):
+        """Запрос к мосту: GET без тела, POST с JSON. Возвращает разобранный ответ."""
+        url = self.BRIDGE_URL.rstrip("/") + path
+        data = None if payload is None else json.dumps(payload).encode()
+        req = urllib.request.Request(
+            url, data=data, method="POST" if data is not None else "GET",
+            headers={"User-Agent": "StationPanel", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read(400000))
+
+    def yt_bridge(self):
+        try:
+            data = self._bridge("/api/status", timeout=3)
+        except Exception as e:      # мост не запущен — это штатная ситуация, не ошибка панели
+            return {"ok": False, "error": str(e)[:200]}
+        if not isinstance(data, dict):
+            return {"ok": False, "error": "мост ответил не объектом JSON"}
+        data.setdefault("ok", True)
+        return data
+
+    def yt_bridge_cmd(self, d):
+        """Команда мосту: поставить ссылку/поисковый запрос на колонку, пауза, дальше."""
+        action = str(d.get("action") or "").strip()
+        if action not in self.BRIDGE_ACTIONS:
+            raise AdbError("мост: неизвестное действие")
+        payload = {}
+        if action == "play":
+            query = str(d.get("query") or "").strip()
+            if not 1 <= len(query) <= 500:
+                raise AdbError("мост: нужна ссылка или запрос (1–500 символов)")
+            payload["query"] = query
+        elif action == "volume":
+            try:
+                payload["level"] = max(0.0, min(1.0, float(d["level"])))
+            except (KeyError, TypeError, ValueError):
+                raise AdbError("мост: нужен level 0…1")
+        try:
+            # поиск на YouTube и предбуфер занимают секунды — не торопим
+            return self._bridge("/api/" + action, payload, timeout=90)
+        except Exception as e:
+            raise AdbError("мост не ответил: " + str(e)[:180])
+
     def music_cmd(self, d):
         cmd = d.get("command")
         if cmd not in MUSIC_COMMANDS:
@@ -4412,6 +4461,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/anim/original": lambda: p.anim_original(q.get("kind", ""), q.get("name", "")),
             "/api/yam/status": p.yam_status,
             "/api/music": p.music,
+            "/api/yt-bridge": p.yt_bridge,
             "/api/music/info": lambda: p.music_info(q.get("id", "")),
             "/api/music/lyrics": lambda: p.music_lyrics(q.get("id", "")) if q.get("id") else
                 p.ymusic.lyrics_by_name(q.get("title", ""), q.get("artist", ""), q.get("album"), float(q.get("duration") or 0)),
@@ -4545,6 +4595,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/display/stop": p.display_stop,
             "/api/ring/reset": p.ring_reset,
             "/api/music/cmd": lambda: p.music_cmd(d),
+            "/api/yt-bridge/cmd": lambda: p.yt_bridge_cmd(d),
             "/api/music/like": lambda: p.music_like(d["id"], bool(d.get("like", True))),
             "/api/music/dislike": lambda: p.music_dislike(d["id"]),
             "/api/music/play": lambda: p.music_play(d["id"], d.get("type", "track")),
