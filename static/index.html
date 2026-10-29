@@ -3670,6 +3670,7 @@ function renderMusic() {
     if (e.firstElementChild) e.firstElementChild.style.display = url ? 'none' : '';
   });
   plTint(has && !isBt ? coverUrl(p.extra?.coverURI, 50) : '');
+  if (!s?.playing !== plPausedShown) { plPausedShown = !s?.playing; plTintApply(plTintHsl); }
 
   const playing = !!s?.playing, rep = p?.entityInfo?.repeatMode || 'None';
   $$('[data-mu="play"]').forEach(b => { b.innerHTML = icon(playing ? 'i-pause' : 'i-play', 24); b.setAttribute('aria-label', playing ? 'Пауза' : 'Играть'); });
@@ -3821,7 +3822,7 @@ mSheet([$('#yam-log')], 'Лог пакета', 'Лог пакета');
 // Маленькую обложку (её сервер разрешает читать) рисуем на холсте 24×24 и ищем самый «живой» цвет: оттенки
 // раскладываем по 12 корзинам, вес пикселя — насыщенность и сила цвета (тёмные цветные тоже идут, чуть легче).
 // Бесцветная (чёрно-белая) обложка — оставляем обычный акцент. Из оттенка — акцент, мягкий фон и цвет текста под тему.
-let plTintFor = null, plTintHsl = null;
+let plTintFor = null, plTintHsl = null, plPausedShown = false;
 function plTint(url) {
   if (url === plTintFor) return;
   plTintFor = url;
@@ -3862,11 +3863,12 @@ function plTint(url) {
 function plTintApply(hsl) {
   plTintHsl = hsl;
   document.body.classList.add('pl-tinted');
-  // кнопки остаются в акценте темы — в цвет обложки только фон и визуализатор; у чёрно-белой обложки фон
-  // плавно возвращается к акценту, а не переключается скачком
+  // кнопки остаются в акценте темы — в цвет обложки только фон и визуализатор; у чёрно-белой обложки — акцент.
+  // На паузе цвет приглушается почти до серого (плавно, как и смена трека) — видно, что музыка стоит
   const dark = getComputedStyle(document.documentElement).colorScheme.includes('dark');
-  document.body.style.setProperty('--pl-tint', hsl ? `hsl(${hsl.h} ${Math.round(hsl.s * 100)}% ${dark ? 60 : 50}%)`
-    : getComputedStyle(document.documentElement).getPropertyValue('--accent').trim());
+  const base = hsl ? `hsl(${hsl.h} ${Math.round(hsl.s * 100)}% ${dark ? 60 : 50}%)`
+    : getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  document.body.style.setProperty('--pl-tint', plPausedShown ? `color-mix(in srgb, ${base} 25%, ${dark ? '#55555f' : '#b4b4bc'})` : base);
 }
 // визуализатор берёт текущий (перетекающий) цвет, а не конечный
 const plTintColor = () => plMobile() && document.body.classList.contains('pl-tinted') ? getComputedStyle(document.body).getPropertyValue('--pl-tint').trim() || null : null;
