@@ -585,6 +585,12 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); } 50% { box-shadow: 0 0 0 14px transparent; } }
   @media (prefers-reduced-motion: reduce) { .conn-ring { animation: none; } }
+  /* перезапуск Алисы: колонка на связи, но Glagol нет — вместо его ошибок по всей панели один экран ожидания */
+  .alice-wait { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 24px;
+                background: color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+  .alice-wait[hidden] { display: none; }
+  .alice-wait .card { align-items: center; text-align: center; max-width: 340px; gap: 12px; padding: 28px 24px; }
+  .alice-wait b { font-size: 18px; }
   .conn-ring.lock { animation: none; border-color: var(--accent-soft); display: grid; place-items: center; }
   .conn-ring.lock svg { width: 28px; height: 28px; color: var(--accent); }
   .login { display: flex; gap: 8px; width: 100%; max-width: 360px; flex-wrap: wrap; justify-content: center; }
@@ -2282,6 +2288,10 @@
 </div>
 <div id="toast" role="status" aria-live="polite"></div>
 <div class="msheet-bg" id="msheet-bg"></div>
+<div class="alice-wait" id="alice-wait" role="status" aria-live="polite" hidden>
+  <div class="card"><div class="conn-ring"></div><b id="alice-wait-title">Алиса перезапускается</b>
+    <span class="meta" id="alice-wait-text">Обычно это около 30 секунд — пока она недоступна, музыка и команды не работают</span></div>
+</div>
 <div id="alarm-bar" role="alert" hidden>
   <svg class="ring-ic" width="22" height="22" aria-hidden="true"><use href="#i-alarm"/></svg>
   <div><b id="ab-title">Будильник звенит</b><div style="font-size:12.5px;opacity:.85" id="ab-sub"></div></div>
@@ -3156,7 +3166,7 @@ $('#boot-reset').onclick = e => confirm(`Вернуть стандартную $
 // Заставке не нужно — она и так показывается при следующей загрузке.
 const animPending = on => $$('[data-anim-pending]').forEach(e => e.hidden = !on);
 $$('[data-anim-restart]').forEach(b => b.onclick = e => confirm('Перезапустить Алису? Она будет недоступна ~30 с.') &&
-  act(e.currentTarget, async () => { await api('/api/system', { action: 'quasar_restart' }); animPending(false); }, 'Алиса перезапускается — после этого покажет новые анимации'));
+  act(e.currentTarget, async () => { await api('/api/system', { action: 'quasar_restart' }); animPending(false); aliceRestarting(); }, 'Алиса перезапускается — после этого покажет новые анимации'));
 
 // ---------- анимации кольца ----------
 // Файл .led — текст; простые (только кадры и loop) правим и визуально, остальные — текстом.
@@ -3345,13 +3355,13 @@ function btOutScan(b) {
 }
 function btOutUse(b, mac) {
   toast('Подключаю колонку — Алиса перезапустится и заговорит из неё; играющая музыка продолжится');
-  act(b, async () => { btData = await api('/api/btout/use', { mac }); renderBt(); }, 'Звук — через Bluetooth-колонку');
+  act(b, async () => { btData = await api('/api/btout/use', { mac }); renderBt(); aliceRestarting('Звук переходит на Bluetooth-колонку — Алиса перезапускается, это около 30 секунд'); }, 'Звук — через Bluetooth-колонку');
 }
 $('#bt-out-btn').onclick = e => {
   const b = e.currentTarget, o = btData?.out || {};
   if (o.on) {
     if (!confirm('Вернуть звук во встроенный динамик? Алиса перезапустится (~30 с), играющая музыка продолжится.')) return;
-    return act(b, async () => { btData = await api('/api/btout/off', {}); renderBt(); }, 'Звук — во встроенный динамик');
+    return act(b, async () => { btData = await api('/api/btout/off', {}); renderBt(); aliceRestarting('Звук возвращается во встроенный динамик — Алиса перезапускается, это около 30 секунд'); }, 'Звук — во встроенный динамик');
   }
   if (o.last) return btOutUse(b, o.last.mac);
   btOutScan(b);
@@ -3373,7 +3383,7 @@ loadBt();
 
 // ---------- система ----------
 $('#q-restart').onclick = e => confirm('Перезапустить Quasar? Алиса будет недоступна ~30 с.') &&
-  act(e.currentTarget, () => api('/api/system', { action: 'quasar_restart' }), 'Quasar перезапускается…');
+  act(e.currentTarget, async () => { await api('/api/system', { action: 'quasar_restart' }); aliceRestarting(); }, 'Quasar перезапускается…');
 $('#reboot').onclick = e => confirm('Перезагрузить колонку?') &&
   act(e.currentTarget, () => api('/api/system', { action: 'reboot' }), 'Перезагрузка…');
 
@@ -3602,6 +3612,30 @@ const muHas = () => { const p = muPlayer(); return !!(p && (p.title || p.subtitl
 // на телефоне мини-плеер есть всегда: кнопки «Плеер» в нижней панели нет, в плеер ведёт он
 const minibarOn = () => store.get('ui.minibar') !== '0' || plMobile();
 const coverUrl = (uri, size) => uri ? (uri.includes('://') ? uri : 'https://' + uri.replace('%%', `${size}x${size}`)) : '';
+// ---- перезапуск Алисы: экран ожидания вместо ошибок Glagol ----
+// Включается при перезапуске из панели и сам, если Алиса (Glagol) пропала при живой колонке. Уходит, когда Glagol
+// снова на связи (не раньше чем через 8 с после начала — до перезапуска он ещё «подключён»), или через 90 с.
+let aliceWait = null, gWas = null;
+function aliceRestarting(text, title) {
+  aliceWait = { at: Date.now(), text, title };
+  aliceWaitRender();
+  loadMusic();
+}
+function aliceWaitActive() {
+  if (!aliceWait) return false;
+  const age = Date.now() - aliceWait.at;
+  if (age > 90000 || (age > 8000 && mu.info?.glagol?.connected)) aliceWait = null;
+  return !!aliceWait;
+}
+function aliceWaitRender() {
+  const on = online && aliceWaitActive();
+  $('#alice-wait').hidden = !on;
+  if (!on) return;
+  $('#alice-wait-title').textContent = aliceWait.title || 'Алиса перезапускается';
+  $('#alice-wait-text').textContent = aliceWait.text || 'Обычно это около 30 секунд — пока она недоступна, музыка и команды не работают';
+}
+setInterval(aliceWaitRender, 1000);
+
 // Мгновенный отклик кнопок плеера. muWant — что мы попросили; пока колонка не подтвердила (до 5 с), опрос
 // состояния его не перетирает. Позицию трека при этом замораживаем или продолжаем с текущей.
 let muWant = null;
@@ -3642,10 +3676,14 @@ function updateMinibar() {
 
 let voiceInput = null;
 async function loadMusic() {
-  const need = !$('#tab-overview').hidden || !$('#tab-player').hidden || (minibarOn() && mu.info?.auth?.logged_in !== false);
+  const need = !$('#tab-overview').hidden || !$('#tab-player').hidden || (minibarOn() && mu.info?.auth?.logged_in !== false) || !!aliceWait;
   if (!online) { voiceInput?.update(false); return; }
   if (document.hidden || !need) return;
   try { mu.info = await api('/api/music'); } catch { voiceInput?.update(false); return; }
+  // Алиса пропала при живой колонке (её перезапустили — например, сторож Bluetooth-колонки) — экран ожидания
+  const gNow = !!mu.info?.glagol?.connected;
+  if (gWas && !gNow && online && mu.info?.auth?.logged_in && !aliceWait) aliceRestarting('Ждём, пока она снова выйдет на связь — обычно это меньше минуты', 'Алиса недоступна');
+  gWas = gNow;
   const s = mu.info?.glagol?.state;
   if (muWant && s) {   // колонка ещё не подтвердила паузу/игру — показываем то, что попросили
     if (Date.now() > muWant.until || !!s.playing === muWant.playing) muWant = null;
@@ -3714,7 +3752,7 @@ function renderMusic() {
   const g = i.glagol, s = g.state, p = s?.playerState, has = muHas();
   const isBt = p?.playerType === 'bluetooth';
   document.body.classList.toggle('mu-bt', isBt);
-  $('#mu-err').hidden = g.connected;
+  $('#mu-err').hidden = g.connected || aliceWaitActive();
   $('#mu-err').textContent = g.connected ? '' : (g.error || 'Подключаемся к колонке…');
   const title = has ? p.title : 'Ничего не играет';
   const artist = has ? (p.subtitle || '') + (isBt && p.extra?.album ? ' — ' + p.extra.album : '') : (g.connected ? 'Нажмите ▶ — включится «Моя волна»' : '');
