@@ -244,6 +244,19 @@ services:
 
 ### Android — приложение на телефоне
 
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/android-overview.png" alt="Обзор в приложении"></td>
+    <td width="33%"><img src="docs/screenshots/android-player.png" alt="Плеер в приложении"></td>
+    <td width="33%"><img src="docs/screenshots/android-console.png" alt="Консоль в приложении"></td>
+  </tr>
+  <tr>
+    <td align="center">Обзор</td>
+    <td align="center">Плеер</td>
+    <td align="center">Консоль с клавишами над клавиатурой</td>
+  </tr>
+</table>
+
 Панель целиком внутри приложения: компьютер не нужен. Скачайте со страницы
 [Releases](https://github.com/dimap/yandex-station-web/releases/latest) файл `yandex-station-web-….apk` и установите
 (телефон попросит разрешить установку из этого источника). Нужен Android 7 или новее на 64-битном процессоре.
