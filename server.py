@@ -3960,9 +3960,14 @@ echo @@BLUEZ
             raise AdbError("в прошивке этой колонки нет модуля snd-aloop — без него голос Алисы и музыка не смогут "
                            "звучать в Bluetooth-колонке одновременно")
         out, _, _ = self.adb.shell(
-            f"bluetoothctl info {mac} 2>/dev/null | grep -q 'Paired: yes' || bluetoothctl --timeout 25 pair {mac} 2>&1 | tail -2; "
+            # Quasar держит адаптер «Pairable: no» — сопряжение тогда без сохранения ключа (без bonding), и после
+            # отключения колонка «забывается». На время сопряжения включаем pairable и возвращаем как было.
+            f"bluetoothctl info {mac} 2>/dev/null | grep -q 'Bonded: yes' || {{ pb=$(bluetoothctl show | grep -c 'Pairable: yes'); "
+            f"bluetoothctl pairable on >/dev/null; bluetoothctl info {mac} 2>/dev/null | grep -q 'Paired: yes' && "
+            f"bluetoothctl remove {mac} >/dev/null 2>&1 && bluetoothctl --timeout 10 scan on >/dev/null 2>&1; "
+            f"bluetoothctl --timeout 25 pair {mac} 2>&1 | tail -2; [ \"$pb\" = 1 ] || bluetoothctl pairable off >/dev/null; }}; "
             f"bluetoothctl trust {mac} >/dev/null 2>&1; bluetoothctl --timeout 15 connect {mac} 2>&1 | tail -1; sleep 2; "
-            f"bluetoothctl info {mac} 2>/dev/null | grep -E 'Connected|UUID: Audio Sink'; true", check=False, timeout=60)
+            f"bluetoothctl info {mac} 2>/dev/null | grep -E 'Connected|Bonded|UUID: Audio Sink'; true", check=False, timeout=90)
         out = strip_ansi(out)
         if "Connected: yes" not in out:
             raise AdbError("колонка не подключилась: включите на ней режим сопряжения и попробуйте ещё раз")
