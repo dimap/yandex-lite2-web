@@ -15,6 +15,7 @@ import io
 import json
 import os
 import platform
+import random
 import re
 import shlex
 import posixpath
@@ -1282,6 +1283,186 @@ def strip_ansi(s):
     return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
+# --- LED-панель Станции 2 (88 диодов) через ШТАТНУЮ утилиту led-play ---
+# led-play сама знает формат пикселя (BGR+белый канал) и раскладку диодов, поэтому сырой записью
+# в /dev/fb0 мы не занимаемся — лишь генерируем .led-кадр/анимацию и отдаём ей. Формат .led: строка =
+# 84 токена RRGGBBWW (диоды 0..83) + длительность кадра (hex, мс). Флаг -r зацикливает → кадр
+# перерисовывается ~30 раз/с и перебивает штатную анимацию прошивки.
+LP = "/usr/bin/led-play"
+LED_DEV = "/dev/fb0"
+LED_SD = "/tmp/webpanel_led.sd"       # pidfile фоновой отрисовки
+LED_FRAME = "/tmp/webpanel.led"       # сгенерированный кадр/анимация на устройстве
+LED_GIF = "/tmp/webpanel.gif"         # загруженный пользователем GIF
+LED_PANEL_DIR = f"{QUASAR}/ledpatterns/panel"
+LED_HOLD_MS = 0x20                    # длительность кадра при удержании (~30 к/с перерисовки)
+_LED_LOCK = threading.Lock()          # операции LED сериализуем: панель многопоточная, иначе гонки
+
+# стоп: гасим только свой led-play по pid-файлу start-stop-daemon — чужие (прошивки, других программ) не трогаем
+LED_STOP_SH = f"start-stop-daemon -K -q -p {LED_SD} 2>/dev/null; rm -f {LED_SD}; true"
+
+# карта диодов из визуализатора YSgen2: idx -> (ряд, колонка) в сетке 15x13 (колонка = гориз. позиция)
+def _led_build_pos():
+    pos = {}
+    def addrow(row, cols, start):
+        for i, c in enumerate(cols):
+            pos[start + i] = (row, c)
+    odd, even = [1,3,5,7,9,11,13], [0,2,4,6,8,10,12,14]
+    addrow(0,odd,0); addrow(1,even,7); addrow(2,odd,15); addrow(3,even,22); addrow(4,odd,30)
+    pos[37]=(5,0); pos[38]=(5,2); pos[39]=(5,12); pos[40]=(5,14)
+    pos[41]=(6,1); pos[42]=(6,13)
+    pos[43]=(7,0); pos[44]=(7,2); pos[45]=(7,12); pos[46]=(7,14)
+    addrow(8,odd,47); addrow(9,even,54); addrow(10,odd,62); addrow(11,even,69); addrow(12,odd,77)
+    return pos
+LED_POS = _led_build_pos()                       # 0..83 -> (row, col)
+LED_COL = {i: LED_POS[i][1] for i in LED_POS}     # 0..83 -> колонка (0..14, гориз.)
+LED_ROW = {i: LED_POS[i][0] for i in LED_POS}     # 0..83 -> ряд (0..12, сверху вниз)
+LED_CR, LED_CC = 6.0, 7.0                         # центр сетки (для радиальных эффектов)
+
+def _led_tok(r, g, b, w=0):
+    return "%02x%02x%02x%02x" % (r & 255, g & 255, b & 255, w & 255)
+
+def _led_line(pixels, ms=LED_HOLD_MS):
+    # кадр led-play = 88 токенов (0..83 основная панель, 84..87 центр логотипа); недостающие — чёрные
+    px = list(pixels)
+    px += [(0, 0, 0, 0)] * (88 - len(px))
+    return " ".join(_led_tok(*p) for p in px[:88]) + " %x\n" % ms
+
+def _led_validate_tokens(tokens):
+    if not isinstance(tokens, list) or not tokens:
+        raise AdbError("нужны tokens (список RRGGBBWW)")
+    out = []
+    for t in tokens[:88]:
+        t = str(t)
+        if not re.match(r"^[0-9A-Fa-f]{8}$", t):
+            raise AdbError("плохой токен (нужно 8 hex-символов RRGGBBWW)")
+        out.append(t.lower())
+    while len(out) < 88:
+        out.append("00000000")
+    return out
+
+def _led_hsv(h):
+    """h in [0,1) -> (r,g,b), насыщенность и яркость = макс."""
+    i = int(h * 6) % 6
+    f = h * 6 - int(h * 6)
+    q, t = int(255 * (1 - f)), int(255 * f)
+    return [(255,t,0),(q,255,0),(0,255,t),(0,q,255),(t,0,255),(255,0,q)][i]
+
+def _led_anim_text(kind, color):
+    col = color or [204, 51, 204]
+    r, g, b = int(col[0]) & 255, int(col[1]) & 255, int(col[2]) & 255
+    lines = []
+    if kind == "rainbow":
+        n = 60
+        for fr in range(n):
+            ph = fr / float(n)
+            lines.append(_led_line([_led_hsv((ph + LED_COL[i] / 15.0) % 1.0) + (0,) for i in range(84)], 0x20))
+    elif kind == "pulse":
+        n = 40
+        for fr in range(n):
+            s = fr / float(n - 1)
+            s = 1 - abs(1 - 2 * s)            # 0..1..0
+            sm = s * s * (3 - 2 * s)          # smoothstep
+            lines.append(_led_line([(int(r*sm), int(g*sm), int(b*sm), 0)] * 84, 0x28))
+    elif kind == "chase":
+        order = sorted(range(84), key=lambda i: (LED_COL[i], LED_ROW[i]))
+        for step in range(len(order)):
+            px = [(0, 0, 0, 0)] * 84
+            px[order[step]] = (r, g, b, 0)
+            lines.append(_led_line(px, 0x24))
+    elif kind == "wave":                         # цветная линия бежит по колонкам (с заворотом)
+        n = 45
+        for fr in range(n):
+            pos = fr / float(n) * 15
+            px = []
+            for i in range(84):
+                d = abs(LED_COL[i] - pos); d = min(d, 15 - d)
+                k = max(0.0, 1 - d / 2.5)
+                px.append((int(r*k), int(g*k), int(b*k), 0))
+            lines.append(_led_line(px, 0x20))
+    elif kind == "ripple":                       # круги от центра логотипа
+        maxd = (LED_CR**2 + LED_CC**2) ** 0.5
+        n = 42
+        for fr in range(n):
+            rad = fr / float(n) * (maxd + 2)
+            px = []
+            for i in range(84):
+                dist = ((LED_ROW[i]-LED_CR)**2 + (LED_COL[i]-LED_CC)**2) ** 0.5
+                k = max(0.0, 1 - abs(dist - rad) / 1.8)
+                px.append((int(r*k), int(g*k), int(b*k), 0))
+            lines.append(_led_line(px, 0x20))
+    elif kind == "comet":                        # точка с затухающим хвостом
+        order = sorted(range(84), key=lambda i: (LED_COL[i], LED_ROW[i]))
+        length, tail = len(order), 7
+        for step in range(length):
+            px = [(0, 0, 0, 0)] * 84
+            for t in range(tail):
+                k = max(0.0, 1 - t / float(tail))
+                idx = order[(step - t) % length]
+                px[idx] = (int(r*k), int(g*k), int(b*k), 0)
+            lines.append(_led_line(px, 0x20))
+    elif kind == "fire":                         # тёплое пламя снизу вверх с мерцанием
+        random.seed(1)
+        n = 50
+        for fr in range(n):
+            px = []
+            for i in range(84):
+                heat = LED_ROW[i] / 12.0                 # 0 сверху .. 1 снизу
+                v = max(0.0, min(1.0, heat * (0.55 + 0.45*random.random()) + 0.08))
+                px.append((int(255*v), int(120*v*v), int(8*v*v*v), 0))
+            lines.append(_led_line(px, 0x2a))
+    elif kind == "stars":                        # случайные мерцания на белом канале
+        random.seed(2)
+        n = 60
+        for fr in range(n):
+            px = [(0, 0, 0, 0)] * 84
+            for _ in range(7):
+                px[random.randint(0, 83)] = (0, 0, 0, random.randint(90, 255))
+            lines.append(_led_line(px, 0x30))
+    elif kind == "matrix":                        # зелёные капли стекают по колонкам
+        random.seed(3)
+        cols = sorted(set(LED_COL.values()))
+        phase = {c: random.random()*13 for c in cols}
+        speed = {c: 0.3 + random.random()*0.6 for c in cols}
+        n = 48
+        for fr in range(n):
+            px = [(0, 0, 0, 0)] * 84
+            for i in range(84):
+                head = (phase[LED_COL[i]] + fr*speed[LED_COL[i]]) % 16
+                d = head - LED_ROW[i]
+                if 0 <= d < 4:
+                    k = 1 - d/4.0
+                    px[i] = (0, int(255*k), int(40*k), 0)
+            lines.append(_led_line(px, 0x24))
+    elif kind == "gradient":                      # перелив двух цветов по колонкам
+        r2, g2, b2 = b, r, g                                  # второй цвет — поворот каналов
+        n = 50
+        for fr in range(n):
+            off = fr / float(n)
+            px = []
+            for i in range(84):
+                t = ((LED_COL[i] / 15.0) + off) % 1.0
+                tb = 1 - abs(1 - 2*t)
+                px.append((int(r+(r2-r)*tb), int(g+(g2-g)*tb), int(b+(b2-b)*tb), 0))
+            lines.append(_led_line(px, 0x24))
+    elif kind == "strobe":                         # красно-синие мигалки по половинам
+        n = 8
+        for fr in range(n):
+            left_on = fr % 2 == 0
+            px = []
+            for i in range(84):
+                left = LED_COL[i] < 7
+                if left and left_on:
+                    px.append((255, 0, 0, 0))
+                elif (not left) and (not left_on):
+                    px.append((0, 0, 255, 0))
+                else:
+                    px.append((0, 0, 0, 0))
+            lines.append(_led_line(px, 0x60))
+    else:
+        raise AdbError("неизвестный эффект")
+    return "".join(lines)
+
+
 class Panel:
     def __init__(self, adb):
         self.adb = adb
@@ -1683,6 +1864,81 @@ echo @@BLUEZ
         self.stop_pattern("ring")
         self.adb.shell(RING_TRIGGER_CMD + "; " + ring_fb_cmd([rgb] * 3))
         return {"ok": True}
+
+    def led(self, d):
+        """LED-панель Станции 2 через штатную led-play. Генерируем .led-кадр/анимацию, кладём на
+        колонку и крутим `led-play -r` в фоне (переживает закрытие вкладки и перебивает прошивку).
+          frame {tokens:[RRGGBBWW×84]} — удерживать нарисованный кадр
+          off                          — удерживать чёрный (гаснет)
+          anim {kind, color:[r,g,b]}   — rainbow/pulse/chase
+          play {name|args:[name]}      — штатный .led из ledpatterns/panel
+          stop / release               — отдать панель Алисе"""
+        cmd = str(d.get("cmd", "")).strip()
+        with _LED_LOCK:
+            if cmd in ("stop", "release"):
+                self.adb.shell(LED_STOP_SH)
+                return {"ok": True, "running": False}
+            if cmd == "play":
+                name = str(d.get("name") or (d.get("args") or [""])[0])
+                if not re.match(r"^[A-Za-z0-9_]+\.led$", name):
+                    raise AdbError("плохое имя анимации")
+                self._led_launch(f"{LED_PANEL_DIR}/{name}")
+                return {"ok": True, "cmd": "play", "name": name, "running": True}
+            if cmd == "off":
+                text = _led_line([(0, 0, 0, 0)] * 88)
+            elif cmd == "frame":
+                text = " ".join(_led_validate_tokens(d.get("tokens"))) + " %x\n" % LED_HOLD_MS
+            elif cmd == "anim":
+                text = _led_anim_text(str(d.get("kind", "")), d.get("color"))
+            else:
+                raise AdbError("недопустимая команда LED")
+            self._led_push(text)
+            self._led_launch(LED_FRAME)
+            return {"ok": True, "cmd": cmd, "running": True}
+
+    def led_gif(self, body):
+        """Проиграть пользовательский GIF на панели штатной led-play -g (зациклено)."""
+        if not body or body[:4] != b"GIF8":
+            raise AdbError("это не GIF")
+        if len(body) > 4 * 1024 * 1024:
+            raise AdbError("слишком большой GIF (>4 МБ)")
+        with _LED_LOCK:
+            with tempfile.NamedTemporaryFile(suffix=".gif", delete=False) as f:
+                f.write(body)
+                local = f.name
+            try:
+                self.adb.push(local, LED_GIF)
+            finally:
+                os.remove(local)
+            self.adb.shell(LED_STOP_SH)
+            self.adb.shell(f"rm -f {LED_SD}; start-stop-daemon -S -b -m -p {LED_SD} "
+                           f"-x {LP} -- -g {shlex.quote(LED_GIF)} -r -d {LED_DEV}")
+        return {"ok": True, "running": True}
+
+    def _led_push(self, text):
+        """Положить .led-текст на колонку в LED_FRAME (мелкое — через printf, крупное — push файла)."""
+        if len(text) < 3000:
+            self.adb.shell(f"printf '%s' {shlex.quote(text)} > {LED_FRAME}")
+        else:
+            with tempfile.NamedTemporaryFile("w", suffix=".led", delete=False) as f:
+                f.write(text)
+                local = f.name
+            try:
+                self.adb.push(local, LED_FRAME)
+            finally:
+                os.remove(local)
+
+    def _led_launch(self, ledfile):
+        """Снять прежнюю отрисовку и зациклить led-play по ledfile в фоне."""
+        self.adb.shell(LED_STOP_SH)
+        self.adb.shell(f"rm -f {LED_SD}; start-stop-daemon -S -b -m -p {LED_SD} "
+                       f"-x {LP} -- -l {shlex.quote(ledfile)} -r -d {LED_DEV}")
+
+    def led_patterns(self):
+        # через find, а не ls: adb shell идёт по pty и ls красит вывод ANSI + колонками
+        out, _, _ = self.adb.shell(f"find {QUASAR}/ledpatterns/panel -maxdepth 1 -type f -name '*.led' 2>/dev/null",
+                                   check=False)
+        return {"patterns": sorted(posixpath.basename(l.strip()) for l in out.split("\n") if l.strip().endswith(".led"))}
 
     def clock(self, data):
         if "v" in data:
@@ -2632,6 +2888,7 @@ echo @@BLUEZ
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; start-stop-daemon -K -p {ASSIST_SD} 2>/dev/null; "
             f"start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
+            f"{LED_STOP_SH}; "   # LED-панель Станции 2: фоновый led-play
             f"grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
             f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; ( {QUASAR}/q restart >/dev/null 2>&1 & ); }}; "
             # службы yam 2 запускала панель — гасим их группы процессов (сами пакеты остаются в yam)
@@ -4711,6 +4968,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/hook": p.hook_status,
             "/api/report": self._report,
             "/api/anim/original": lambda: p.anim_original(q.get("kind", ""), q.get("name", "")),
+            "/api/led/patterns": p.led_patterns,
             "/api/yam/status": p.yam_status,
             "/api/music": p.music,
             "/api/music/info": lambda: p.music_info(q.get("id", "")),
@@ -4793,6 +5051,8 @@ class Handler(BaseHTTPRequestHandler):
             name = unquote(self.headers.get("X-Sound", ""))
             body = self._body()
             return self._handle(lambda: p.sound_replace(name, body))
+        if u.path == "/api/led/gif":
+            return self._handle(lambda: p.led_gif(self._body()))
         if u.path == "/api/boot/sound":
             name = unquote(self.headers.get("X-Filename", "sound"))
             body = self._body()
@@ -4827,6 +5087,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/pattern": lambda: p.play_pattern(d["kind"], d["name"], d.get("seconds", 5)),
             "/api/pattern/stop": lambda: p.stop_pattern(d.get("kind")),
             "/api/ring": lambda: p.ring(d),
+            "/api/led": lambda: p.led(d),
             "/api/clock": lambda: p.clock(d),
             "/api/clock/play": lambda: p.play_clock(d["frames"], d.get("seconds", 10)),
             "/api/anim/install": lambda: p.anim_install(d.get("kind"), d.get("name"), d.get("frames"), d.get("text")),

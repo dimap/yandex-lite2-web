@@ -1152,6 +1152,7 @@
       <!-- «Радио» временно скрыто: проигрыватель своих станций ломал общий микшер звука колонки (см. radio.go) -->
       <a href="#radio" data-tab="radio" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-radio"/></svg>Радио</a>
       <div class="nav-group" role="presentation">Колонка</div>
+      <a href="#led" data-tab="led" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-palette"/></svg>LED-панель</a>
       <a href="#alarm" data-tab="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#scenes" data-tab="scenes"><svg width="20" height="20" aria-hidden="true"><use href="#i-flow"/></svg>Сценарии</a>
       <a href="#assistant" data-tab="assistant"><svg width="20" height="20" aria-hidden="true"><use href="#i-mic"/></svg>Ассистент</a>
@@ -2331,6 +2332,93 @@
       (Ctrl, c — прервать команду). Прокрутка вывода — пальцем по терминалу.</p>
     <p class="hint term-hint-desk">Работает как обычный терминал: Tab — дополнение, ↑ / ↓ — история, Ctrl+C — прервать, Ctrl+D или <code>exit</code> — закрыть.
       Копировать — выделить мышью (или Ctrl+C при выделении), вставить — Ctrl+Shift+V. Программы из пакетов yam доступны по имени.</p>
+  </main>
+
+  <style>
+    #tab-led .led-tools{display:flex;flex-wrap:wrap;gap:14px 20px;align-items:center;margin-bottom:12px}
+    #tab-led .led-tools label{display:flex;align-items:center;gap:8px;font-size:13px}
+    #tab-led .led-tools input[type=color]{width:38px;height:26px;padding:0;border:none;background:none;cursor:pointer}
+    #tab-led .led-presets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+    #tab-led .led-swatch{width:30px;height:30px;border-radius:7px;border:1px solid rgba(128,128,128,.4);cursor:pointer;padding:0}
+    #tab-led .led-stage{background:#0a0a0a;border:1px solid #242424;border-radius:12px;padding:14px;overflow-x:auto;display:flex;justify-content:center}
+    #tab-led .led-grid{display:grid;grid-template-columns:repeat(15,26px);grid-template-rows:repeat(13,26px);gap:3px}
+    #tab-led .led-cell{width:26px;height:26px;border-radius:6px;background:#1c1c24;box-shadow:inset 0 0 0 1px #33333f;cursor:pointer;touch-action:none;transition:background-color .05s}
+    #tab-led .led-cell.empty{visibility:hidden;cursor:default}
+    #tab-led .led-cell.oknix{outline:1px dashed #4a4a4a;outline-offset:-1px}
+    #tab-led .led-actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+    /* телефон: сетка во всю ширину карточки, без горизонтальной прокрутки */
+    @media (max-width: 760px) {
+      #tab-led .led-stage{padding:10px}
+      #tab-led .led-grid{width:100%;grid-template-columns:repeat(15,minmax(0,1fr));grid-template-rows:none;gap:2px}
+      #tab-led .led-cell{width:auto;height:auto;aspect-ratio:1;border-radius:4px}
+    }
+  </style>
+  <main id="tab-led" data-page hidden>
+    <header class="page-head">
+      <div><h1>LED-панель</h1><div class="sub">88 диодов через штатную led-play — рисуй по диодам, запускай эффекты, анимации и свой GIF</div></div>
+      <div class="actions"><span class="badge" id="led-state">led-play</span></div>
+    </header>
+
+    <section class="card">
+      <div class="led-tools">
+        <label>Цвет <input type="color" id="led-color" value="#cc33cc"></label>
+        <label>Яркость <input type="range" id="led-bright" min="1" max="255" value="160"><b id="led-bright-v">160</b></label>
+        <label><input type="checkbox" id="led-erase"> Ластик</label>
+        <label><input type="checkbox" id="led-auto"> Авто-отправка</label>
+      </div>
+      <div class="led-presets" id="led-presets"></div>
+      <div class="led-stage"><div class="led-grid" id="led-grid" aria-label="Раскладка панели"></div></div>
+      <div class="led-actions">
+        <button class="btn" id="led-fill">Залить всё</button>
+        <button class="btn" id="led-clearlocal">Очистить холст</button>
+        <button class="btn primary" id="led-apply">Применить на колонку</button>
+        <button class="btn" id="led-off">Погасить</button>
+        <button class="btn" id="led-release">Вернуть Алисе</button>
+      </div>
+      <p class="hint">Рисуем все 88 диодов: 0–83 — основная панель, 84–87 (пунктир в центре) — логотип. Клик/протяжка —
+        красит выбранным цветом, «Ластик» — гасит. Нарисовал → «Применить»: кадр отдаётся штатной <code>led-play</code>
+        и <b>удерживается</b>, перебивая анимацию Алисы (при разговоре с ней кадр мигает — это нормально).
+        «Погасить» — чёрный экран. «Вернуть Алисе» — отдать панель прошивке.</p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin:0 0 10px">Эффекты</h2>
+      <div class="led-actions">
+        <button class="btn" data-anim="rainbow">Радуга</button>
+        <button class="btn" data-anim="pulse">Пульс</button>
+        <button class="btn" data-anim="chase">Бегущая точка</button>
+        <button class="btn" data-anim="comet">Комета</button>
+        <button class="btn" data-anim="wave">Волна</button>
+        <button class="btn" data-anim="ripple">Рябь</button>
+        <button class="btn" data-anim="fire">Огонь</button>
+        <button class="btn" data-anim="stars">Звёзды</button>
+        <button class="btn" data-anim="matrix">Матрица</button>
+        <button class="btn" data-anim="gradient">Градиент</button>
+        <button class="btn" data-anim="strobe">Мигалки</button>
+        <button class="btn" id="led-stop">■ Стоп</button>
+      </div>
+      <p class="hint">Эффекты генерятся как <code>.led</code> и крутятся на колонке в фоне (переживают закрытие вкладки); «Стоп» гасит.
+        Выбранный выше цвет берут: пульс, бегущая точка, комета, волна, рябь, градиент. Радуга, огонь, звёзды,
+        матрица и мигалки — со своей палитрой.</p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin:0 0 10px">Стандартные анимации прошивки</h2>
+      <div class="led-actions" id="led-patterns-list"><span class="hint">загрузка…</span></div>
+      <p class="hint">Те самые <code>.led</code>-ролики из <code>ledpatterns/panel/</code>, что Алиса крутит сама
+        (idle, candle, lavalamp, boot и др.). Проигрываются удержанием, зациклены; «Стоп» выше — остановить.</p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin:0 0 10px">Свой GIF</h2>
+      <div class="led-actions">
+        <input type="file" id="led-gif-file" accept="image/gif" hidden>
+        <button class="btn primary" id="led-gif-btn">Выбрать GIF…</button>
+        <button class="btn" id="led-gif-stop">■ Стоп</button>
+      </div>
+      <p class="hint">Любая гифка проигрывается прямо на диодах (<code>led-play -g</code>, зациклено, до 4 МБ).
+        Панель всего 84 диода — крупные простые гифки читаются лучше мелких деталей.</p>
+    </section>
   </main>
 </div>
 <div class="minibar" id="minibar" hidden>
@@ -3684,7 +3772,7 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(PanelContext.storageKey(k), v); } catch {} },
 };
 // 'radio' временно убрана из списка вкладок вместе с пунктом меню; код вкладки остаётся
-const TABS = ['overview', 'player', 'alarm', 'scenes', 'assistant', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
+const TABS = ['overview', 'player', 'led', 'alarm', 'scenes', 'assistant', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
 let bootLoaded = false;
 let logsLoaded = false;
 let shownTab = null;
@@ -6604,6 +6692,9 @@ const UPD_HOW = {
 async function loadPanelModel() {
   let p;
   try { p = await api('/api/profile'); } catch { return; }
+  // LED-панель (88 диодов через led-play) есть только у Станции 2 — пункт меню по флагу профиля
+  $('nav.side a[data-tab="led"]').hidden = !p.ledpanel;
+  if (!p.ledpanel && location.hash === '#led') location.hash = '#overview';
   if (p.clock_max) {
     const slider = $('#clock-br');
     slider.max = p.clock_max;
@@ -6883,6 +6974,131 @@ pause.value = String(Math.round(Math.max(0, Math.min(3, Number.isFinite(saved) ?
 const pauseMs = () => Number(pause.value) * 1000;
 pause.addEventListener('change', () => store.set('ui.alice.pause', pause.value));
 voiceInput = bindVoiceInput(document, { store, ready: () => !!(online && mu.info?.auth?.logged_in && mu.info?.glagol?.connected), getGlagol: () => mu.info?.glagol, httpsPort: () => accessInfo?.ports?.https, send: form => sendAlice(form), pauseMs });
+</script>
+<script>
+// ---------- LED-панель (Станция 2, 88 диодов, /dev/fb0 через штатный led-play) ----------
+(function () {
+  const grid = $('#led-grid');
+  if (!grid) return;
+  // карта раскладки из визуализатора YSgen2: "ряд-колонка" -> индекс диода (сетка 15×13)
+  const COLS = 15, ROWS = 13, NLED = 88;  // индексы 0..87 (88-й в кадре не светится)
+  const gridMap = {};
+  const addRow = (row, cols, start) => cols.forEach((c, i) => gridMap[row + '-' + c] = start + i);
+  addRow(0, [1,3,5,7,9,11,13], 0);  addRow(1, [0,2,4,6,8,10,12,14], 7);
+  addRow(2, [1,3,5,7,9,11,13], 15); addRow(3, [0,2,4,6,8,10,12,14], 22);
+  addRow(4, [1,3,5,7,9,11,13], 30);
+  gridMap['5-0']=37; gridMap['5-2']=38; gridMap['5-6']=86; gridMap['5-8']=87; gridMap['5-12']=39; gridMap['5-14']=40;
+  gridMap['6-1']=41; gridMap['6-13']=42;
+  gridMap['7-0']=43; gridMap['7-2']=44; gridMap['7-6']=85; gridMap['7-8']=84; gridMap['7-12']=45; gridMap['7-14']=46;
+  addRow(8, [1,3,5,7,9,11,13], 47); addRow(9, [0,2,4,6,8,10,12,14], 54);
+  addRow(10,[1,3,5,7,9,11,13], 62); addRow(11,[0,2,4,6,8,10,12,14], 69);
+  addRow(12,[1,3,5,7,9,11,13], 77);
+
+  const colors = Array.from({ length: NLED }, () => ({ r: 0, g: 0, b: 0 }));
+  const cellByIdx = {};
+  let painting = false;
+
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const idx = gridMap[r + '-' + c];
+    const cell = document.createElement('div');
+    cell.className = 'led-cell' + (idx === undefined ? ' empty' : '') + (idx >= 84 ? ' oknix' : '');
+    if (idx !== undefined) {
+      cellByIdx[idx] = cell;
+      cell.addEventListener('pointerdown', e => { e.preventDefault(); painting = true; paint(idx); });
+      cell.addEventListener('pointerenter', () => { if (painting) paint(idx); });
+    }
+    grid.appendChild(cell);
+  }
+  window.addEventListener('pointerup', () => { painting = false; });
+
+  const hex2rgb = h => ({ r: parseInt(h.slice(1,3),16), g: parseInt(h.slice(3,5),16), b: parseInt(h.slice(5,7),16) });
+  const curColor = () => $('#led-erase').checked ? { r:0,g:0,b:0 } : hex2rgb($('#led-color').value);
+  const scale = v => Math.round(v * (+$('#led-bright').value) / 255);
+
+  function drawCell(idx) {
+    const c = colors[idx], el = cellByIdx[idx];
+    const R = scale(c.r), G = scale(c.g), B = scale(c.b);
+    if (R || G || B) { el.style.background = `rgb(${R},${G},${B})`; el.style.boxShadow = `0 0 7px rgb(${R},${G},${B})`; }
+    else { el.style.background = '#1c1c24'; el.style.boxShadow = 'inset 0 0 0 1px #33333f'; }
+  }
+  const redraw = () => { for (let i = 0; i < NLED; i++) drawCell(i); };
+  function paint(idx) { colors[idx] = curColor(); drawCell(idx); autoApply(); }
+
+  // кадр для led-play: 88 токенов RRGGBBWW (0..83 панель + 84..87 центр логотипа), W=0; яркость — масштабом
+  function frameTokens() {
+    const out = [];
+    for (let i = 0; i < NLED; i++) {
+      const c = colors[i];
+      out.push([scale(c.r), scale(c.g), scale(c.b), 0].map(x => x.toString(16).padStart(2, '0')).join(''));
+    }
+    return out;
+  }
+  // led-play -r держит кадр и перебивает штатную анимацию прошивки
+  const applyNow = (btn, msg) => act(btn, () => api('/api/led', { cmd: 'frame', tokens: frameTokens() }), msg);
+  let autoT = null;
+  function autoApply() { if ($('#led-auto').checked) { clearTimeout(autoT); autoT = setTimeout(() => applyNow(null, null), 300); } }
+
+  const PRESETS = [['Тёплый','#ff7814'],['Красный','#ff0000'],['Зелёный','#00ff00'],['Синий','#0000ff'],
+                   ['Голубой','#00ffff'],['Малиновый','#ff00ff'],['Жёлтый','#ffc800'],['Белый','#ffffff']];
+  const pr = $('#led-presets');
+  PRESETS.forEach(([name, hex]) => {
+    const b = document.createElement('button');
+    b.className = 'led-swatch'; b.title = name; b.style.background = hex;
+    b.onclick = () => { $('#led-color').value = hex; $('#led-erase').checked = false;
+      const c = hex2rgb(hex); for (let i = 0; i < NLED; i++) colors[i] = c; redraw(); autoApply(); };
+    pr.appendChild(b);
+  });
+
+  $('#led-fill').onclick = () => { const c = curColor(); for (let i = 0; i < NLED; i++) colors[i] = c; redraw(); autoApply(); };
+  $('#led-clearlocal').onclick = () => { for (let i = 0; i < NLED; i++) colors[i] = { r:0,g:0,b:0 }; redraw(); autoApply(); };
+  $('#led-apply').onclick = e => applyNow(e.currentTarget, 'Отправлено на колонку');
+  // «Погасить» = удержание чёрного кадра (led-play -r), перебивает прошивку даже при активной Алисе
+  $('#led-off').onclick = e => { for (let i = 0; i < NLED; i++) colors[i] = { r:0,g:0,b:0 }; redraw();
+    act(e.currentTarget, () => api('/api/led', { cmd: 'off' }), 'Погашено'); };
+  $('#led-release').onclick = e => act(e.currentTarget, () => api('/api/led', { cmd: 'stop' }), 'Панель отдана Алисе');
+  $('#led-bright').oninput = e => { $('#led-bright-v').textContent = e.target.value; redraw(); autoApply(); };
+
+  $$('#tab-led [data-anim]').forEach(b => b.onclick = () => {
+    const c = hex2rgb($('#led-color').value);
+    act(b, () => api('/api/led', { cmd: 'anim', kind: b.dataset.anim, color: [c.r, c.g, c.b] }), 'Запущено: ' + b.textContent.trim());
+  });
+  $('#led-stop').onclick = e => act(e.currentTarget, () => api('/api/led', { cmd: 'stop' }), 'Остановлено');
+
+  // ---- свой GIF (led-play -g) ----
+  $('#led-gif-btn').onclick = () => $('#led-gif-file').click();
+  $('#led-gif-file').onchange = e => {
+    const f = e.target.files[0]; if (!f) return;
+    act($('#led-gif-btn'), async () => {
+      const buf = await f.arrayBuffer();
+      return api('/api/led/gif', buf, { raw: true, headers: { 'Content-Type': 'application/octet-stream' } });
+    }, 'GIF запущен: ' + f.name);
+    e.target.value = '';
+  };
+  $('#led-gif-stop').onclick = e => act(e.currentTarget, () => api('/api/led', { cmd: 'stop' }), 'Остановлено');
+
+  // ---- стандартные .led-анимации прошивки ----
+  let patLoaded = false;
+  function loadPatterns() {
+    if (patLoaded) return;
+    const box = $('#led-patterns-list'); if (!box) return;
+    api('/api/led/patterns').then(r => {
+      patLoaded = true;
+      const list = r.patterns || [];
+      if (!list.length) { box.innerHTML = '<span class="hint">нет файлов</span>'; return; }
+      box.innerHTML = '';
+      list.forEach(name => {
+        const b = document.createElement('button'); b.className = 'btn';
+        b.textContent = name.replace(/\.led$/, '');
+        b.onclick = () => act(b, () => api('/api/led', { cmd: 'play', args: [name] }), 'Играет: ' + b.textContent);
+        box.appendChild(b);
+      });
+    }).catch(() => {});  // оффлайн — подгрузим при следующем показе вкладки
+  }
+  window.addEventListener('hashchange', () => { if (location.hash === '#led') loadPatterns(); });
+  if (location.hash === '#led') loadPatterns();
+
+  redraw();
+})();
 </script>
 <script src="static/vendor/qrcode.js"></script>
 <script src="static/vendor/xterm/xterm.js"></script>

@@ -12,13 +12,14 @@ from pathlib import Path
 # Работа с экраном (заставка, анимации и дисплей часов) — не здесь: у моделей разные экраны, её открывают флаги
 # clock/boot только после проверки.
 TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2", "btout")
+# ledpanel — LED-панель 88 диодов (/dev/fb0 через штатный led-play): есть только у Станции 2, проверено на устройстве.
 
 PROFILES = {
     # Лайт первого поколения (PR #6): дисплея нет, кольцо из трёх RGB-диодов micro:*:ring1–3 через /dev/fb0, как у Лайт 2.
     'lite': dict(name='Станция Лайт', platform='yandexmicro', led_prefix='micro', clock=False, boot=False, alarms=False,
                  light=True, tested=('alarm', 'sounds')),   # автор PR #6 проверил хук, будильник и подмены звуков
     'lite2': dict(name='Станция Лайт 2', platform='plum', clock=True, boot=True, alarms=True, light=True, tested=TRIAL_FEATURES),
-    'station2': dict(name='Станция 2', platform='yandexmidi', clock=False, boot=False, alarms=False, light=True),
+    'station2': dict(name='Станция 2', platform='yandexmidi', clock=False, boot=False, alarms=False, light=True, ledpanel=True),
     'mini3pro': dict(name='Станция Мини 3 Про', platform='pickle', clock=True, boot=False, alarms=False, light=True),
     # Common ADB features and a distinct 3D model; LED layout has not been verified on hardware.
     'mini3': dict(name='Станция Мини 3', platform='bergamot', clock=False, boot=False, alarms=False, light=False, experimental=True),
@@ -136,6 +137,7 @@ def mini3pro_ring_script(rgb=None, leds='/sys/class/leds', state='/tmp/webpanel_
 def install(s, model='lite2', auto=False):
     profile = dict(PROFILES[model], id=model, auto=auto)
     profile['tested'] = list(profile.get('tested', ()))   # подтверждено людьми — без предупреждения
+    profile['ledpanel'] = bool(profile.get('ledpanel'))
     profile['light_note'] = ('Подсветка этой модели ещё не проверена.' if not profile['light'] else
                              'Анимация Алисы может заменить выбранный цвет.')
     s.GLAGOL_PLATFORM = profile['platform']
@@ -153,6 +155,10 @@ def install(s, model='lite2', auto=False):
             if not self._guard('/api/profile'):
                 self._send(200, profile)
             return
+        if not profile['ledpanel'] and self.path.split('?')[0].startswith('/api/led/'):
+            if not self._guard(self.path.split('?')[0]):
+                self._send(400, {'error': 'LED-панель есть только у Станции 2 (профиль ' + model + ')'})
+            return
         original_get(self)
 
     def do_post(self):
@@ -164,6 +170,10 @@ def install(s, model='lite2', auto=False):
         if disabled:
             if not self._guard(path):
                 self._send(400, {'error': 'Эта операция загрузки/восстановления не поддерживается профилем ' + model})
+            return
+        if not profile['ledpanel'] and (path == '/api/led' or path.startswith('/api/led/')):
+            if not self._guard(path):
+                self._send(400, {'error': 'LED-панель есть только у Станции 2 (профиль ' + model + ')'})
             return
         original_post(self)
 
