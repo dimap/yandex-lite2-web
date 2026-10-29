@@ -311,6 +311,9 @@ quasar() { /system/vendor/quasar/q restart >/dev/null 2>&1; }
 loop() { grep -q snd_aloop /proc/modules || insmod $(find /lib/modules -name snd-aloop.ko | head -n 1) pcm_substreams=1; }
 fwd() {
   p=$(cat $F 2>/dev/null) && kill -0 "$p" 2>/dev/null && return
+  # громкость колонки — силами bluealsa: многие колонки не слушают её по AVRCP; после переподключения сбрасывается
+  dbus-send --system --print-reply --dest=org.bluealsa /org/bluealsa/hci0/dev_$(echo "$M" | tr : _)/a2dpsrc/sink \
+    org.freedesktop.DBus.Properties.Set string:org.bluealsa.PCM1 string:SoftVolume variant:boolean:true >/dev/null 2>&1
   start-stop-daemon -S -b -m -p $F -x /bin/sh -- -c "arecord -q -D hw:Loopback,1,0 -f S16_LE -c 2 -r 48000 -t raw \
     --buffer-time=100000 | aplay -q -D bluealsa:DEV=$M,PROFILE=a2dp -f S16_LE -c 2 -r 48000 -t raw --buffer-time=200000"
 }
@@ -3894,7 +3897,12 @@ echo @@BLUEZ
         m = re.search(r"Simple mixer control '([^']*A2DP)',0", strip_ansi(out))
         if not m:
             raise AdbError("Bluetooth-колонка не подключена")
-        self.adb.shell(f"amixer -D bluealsa sset {shlex.quote(m.group(1))} {level}% >/dev/null", check=False)
+        mac = strip_ansi(self.adb.shell(f"cat {BTOUT_MAC} 2>/dev/null; true", check=False)[0]).strip()
+        soft = (f"dbus-send --system --print-reply --dest=org.bluealsa /org/bluealsa/hci0/dev_{mac.replace(':', '_')}/a2dpsrc/sink "
+                f"org.freedesktop.DBus.Properties.Set string:org.bluealsa.PCM1 string:SoftVolume variant:boolean:true >/dev/null 2>&1; "
+                if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac) else "")
+        # многие колонки не слушают громкость по AVRCP — тогда приглушает сам bluealsa (SoftVolume)
+        self.adb.shell(f"{soft}amixer -D bluealsa sset {shlex.quote(m.group(1))} {level}% >/dev/null", check=False)
         return {"volume": level}
 
     def _btout_last(self, devices):

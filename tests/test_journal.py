@@ -359,6 +359,7 @@ class BtOutVolume(unittest.TestCase):
         self.assertEqual(server.Panel._btout_vol(txt), {"volume": 75, "volume_ctl": "Колонка A2DP"})
         self.assertEqual(server.Panel._btout_vol(""), {})
         p = server.Panel(Mock()); cmds = []
-        p.adb.shell = lambda cmd, *a, **k: (cmds.append(cmd), ("Simple mixer control 'Колонка A2DP',0\n", "", 0))[1]
+        p.adb.shell = lambda cmd, *a, **k: (cmds.append(cmd), ("00:11:22:AA:BB:CC\n" if cmd.startswith("cat") else "Simple mixer control 'Колонка A2DP',0\n", "", 0))[1]
         self.assertEqual(p.btout_volume(130), {"volume": 100})
         self.assertIn("sset 'Колонка A2DP' 100%", cmds[-1])
+        self.assertIn("SoftVolume variant:boolean:true", cmds[-1])
