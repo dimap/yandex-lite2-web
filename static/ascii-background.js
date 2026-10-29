@@ -25,7 +25,11 @@ export function startAsciiBackground(canvas, {playing = () => false, spectrum = 
     if (disabled()) return;
     const t = reduced.matches ? 0 : now / 1000, active = playing(), sample = spectrum();
     const live = sample?.bands?.length === 4 && now - sample.t < 700;
-    bands.forEach((_, i) => { bands[i] += ((live ? sample.bands[i] : 0) - bands[i]) * .3; });
+    // Настоящий спектр есть только первые секунды трека (эквалайзер Quasar на часах). Без него, пока играет музыка, —
+    // честная имитация: удары ~120 в минуту, полосы со сдвигом и своей «частотой»; на паузе узор просто переливается.
+    const beat = Math.exp(-((t * 2) % 1) * 5);
+    const fake = i => active && !reduced.matches ? .25 + .55 * beat * (.6 + .4 * Math.sin(t * (1.3 + i * .7) + i * 2)) : 0;
+    bands.forEach((_, i) => { bands[i] += ((live ? sample.bands[i] : fake(i)) - bands[i]) * .3; });
     const fs = 13, col = fs * .62, row = fs * 1.1;
     const cx = width / 2, cy = height / 2, radius = Math.min(width, height) * .63 * size;
     ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = colorOf() || color;
