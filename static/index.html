@@ -3,6 +3,7 @@
 <head>
 <script src="static/panel-context.js"></script>
 <script defer src="static/speaker-selector.js"></script>
+<script defer src="static/yt-player.js"></script>
 <link rel="stylesheet" href="static/speaker-selector.css">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -614,6 +615,29 @@
   .cbtn { position: relative; }
   .cbtn .one { position: absolute; right: 4px; bottom: 3px; font-size: 10px; font-weight: 800; line-height: 1; }
 
+  /* мини-плеер YouTube */
+  .yt-box { position: relative; aspect-ratio: 16 / 9; min-height: 200px; border-radius: 14px; overflow: hidden; background: var(--display); }
+  .yt-frame, .yt-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+  .yt-ov { position: absolute; inset: 0; padding: 18px; display: flex; flex-direction: column; align-items: center;
+           justify-content: center; gap: 6px; text-align: center; color: var(--display-text); }
+  .yt-ov[hidden] { display: none; }
+  .yt-ov b { font-size: 14px; font-weight: 700; }
+  .yt-ov p { margin: 0; font-size: 12.5px; line-height: 1.5; max-width: 36ch; opacity: .72; }
+  .yt-ov svg { opacity: .45; }
+  .yt-ov.bad p { opacity: .85; }
+  .yt-ov.bad svg { color: #FF8A80; opacity: 1; }
+  .yt-np { min-width: 0; }
+  .yt-np b { display: block; font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .yt-np span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .yt-row { display: flex; align-items: center; gap: 8px; }
+  .yt-row .cbtn { flex: none; }
+  .yt-form { display: flex; gap: 8px; align-items: stretch; }
+  .yt-form .field { flex: 1; min-width: 0; min-height: 42px; }
+  .yt-logo { color: #FF0033; }
+  .yt-hint { margin: 0; }
+  #yt-card:fullscreen { padding: 20px; gap: 14px; border-radius: 0; overflow: auto; }
+  #yt-card:fullscreen .yt-box { flex: 1; min-height: 0; aspect-ratio: auto; }
+
   /* анимации подсветки */
   .pat-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; max-height: 280px; overflow: auto;
               border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px; }
@@ -821,6 +845,7 @@
     <symbol id="i-alarm" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M5 3 2 6M19 3l3 3"/></g></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></g></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+ <symbol id="i-yt" viewBox="0 0 24 24"><path fill="currentColor" d="M21.6 7.2a2.6 2.6 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4A2.6 2.6 0 0 0 2.4 7.2 27 27 0 0 0 2 12a27 27 0 0 0 .4 4.8 2.6 2.6 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.6 2.6 0 0 0 1.8-1.8A27 27 0 0 0 22 12a27 27 0 0 0-.4-4.8zM10 15.2V8.8L15.6 12z"/></symbol>
   </defs>
 </svg>
 
@@ -1052,6 +1077,35 @@
       </div>
 
       <div class="col wzone" id="wz-right">
+        <!-- youtube -->
+        <section class="card" id="yt-card" data-widget="yt" data-title="Сейчас играет на YouTube">
+          <div class="card-head"><h2><svg class="yt-logo" width="18" height="18" aria-hidden="true"><use href="#i-yt"/></svg>Сейчас играет на YouTube</h2>
+            <div class="row" style="gap:6px"><span class="badge" id="yt-badge" hidden></span>
+              <a class="btn sm ghost" id="yt-open" href="https://www.youtube.com/" target="_blank" rel="noopener" hidden title="Открыть на YouTube"><svg width="14" height="14" aria-hidden="true"><use href="#i-link"/></svg>Открыть</a></div></div>
+          <div class="yt-box" id="yt-box">
+            <div class="yt-frame" id="yt-frame"></div>
+            <div class="yt-ov" id="yt-ov">
+              <svg width="34" height="34" aria-hidden="true"><use href="#i-yt"/></svg>
+              <b id="yt-ov-title">Мини-плеер YouTube</b>
+              <p id="yt-ov-text">Вставьте ссылку на видео — оно будет играть здесь, с паузой и перемоткой.</p>
+            </div>
+          </div>
+          <div class="yt-np"><b id="yt-title">Ничего не играет</b><span class="hint" id="yt-sub">Плеер работает в этом браузере</span></div>
+          <div class="progress"><span id="yt-pos">0:00</span><input type="range" id="yt-seek" min="0" max="0" value="0" step="1" disabled aria-label="Позиция в видео"><span id="yt-dur">0:00</span></div>
+          <div class="yt-row">
+            <button class="cbtn big" id="yt-play" type="button" aria-label="Играть"><svg width="22" height="22" aria-hidden="true"><use href="#i-play"/></svg></button>
+            <button class="cbtn" id="yt-mute" type="button" aria-label="Выключить звук" aria-pressed="false" title="Выключить звук"><svg width="20" height="20" aria-hidden="true"><use href="#i-vol"/></svg></button>
+            <input type="range" id="yt-vol" min="0" max="100" value="80" style="flex:1;min-width:80px;max-width:160px" aria-label="Громкость плеера YouTube">
+            <button class="cbtn" id="yt-fs" type="button" aria-label="Во весь экран" title="Во весь экран" aria-pressed="false"><svg width="20" height="20" aria-hidden="true"><use href="#i-expand"/></svg></button>
+          </div>
+          <form class="yt-form" id="yt-form">
+            <input class="field" id="yt-url" placeholder="Ссылка на видео YouTube" aria-label="Ссылка на видео YouTube" autocomplete="off" spellcheck="false" inputmode="url">
+            <button class="btn sm primary" type="submit">Включить</button>
+          </form>
+          <div class="chips" id="yt-recent" hidden></div>
+          <p class="hint yt-hint">Звук идёт из динамика того устройства, где открыта панель, — не с колонки. Видео с запретом встраивания покажет ошибку и ссылку «Открыть».</p>
+        </section>
+
         <!-- музыка -->
         <section class="card" id="music-card" data-widget="music" data-title="Сейчас играет">
           <div class="card-head"><h2>Сейчас играет</h2>
@@ -4143,7 +4197,7 @@ function readLayout() {
 const DEFAULT_LAYOUT = { zones: {
   'wz-top': ['stats'],
   'wz-left': ['model', 'alice', 'say', 'bt', 'sounds'],
-  'wz-right': ['music', 'volume', 'clock', 'light', 'device'],
+  'wz-right': ['yt', 'music', 'volume', 'clock', 'light', 'device'],
 }, hidden: [] };
 const homeZone = id => ZONES.find(z => DEFAULT_LAYOUT.zones[z].includes(id)) || 'wz-right';
 function applyLayout(l) {
@@ -4156,6 +4210,9 @@ function applyLayout(l) {
   // Place the newly introduced Alice card beneath the model in existing saved layouts.
   if (!Object.values(l.zones || {}).flat().includes('alice') && !(l.hidden || []).includes('alice'))
     $('[data-widget="model"]').after($('[data-widget="alice"]'));
+  // Новая карточка YouTube — над «Сейчас играет», если её не было в сохранённой раскладке.
+  if (!Object.values(l.zones || {}).flat().includes('yt') && !(l.hidden || []).includes('yt'))
+    $('[data-widget="music"]').before($('[data-widget="yt"]'));
 }
 function saveLayout() {
   store.set(LAYOUT_KEY, JSON.stringify(readLayout()));
