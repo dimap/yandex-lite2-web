@@ -1044,6 +1044,11 @@
                         background: #1C1C24; color: #E6E6EB; font: 500 14px var(--mono); user-select: none; touch-action: manipulation; }
     .term-keys button:active { background: #2E2E38; }
     .term-keys button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+    /* клавиатура открыта: терминал — на всё место над ней, полоса клавиш — прямо над клавиатурой */
+    body.term-kb #tab-console .term-card { position: fixed; z-index: 80; left: 0; right: 0; top: var(--vv-top, 0px); height: var(--vv-h, 100dvh);
+                              margin: 0; border-radius: 0; display: flex; flex-direction: column; padding-top: var(--sa-top); }
+    body.term-kb .term { flex: 1; height: auto; min-height: 0; }
+    body.term-kb .mbar, body.term-kb #minibar { visibility: hidden; }
   }
   .term .xterm-viewport { scrollbar-color: #3A3A46 transparent; scrollbar-width: thin; }
   .term .xterm-viewport::-webkit-scrollbar { width: 8px; }
@@ -3641,6 +3646,29 @@ $('#term-keys').addEventListener('click', async e => {
   else if (d === '\r') termConnect();
   term.focus();
 });
+// Экранная клавиатура на телефоне: видимая область (visualViewport) заметно ниже обычной — значит, открыта.
+// Тогда терминал занимает её целиком, и полоса клавиш оказывается прямо над клавиатурой.
+(() => {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  let base = 0, orient = screen.orientation?.type;
+  const upd = () => {
+    if (screen.orientation?.type !== orient) { orient = screen.orientation?.type; base = 0; }
+    base = Math.max(base, vv.height);
+    const kb = plMobile() && shownTab === 'console' && base - vv.height > 150;
+    const st = document.documentElement.style;
+    st.setProperty('--vv-h', vv.height + 'px');
+    st.setProperty('--vv-top', vv.offsetTop + 'px');
+    if (kb !== document.body.classList.contains('term-kb')) {
+      document.body.classList.toggle('term-kb', kb);
+      if (kb) requestAnimationFrame(() => { try { termFit?.fit(); term?.scrollToBottom(); } catch {} });
+    }
+  };
+  vv.addEventListener('resize', upd);
+  vv.addEventListener('scroll', upd);
+  window.addEventListener('hashchange', () => setTimeout(upd));
+  setTimeout(upd);   // высота без клавиатуры — сразу (после всего скрипта: shownTab объявлен ниже)
+})();
 // «Вставить» — только где браузер даёт читать буфер (HTTPS, localhost — в том числе приложение)
 $('#term-paste').hidden = !(navigator.clipboard?.readText && isSecureContext);
 $('#term-new').onclick = () => {
