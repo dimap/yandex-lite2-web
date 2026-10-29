@@ -252,3 +252,6 @@ class BtOut(unittest.TestCase):
         o = server.Panel._btout_info(f"\n{self.MAC}\nbt\nwatch\n", devs)
         self.assertEqual((o["on"], o["name"], o["state"], o["watch"]), (True, "Fiero", "bt", True))
         self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n\n", devs)["state"], "waiting")
+        # колонки нет в списке сопряжённых — имя запомненное или общее, но не MAC-адрес
+        self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n", [], "Fiero")["name"], "Fiero")
+        self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n", [])["name"], "Bluetooth-колонка")

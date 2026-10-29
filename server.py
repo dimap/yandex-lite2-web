@@ -287,6 +287,7 @@ BTOUT_DIR = f"{WEB_DIR}/btout"
 BTOUT_MAC = f"{BTOUT_DIR}/device"      # MAC выбранной колонки: есть файл — звук через неё
 BTOUT_CONF = f"{BTOUT_DIR}/asound.conf"
 BTOUT_LAST = f"{BTOUT_DIR}/last"        # последняя колонка — чтобы вернуться на неё одной кнопкой
+BTOUT_NAME = f"{BTOUT_DIR}/name"        # её имя на момент подключения: без него в строке был бы MAC-адрес
 BTOUT_SH = f"{BTOUT_DIR}/watch.sh"
 BTOUT_SD = "/tmp/webpanel_btout.sd"
 BTOUT_STATE = "/tmp/webpanel_btout.state"   # bt — играет через неё; waiting — ждём её, звук на встроенном
@@ -3828,11 +3829,13 @@ echo @@BLUEZ
     def bt_state(self):
         out = strip_ansi(self.adb.shell(f"{BLUEZ_DUMP}; echo @@PAIR; cat {self.BT_PAIR_FLAG} 2>/dev/null; "
                                         f"echo @@OUT; cat {BTOUT_MAC} 2>/dev/null; echo; cat {BTOUT_STATE} 2>/dev/null; "
-                                        f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; "
+                                        f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; echo @@NAME; cat {BTOUT_NAME} 2>/dev/null; "
                                         f"p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch; true",
                                         check=False, timeout=20)[0])
         out, _, outinfo = out.partition("@@OUT")
         outinfo, _, last = outinfo.partition("@@LAST")
+        last, _, saved = last.partition("@@NAME")
+        self._btout_saved_name = saved.strip()[:60]
         bluez, _, pair = out.partition("@@PAIR")
         self._btout_last_mac = next((w for w in last.split() if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", w)), None)
         adapter, devices = {}, []
@@ -3852,7 +3855,7 @@ echo @@BLUEZ
             "powered": bool(adapter.get("Powered")), "discoverable": bool(adapter.get("Discoverable")),
             "pairable": bool(adapter.get("Pairable")), "alias": adapter.get("Alias") or adapter.get("Name"),
             "pair_until": pair_until if pair_until and pair_until > time.time() else None,
-            "devices": devices, "out": {**self._btout_info(outinfo, devices), **self._btout_last(devices)},
+            "devices": devices, "out": {**self._btout_info(outinfo, devices, self._btout_saved_name), **self._btout_last(devices)},
         }
 
     def _btout_last(self, devices):
@@ -3860,7 +3863,7 @@ echo @@BLUEZ
         if not mac:
             return {}
         dev = next((d for d in devices if d["mac"] == mac), {})
-        return {"last": {"mac": mac, "name": dev.get("name") or mac}} if dev else {}
+        return {"last": {"mac": mac, "name": dev.get("name") or getattr(self, "_btout_saved_name", "") or "Bluetooth-колонка"}} if dev else {}
 
     def _btout_switch(self, mount):
         """Переключаем выход сразу (а не ждём сторожа) и перезапускаем Алису; играла музыка — после перезапуска
@@ -3888,14 +3891,15 @@ echo @@BLUEZ
             time.sleep(2)
 
     @staticmethod
-    def _btout_info(text, devices):
+    def _btout_info(text, devices, saved=""):
         words = text.split()
         mac = next((w for w in words if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", w)), None)
         if not mac:
             return {"on": False}
         dev = next((d for d in devices if d["mac"] == mac), {})
         state = "bt" if "bt" in words else "waiting"
-        return {"on": True, "mac": mac, "name": dev.get("name") or mac, "connected": bool(dev.get("connected")),
+        # имя — из списка устройств или запомненное при подключении; MAC-адрес людям не показываем
+        return {"on": True, "mac": mac, "name": dev.get("name") or saved or "Bluetooth-колонка", "connected": bool(dev.get("connected")),
                 "state": state, "watch": "watch" in words}
 
     # ---------- звук через Bluetooth-колонку ----------
@@ -3935,6 +3939,9 @@ echo @@BLUEZ
             raise AdbError("колонка не подключилась: включите на ней режим сопряжения и попробуйте ещё раз")
         if "Audio Sink" not in out:
             raise AdbError("это устройство не принимает звук по Bluetooth (нет профиля A2DP)")
+        name = next((i["org.bluez.Device1"].get("Alias") or i["org.bluez.Device1"].get("Name") or ""
+                     for i in parse_bluez(strip_ansi(self.adb.shell(BLUEZ_DUMP + "; true", check=False, timeout=20)[0])).values()
+                     if i.get("org.bluez.Device1", {}).get("Address") == mac), "")
         conf = self._original_bytes("/etc/asound.conf").decode("utf-8", "replace").rstrip("\n") + (
             f"\n\n{BTOUT_MARK} — звук на Bluetooth-колонку\n"
             "pcm.!speakers {\n  type softvol\n  min_dB -60.0\n  slave.pcm \"playback_metrics_tap\"\n"
@@ -3945,11 +3952,13 @@ echo @@BLUEZ
             write_unix(Path(td) / "conf", conf)
             write_unix(Path(td) / "sh", script)
             write_unix(Path(td) / "mac", mac + "\n")
+            write_unix(Path(td) / "name", re.sub(r"[\r\n]+", " ", name)[:60] + "\n")
             self.adb.shell(f"mkdir -p {BTOUT_DIR}")
             self.adb.push(Path(td) / "conf", BTOUT_CONF)
             self.adb.push(Path(td) / "sh", BTOUT_SH)
             self.adb.push(Path(td) / "mac", BTOUT_MAC)
             self.adb.push(Path(td) / "mac", BTOUT_LAST)
+            self.adb.push(Path(td) / "name", BTOUT_NAME)
         self._ensure_hook()
         self.adb.shell(f"chmod 755 {BTOUT_SH}; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; true", check=False)
         self._btout_switch(mount=True)
