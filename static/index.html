@@ -1030,6 +1030,21 @@
   .term { height: calc(100vh - 230px); min-height: 320px; padding: 12px 6px 6px 14px; }
   body.has-minibar .term { height: calc(100vh - 320px); }
   .term .xterm-viewport { background: transparent !important; }
+  /* телефон: полоса клавиш, которых нет на экранной клавиатуре (как в Termux) */
+  .term-keys, .term-hint-phone { display: none; }
+  @media (max-width: 760px) {
+    .term-hint-desk { display: none; }
+    .term-hint-phone { display: block; }
+    .term { height: calc(100dvh - var(--mbar-h) - 270px); min-height: 220px; padding: 10px 4px 4px 10px; }
+    body.has-minibar .term { height: calc(100dvh - var(--mbar-h) - 340px); }
+    .term-keys { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px; border-top: 1px solid #26262E;
+                 overscroll-behavior-x: contain; }
+    .term-keys::-webkit-scrollbar { display: none; }
+    .term-keys button { flex: none; min-width: 44px; height: 40px; padding: 0 10px; border: 1px solid #2E2E38; border-radius: 10px;
+                        background: #1C1C24; color: #E6E6EB; font: 500 14px var(--mono); user-select: none; touch-action: manipulation; }
+    .term-keys button:active { background: #2E2E38; }
+    .term-keys button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+  }
   .term .xterm-viewport { scrollbar-color: #3A3A46 transparent; scrollbar-width: thin; }
   .term .xterm-viewport::-webkit-scrollbar { width: 8px; }
   .term .xterm-viewport::-webkit-scrollbar-thumb { background: #3A3A46; border-radius: 4px; }
@@ -2291,8 +2306,24 @@
       <div><h1>Консоль</h1><div class="sub">Интерактивная оболочка на колонке, от root</div></div>
       <div class="actions"><span class="badge" id="term-state">—</span><button class="btn sm" id="term-new">Новый сеанс</button></div>
     </header>
-    <section class="card term-card"><div class="term" id="term"></div></section>
-    <p class="hint">Работает как обычный терминал: Tab — дополнение, ↑ / ↓ — история, Ctrl+C — прервать, Ctrl+D или <code>exit</code> — закрыть.
+    <section class="card term-card"><div class="term" id="term"></div>
+      <div class="term-keys" id="term-keys" aria-label="Дополнительные клавиши">
+        <button type="button" data-k="esc">Esc</button><button type="button" data-k="tab">Tab</button>
+        <button type="button" data-mod="ctrl" aria-pressed="false">Ctrl</button><button type="button" data-mod="alt" aria-pressed="false">Alt</button>
+        <button type="button" data-k="left" aria-label="Влево">←</button><button type="button" data-k="up" aria-label="Вверх">↑</button>
+        <button type="button" data-k="down" aria-label="Вниз">↓</button><button type="button" data-k="right" aria-label="Вправо">→</button>
+        <button type="button" data-k="^C" title="Прервать">^C</button><button type="button" data-k="^D" title="Конец ввода">^D</button>
+        <button type="button" data-k="^Z">^Z</button><button type="button" data-k="^L" title="Очистить экран">^L</button>
+        <button type="button" data-k="home">Home</button><button type="button" data-k="end">End</button>
+        <button type="button" data-k="pgup">PgUp</button><button type="button" data-k="pgdn">PgDn</button>
+        <button type="button" data-t="|">|</button><button type="button" data-t="~">~</button><button type="button" data-t="/">/</button>
+        <button type="button" data-t="-">-</button><button type="button" data-t="&amp;">&amp;</button><button type="button" data-t="&gt;">&gt;</button>
+        <button type="button" data-t="$">$</button><button type="button" data-t="*">*</button>
+        <button type="button" data-k="paste" id="term-paste">Вставить</button>
+      </div></section>
+    <p class="hint term-hint-phone">Клавиши снизу — то, чего нет на клавиатуре телефона. Ctrl и Alt залипают: нажмите Ctrl, затем букву
+      (Ctrl, c — прервать команду). Прокрутка вывода — пальцем по терминалу.</p>
+    <p class="hint term-hint-desk">Работает как обычный терминал: Tab — дополнение, ↑ / ↓ — история, Ctrl+C — прервать, Ctrl+D или <code>exit</code> — закрыть.
       Копировать — выделить мышью (или Ctrl+C при выделении), вставить — Ctrl+Shift+V. Программы из пакетов yam доступны по имени.</p>
   </main>
 </div>
@@ -3544,6 +3575,7 @@ function termInit() {
     return true;
   });
   term.onData(d => {
+    d = termMods(d);
     if (termWs?.readyState === 1) termWs.send(JSON.stringify({ t: 'i', d }));
     else if (d === '\r') termConnect();          // сеанс закрыт — Enter открывает новый
   });
@@ -3567,6 +3599,50 @@ function termConnect() {
     term.write('\r\n\x1b[90m[сеанс закрыт — Enter, чтобы открыть новый]\x1b[0m\r\n');
   };
 }
+// Полоса клавиш на телефоне. Кнопки не забирают фокус (pointerdown → preventDefault): клавиатура не прячется.
+const termMod = { ctrl: false, alt: false };
+function termModSet(m, on) {
+  termMod[m] = on;
+  $(`#term-keys [data-mod="${m}"]`).setAttribute('aria-pressed', on);
+}
+// залипшие Ctrl/Alt применяем к следующему вводу с клавиатуры телефона и снимаем
+function termMods(d) {
+  if (!termMod.ctrl && !termMod.alt) return d;
+  if (termMod.ctrl && d.length === 1) {
+    const c = d.toLowerCase().charCodeAt(0);
+    if (c >= 97 && c <= 122) d = String.fromCharCode(c - 96);          // Ctrl+буква
+    else if ('@[\\]^_'.includes(d)) d = String.fromCharCode(d.charCodeAt(0) & 31);
+    else if (d === ' ') d = '\x00';
+  }
+  if (termMod.alt) d = '\x1b' + d;
+  termModSet('ctrl', false); termModSet('alt', false);
+  return d;
+}
+function termKey(k) {
+  const app = term?.modes?.applicationCursorKeysMode, csi = app ? '\x1bO' : '\x1b[';
+  return { esc: '\x1b', tab: '\t', up: csi + 'A', down: csi + 'B', right: csi + 'C', left: csi + 'D',
+           home: '\x1b[H', end: '\x1b[F', pgup: '\x1b[5~', pgdn: '\x1b[6~',
+           '^C': '\x03', '^D': '\x04', '^Z': '\x1a', '^L': '\x0c' }[k];
+}
+$('#term-keys').addEventListener('pointerdown', e => { if (e.target.closest('button')) e.preventDefault(); });
+$('#term-keys').addEventListener('click', async e => {
+  const b = e.target.closest('button');
+  if (!b || !term) return;
+  if (b.dataset.mod) { termModSet(b.dataset.mod, !termMod[b.dataset.mod]); return term.focus(); }
+  let d;
+  if (b.dataset.k === 'paste') {
+    try { d = await navigator.clipboard.readText(); } catch { return toast('Буфер обмена недоступен — вставьте долгим нажатием', true); }
+  } else d = b.dataset.t ?? termKey(b.dataset.k);
+  if (!d) return;
+  // стрелки и Tab с залипшим Alt — тоже через ESC-префикс; Ctrl к ним не применяем
+  if (b.dataset.t || b.dataset.k === 'paste') d = termMods(d);
+  else if (termMod.alt) { d = '\x1b' + d; termModSet('alt', false); termModSet('ctrl', false); }
+  if (termWs?.readyState === 1) termWs.send(JSON.stringify({ t: 'i', d }));
+  else if (d === '\r') termConnect();
+  term.focus();
+});
+// «Вставить» — только где браузер даёт читать буфер (HTTPS, localhost — в том числе приложение)
+$('#term-paste').hidden = !(navigator.clipboard?.readText && isSecureContext);
 $('#term-new').onclick = () => {
   if (termWs) { const old = termWs; termWs = null; old.close(); }
   termInit() && term.reset();
