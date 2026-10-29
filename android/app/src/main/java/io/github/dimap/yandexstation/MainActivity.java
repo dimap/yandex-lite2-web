@@ -48,6 +48,7 @@ public class MainActivity extends Activity {
     static final int PICK_FILE = 1;
 
     private WebView web;
+    private android.widget.FrameLayout root;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private ValueCallback<Uri[]> pending;
     private boolean panelShown;
@@ -61,7 +62,10 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         web = new WebView(this);
         web.setBackgroundColor(getColor(R.color.bg));
-        setContentView(web);
+        // WebView — в контейнере: свой отступ WebView не учитывает, а контейнер, сжатый над клавиатурой, сжимает и её
+        root = new android.widget.FrameLayout(this);
+        root.addView(web, new android.widget.FrameLayout.LayoutParams(-1, -1));
+        setContentView(root);
         edgeToEdge();
 
         WebSettings s = web.getSettings();
@@ -169,7 +173,7 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 30) w.setDecorFitsSystemWindows(false);
         barsAppearance();
         float d = getResources().getDisplayMetrics().density;
-        web.setOnApplyWindowInsetsListener((v, in) -> {
+        root.setOnApplyWindowInsetsListener((v, in) -> {
             int top, bottom, ime;
             if (Build.VERSION.SDK_INT >= 30) {
                 Insets bars = in.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
@@ -182,11 +186,13 @@ public class MainActivity extends Activity {
                 ime = bottom > 120 * d ? bottom : 0;
             }
             // клавиатура открыта — сжимаем WebView над ней, нижний отступ странице уже не нужен
+            if (ime != v.getPaddingBottom()) android.util.Log.d(PanelService.TAG, "клавиатура: " + ime + " px");
             v.setPadding(0, 0, 0, ime);
             insetTop = top / d;
             insetBottom = ime > 0 ? 0 : bottom / d;
             pushInsets();
-            return in;
+            // отступы страница берёт от нас — WebView их больше не нужны
+            return Build.VERSION.SDK_INT >= 30 ? WindowInsets.CONSUMED : in.consumeSystemWindowInsets();
         });
     }
 
