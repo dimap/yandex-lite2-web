@@ -201,7 +201,7 @@ class Bluez(unittest.TestCase):
 
 class BtOut(unittest.TestCase):
     """Звук через Bluetooth-колонку: подмена конца цепочки ALSA + регулятор громкости с явной картой."""
-    MAC = "C2:43:82:76:70:6D"
+    MAC = "00:11:22:AA:BB:CC"
 
     def panel(self, info):
         p = server.Panel(Mock())
@@ -247,11 +247,11 @@ class BtOut(unittest.TestCase):
             self.panel("").btout_use("C2:43;reboot")
 
     def test_info(self):
-        devs = [{"mac": self.MAC, "name": "Fiero", "connected": True}]
+        devs = [{"mac": self.MAC, "name": "BT Speaker", "connected": True}]
         self.assertEqual(server.Panel._btout_info("", devs), {"on": False})
         o = server.Panel._btout_info(f"\n{self.MAC}\nbt\nwatch\n", devs)
-        self.assertEqual((o["on"], o["name"], o["state"], o["watch"]), (True, "Fiero", "bt", True))
+        self.assertEqual((o["on"], o["name"], o["state"], o["watch"]), (True, "BT Speaker", "bt", True))
         self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n\n", devs)["state"], "waiting")
         # колонки нет в списке сопряжённых — имя запомненное или общее, но не MAC-адрес
-        self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n", [], "Fiero")["name"], "Fiero")
+        self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n", [], "BT Speaker")["name"], "BT Speaker")
         self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n", [])["name"], "Bluetooth-колонка")
