@@ -321,7 +321,7 @@ func icyTitle(stream, proxy string) string {
 		return ""
 	}
 	req.Header.Set("Icy-MetaData", "1")
-	req.Header.Set("User-Agent", "yandex-station-web/"+version)
+	req.Header.Set("User-Agent", "yapanel-web/"+version)
 	hc, err := client(proxy, 10*time.Second)
 	if err != nil {
 		return ""

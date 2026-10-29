@@ -45,7 +45,7 @@ jobs:
           **Windows:** скачайте `…-windows-x64.zip` (или `arm64` для ARM-ноутбуков), распакуйте и запустите `start.bat`.
           Python уже внутри; adb (и по желанию ffmpeg) `start.bat` скачает сам при первом запуске.
 
-          **Android:** `yandex-station-web-….apk` — панель целиком в приложении (Android 7+, 64 бита), колонка — по Wi-Fi.
+          **Android:** `yapanel-web-….apk` — панель целиком в приложении (Android 7+, 64 бита), колонка — по Wi-Fi.
 
           **Linux / macOS / Docker:** см. README.
           NOTES

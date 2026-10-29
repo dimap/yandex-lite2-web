@@ -118,7 +118,7 @@ try:
     VERSION = (Path(__file__).resolve().parent / "VERSION").read_text().strip()
 except OSError:
     VERSION = "0.0.0"
-REPO = "dimap/yandex-station-web"
+REPO = "dimap/yapanel-web"
 LED_PREFIX = "plum"
 # Каталог сегментов часов, если он не {LEDS}/{LED_PREFIX}:white:clock: у Мини 2 сегменты называются иначе,
 # и профиль раскладывает их по именам Лайт 2 ссылками в /tmp (см. profiles.py).
@@ -2327,7 +2327,7 @@ echo @@BLUEZ
     def _assist_download(self, dest):
         base = f"https://github.com/{REPO}/releases/download/v{VERSION}/"
         get = lambda name, limit: urllib.request.urlopen(urllib.request.Request(
-            base + name, headers={"User-Agent": f"yandex-station-web/{VERSION}"}), timeout=60).read(limit)
+            base + name, headers={"User-Agent": f"yapanel-web/{VERSION}"}), timeout=60).read(limit)
         sums = get("SHA256SUMS", 64 * 1024).decode("utf-8", "replace")
         want = next((ln.split()[0] for ln in sums.splitlines() if ln.split()[-1:] == [self.ASSIST_ASSET]), None)
         if not want:
@@ -2631,7 +2631,7 @@ echo @@BLUEZ
         opener = urllib.request.build_opener(*handlers)
         result = {"at": int(time.time()), "host": host, "ip": ip, "proxy": bool(proxy)}
         try:
-            r = opener.open(urllib.request.Request(url, headers={"User-Agent": f"yandex-station-web/{VERSION}"}), timeout=5)
+            r = opener.open(urllib.request.Request(url, headers={"User-Agent": f"yapanel-web/{VERSION}"}), timeout=5)
         except urllib.error.HTTPError as e:
             result.update(state="down", detail=f"сервер ответил {e.code}")
         except (OSError, ValueError) as e:
@@ -2697,7 +2697,7 @@ echo @@BLUEZ
         if re.fullmatch(r"[A-Za-z]{2}", country or ""):
             params["countrycode"] = country.upper()
         req = urllib.request.Request(self.RADIO_SEARCH + "?" + urlencode(params),
-                                     headers={"User-Agent": f"yandex-station-web/{VERSION}"})
+                                     headers={"User-Agent": f"yapanel-web/{VERSION}"})
         try:
             with urllib.request.urlopen(req, timeout=15) as r:
                 items = json.load(r)
@@ -2771,7 +2771,7 @@ echo @@BLUEZ
         query = self.RADIO_LOGO_QUERY.get(key, name)
         params = {"name": query, "limit": "20", "hidebroken": "true", "order": "clickcount", "reverse": "true"}
         req = urllib.request.Request(self.RADIO_SEARCH + "?" + urlencode(params),
-                                     headers={"User-Agent": f"yandex-station-web/{VERSION}"})
+                                     headers={"User-Agent": f"yapanel-web/{VERSION}"})
         try:
             with urllib.request.urlopen(req, timeout=10) as r:
                 items = json.load(r)
@@ -2817,7 +2817,7 @@ echo @@BLUEZ
             return None
         opener = urllib.request.build_opener(self._PublicRedirects)
         try:
-            with opener.open(urllib.request.Request(url, headers={"User-Agent": f"yandex-station-web/{VERSION}"}),
+            with opener.open(urllib.request.Request(url, headers={"User-Agent": f"yapanel-web/{VERSION}"}),
                              timeout=8) as r:
                 data = r.read(300 * 1024 + 1)
         except (OSError, ValueError):
@@ -5206,7 +5206,7 @@ class PanelUpdater:
         if refresh or rel is None or time.time() - at > 6 * 3600:
             try:
                 req = urllib.request.Request(f"https://api.github.com/repos/{REPO}/releases/latest",
-                                             headers={"User-Agent": f"yandex-station-web/{VERSION}",
+                                             headers={"User-Agent": f"yapanel-web/{VERSION}",
                                                       "Accept": "application/vnd.github+json"})
                 with urllib.request.urlopen(req, timeout=15) as r:
                     rel = json.load(r)

@@ -429,7 +429,7 @@ class YandexMusic:
         """LRCLIB (lrclib.net) — открытая база текстов, часто с привязкой ко времени. Без ключей."""
         def get(path, **q):
             url = "https://lrclib.net/api" + path + "?" + urllib.parse.urlencode(q)
-            req = urllib.request.Request(url, headers={"User-Agent": "yandex-station-web (local panel)"})
+            req = urllib.request.Request(url, headers={"User-Agent": "yapanel-web (local panel)"})
             try:
                 with urllib.request.urlopen(req, timeout=12) as r:
                     return json.load(r)

@@ -123,7 +123,7 @@ export const CONCEPTS={
     mesh(roundedBox(W,12,Dp,10,3),fabric,0,5,Dp/2-1.5,lid);mesh(roundedBox(W-6,1,Dp-6,8,.4),ink,0,-1.2,Dp/2-1.5,lid);
     for(const s of[-1,1]){const c=mesh(new T.SphereGeometry(8,32,16),cup,s*13,-1.3,Dp/2-1.5,lid);c.scale.set(1.25,.3,.75);}
     mesh(roundedBox(26,6,1,1,.3),metal,0,H/2-4,-Dp/2-.2);                                     // hinge
-    decal(canvasTexture(256,(c,n)=>{c.fillStyle='#c4c4c8';c.beginPath();c.arc(n/2,n/2,n/2-4,0,7);c.fill();c.fillStyle='#f4f4f4';c.font='700 150px system-ui,sans-serif';c.textAlign='center';c.textBaseline='middle';c.fillText('Я',n/2,n/2+8);}),9,9,0,H/2-15,-Dp/2-.05,0,Math.PI);
+    decal(canvasTexture(256,(c,n)=>{c.fillStyle='#c4c4c8';c.beginPath();c.arc(n/2,n/2,n/2-4,0,7);c.fill();}),9,9,0,H/2-15,-Dp/2-.05,0,Math.PI);
     decal(canvasTexture(512,(c,n)=>{c.strokeStyle='#cfcfd2';c.lineWidth=5;c.beginPath();c.arc(150,n/2,44,0,7);c.stroke();c.fillStyle='#d8d8dc';c.beginPath();c.roundRect(240,n/2-26,150,52,26);c.fill();c.fillStyle='#16161a';c.beginPath();c.roundRect(252,n/2-16,126,32,16);c.fill();}),Dp-4,Dp-4,0,-H/2-.05,0,Math.PI/2,0);   // button and USB-C
     const led=mesh(new T.CircleGeometry(1.2,16),ledMaterial(),0,6,Dp/2+.05);led.renderOrder=2;
     for(const[x,z,turn]of[[-22,34,.35],[24,30,Math.PI-.45]]){const bud=new T.Group();bud.position.set(x,-H/2+7,z);bud.rotation.y=turn;kit.group.add(bud);

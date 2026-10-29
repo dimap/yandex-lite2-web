@@ -11,5 +11,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "yandex-station-web"
+rootProject.name = "yapanel-web"
 include(":app")

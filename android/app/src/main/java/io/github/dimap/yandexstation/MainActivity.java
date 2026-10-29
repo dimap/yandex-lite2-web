@@ -73,7 +73,7 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setSupportMultipleWindows(false);   // target="_blank" — в shouldOverrideUrlLoading, внешние ссылки — в браузер
-        s.setUserAgentString(s.getUserAgentString() + " YandexStationPanel/" + BuildConfigVersion.name(this));
+        s.setUserAgentString(s.getUserAgentString() + " yapanel/" + BuildConfigVersion.name(this));
         CookieManager.getInstance().setAcceptCookie(true);
         web.addJavascriptInterface(new Bridge(), "AndroidPanel");
 
@@ -227,7 +227,7 @@ public class MainActivity extends Activity {
         web.loadDataWithBaseURL(null, "<!doctype html><meta name=viewport content='width=device-width'>"
                 + "<style>body{margin:0;height:100vh;display:grid;place-items:center;background:#0F1115;color:#9aa0aa;"
                 + "font:15px system-ui}i{display:block;width:28px;height:28px;margin:0 auto 14px;border:3px solid #333;"
-                + "border-top-color:#8B5CF6;border-radius:50%;animation:r 1s linear infinite}@keyframes r{to{transform:rotate(1turn)}}</style>"
+                + "border-top-color:#E8590C;border-radius:50%;animation:r 1s linear infinite}@keyframes r{to{transform:rotate(1turn)}}</style>"
                 + "<div><i></i>" + getString(R.string.starting) + "</div>", "text/html", "utf-8", null);
     }
 

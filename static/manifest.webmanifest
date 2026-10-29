@@ -1,14 +1,14 @@
 {
-  "name": "Станция Лайт 2",
-  "short_name": "Станция",
-  "description": "Панель управления Яндекс Станцией Лайт 2",
+  "name": "yapanel",
+  "short_name": "yapanel",
+  "description": "Неофициальная локальная панель для колонок с Алисой",
   "lang": "ru",
   "id": "./",
   "start_url": "./#overview",
   "scope": "./",
   "display": "standalone",
   "background_color": "#F6F6F8",
-  "theme_color": "#6C47FF",
+  "theme_color": "#E8590C",
   "icons": [
     {
       "src": "./static/icons/icon-192.png",

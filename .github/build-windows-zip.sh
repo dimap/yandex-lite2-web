@@ -8,7 +8,7 @@ ARCH="${2:-amd64}"
 OUT="${3:-dist}"
 PYVER="3.14.8"   # 3.14+: в стандартной библиотеке есть zstd (анимации часов, заставка)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-NAME="yandex-station-web-${VER}-windows-$( [ "$ARCH" = amd64 ] && echo x64 || echo arm64 )"
+NAME="yapanel-web-${VER}-windows-$( [ "$ARCH" = amd64 ] && echo x64 || echo arm64 )"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 

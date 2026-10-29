@@ -1,3 +1,3 @@
-module github.com/dimap/yandex-station-web/device/assistant
+module github.com/dimap/yapanel-web/device/assistant
 
 go 1.22

@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="static/speaker-selector.css">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Станция Лайт 2</title>
+<title>yapanel</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="static/vendor/xterm/xterm.css">
 <link rel="icon" type="image/png" href="static/icons/favicon-64.png">
@@ -61,7 +61,7 @@
   :root {
     --bg: #F6F6F8; --card: #FFFFFF; --field: #F6F6F8; --line: #E6E6EB; --line-2: #EEEEF2; --btn-line: #DCDCE3;
     --text: #16161D; --text-2: #3A3A46; --muted: #5F5F6E;
-    --accent: #6C47FF; --accent-ink: #4320D9; --accent-soft: #ECE7FF; --on-accent: #FFFFFF;
+    --accent: #E8590C; --accent-ink: #B5450A; --accent-soft: #FDE9DC; --on-accent: #FFFFFF;
     --danger: #B42318; --danger-soft: #FDECEC; --danger-line: #F1C9C9; --ok: #1A8F4C; --ok-ink: #1A7A43; --ok-soft: #E3F5EA;
     --display: #16161D; --display-text: #F2F2F5; --shadow: 0 1px 2px rgba(16,16,29,.06);
     --mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
@@ -71,7 +71,7 @@
     :root:not([data-theme="light"]) {
       --bg: #111116; --card: #1A1A21; --field: #22222A; --line: #2A2A33; --line-2: #24242C; --btn-line: #34343F;
       --text: #EDEDF2; --text-2: #CFCFD8; --muted: #9C9CAB;
-      --accent: #8B6CFF; --accent-ink: #C2B3FF; --accent-soft: #2A2342; --on-accent: #FFFFFF;
+      --accent: #F47A2E; --accent-ink: #FFB98F; --accent-soft: #3A2619; --on-accent: #FFFFFF;
       --danger: #FF8A80; --danger-soft: #3A1F1F; --danger-line: #5A2A2A; --ok: #4CCF86; --ok-ink: #6FDCA0; --ok-soft: #1C3326;
       --display: #0B0B0F; --display-text: #F2F2F5; --shadow: none;
       color-scheme: dark;
@@ -80,7 +80,7 @@
   :root[data-theme="dark"] {
       --bg: #111116; --card: #1A1A21; --field: #22222A; --line: #2A2A33; --line-2: #24242C; --btn-line: #34343F;
       --text: #EDEDF2; --text-2: #CFCFD8; --muted: #9C9CAB;
-      --accent: #8B6CFF; --accent-ink: #C2B3FF; --accent-soft: #2A2342; --on-accent: #FFFFFF;
+      --accent: #F47A2E; --accent-ink: #FFB98F; --accent-soft: #3A2619; --on-accent: #FFFFFF;
       --danger: #FF8A80; --danger-soft: #3A1F1F; --danger-line: #5A2A2A; --ok: #4CCF86; --ok-ink: #6FDCA0; --ok-soft: #1C3326;
       --display: #0B0B0F; --display-text: #F2F2F5; --shadow: none;
       color-scheme: dark;
@@ -1142,8 +1142,8 @@
 <div class="shell">
   <aside>
     <a class="brand" href="#overview" title="На «Обзор»">
-      <svg class="brand-logo" viewBox="-50 -50 100 100" aria-hidden="true"><path fill-rule="evenodd" d="M0-46a46 46 0 1 1 0 92a46 46 0 1 1 0-92ZM0-25c3.5 0 5.6 2 7.6 5.5l13 22.5c2 3.5 2 6.4.3 9.3c-1.8 3-4.4 4.2-8.4 4.2h-25c-4 0-6.6-1.2-8.4-4.2c-1.7-2.9-1.7-5.8.3-9.3l13-22.5C-5.6-23-3.5-25 0-25Z"/></svg>
-      <div><b id="model-name">Станция Лайт 2</b><small>Панель управления</small></div>
+      <svg class="brand-logo" viewBox="-50 -50 100 100" aria-hidden="true"><rect x="-34" y="12" width="10" height="20" rx="5"/><rect x="-19" y="-6" width="10" height="38" rx="5"/><rect x="-5" y="-26" width="10" height="58" rx="5"/><rect x="9" y="-6" width="10" height="38" rx="5"/><rect x="24" y="12" width="10" height="20" rx="5"/></svg>
+      <div><b id="model-name">Станция Лайт 2</b><small>yapanel</small></div>
     </a>
     <nav class="side" id="nav-sheet" aria-label="Разделы">
       <div class="sheet-head" role="presentation"><span></span></div>
@@ -1318,17 +1318,16 @@
           <h2>Подсветка</h2>
           <div class="ring-row">
             <div class="ring-preview" id="ring-preview">
-              <svg viewBox="-50 -50 100 100" aria-hidden="true"><path fill-rule="evenodd" d="M0-46a46 46 0 1 1 0 92a46 46 0 1 1 0-92ZM0-25c3.5 0 5.6 2 7.6 5.5l13 22.5c2 3.5 2 6.4.3 9.3c-1.8 3-4.4 4.2-8.4 4.2h-25c-4 0-6.6-1.2-8.4-4.2c-1.7-2.9-1.7-5.8.3-9.3l13-22.5C-5.6-23-3.5-25 0-25Z"/></svg>
+              <svg viewBox="-50 -50 100 100" aria-hidden="true"><path fill-rule="evenodd" d="M0-46a46 46 0 1 1 0 92a46 46 0 1 1 0-92ZM0-30a30 30 0 1 0 0 60a30 30 0 1 0 0-60Z"/></svg>
             </div>
             <div class="col" style="gap:10px">
               <div class="swatches" id="swatches">
-                <button class="sw" style="--c:#6C47FF" data-hex="#6C47FF" aria-label="Фиолетовый"></button>
                 <button class="sw" style="--c:#FF0000" data-hex="#FF0000" aria-label="Красный"></button>
                 <button class="sw" style="--c:#FF5A00" data-hex="#FF5A00" aria-label="Оранжевый"></button>
                 <button class="sw" style="--c:#00FF00" data-hex="#00FF00" aria-label="Зелёный"></button>
                 <button class="sw" style="--c:#0000FF" data-hex="#0000FF" aria-label="Синий"></button>
                 <button class="sw white" style="--c:#FFFFFF" data-hex="#FFFFFF" aria-label="Белый"></button>
-                <label class="sw-custom" title="Свой цвет"><svg width="14" height="14" aria-hidden="true"><use href="#i-plus"/></svg><input type="color" id="ring-color" value="#6c47ff" aria-label="Свой цвет"></label>
+                <label class="sw-custom" title="Свой цвет"><svg width="14" height="14" aria-hidden="true"><use href="#i-plus"/></svg><input type="color" id="ring-color" value="#ff5a00" aria-label="Свой цвет"></label>
               </div>
               <div class="row"><button class="btn sm primary" id="ring-set">Включить</button><button class="btn sm" id="ring-off">Выключить</button><button class="btn sm" id="ring-reset" title="Отдать кольцо Алисе: погасить цвет и остановить анимации панели">Сбросить</button></div>
             </div>
@@ -1477,11 +1476,10 @@
           <div class="set-ctl"><div class="seg" id="set-glow" role="group" aria-label="Подсветка блоков"><button data-v="off">Нет</button><button data-v="hover">При наведении</button><button data-v="cursor">За указателем</button></div></div></div>
         <div class="set-item"><div class="set-label"><b>Цвет акцента</b><small>Кнопки, ссылки, графики и подсветка выбранного</small></div>
           <div class="set-ctl"><div class="swatches" id="set-accent" role="group" aria-label="Цвет акцента">
-            <button class="sw" style="--c:#6C47FF" data-v="" aria-label="Фиолетовый (по умолчанию)"></button>
+            <button class="sw" style="--c:#E8590C" data-v="" aria-label="Оранжевый (по умолчанию)"></button>
             <button class="sw" style="--c:#2F6BFF" data-v="#2F6BFF" aria-label="Синий"></button>
             <button class="sw" style="--c:#0F9D8F" data-v="#0F9D8F" aria-label="Бирюзовый"></button>
             <button class="sw" style="--c:#2E9E4F" data-v="#2E9E4F" aria-label="Зелёный"></button>
-            <button class="sw" style="--c:#F06A1D" data-v="#F06A1D" aria-label="Оранжевый"></button>
             <button class="sw" style="--c:#E0457B" data-v="#E0457B" aria-label="Розовый"></button>
             <button class="sw" style="--c:#52525B" data-v="#52525B" aria-label="Графит"></button>
           </div></div></div>
@@ -1540,14 +1538,14 @@
           <div class="set-ctl"><button class="btn sm" data-finder="set-find-slot">Другая колонка…</button></div></div>
         <div id="set-find-slot"></div>
         <div class="set-item"><div class="set-label"><b>Версия <span id="upd-version">—</span></b><small id="upd-state">проверяем…</small></div>
-          <div class="set-ctl"><button class="btn sm" id="upd-check">Проверить</button><a class="btn sm" id="upd-repo" href="https://github.com/dimap/yandex-station-web" target="_blank" rel="noopener">GitHub ↗</a></div></div>
+          <div class="set-ctl"><button class="btn sm" id="upd-check">Проверить</button><a class="btn sm" id="upd-repo" href="https://github.com/dimap/yapanel-web" target="_blank" rel="noopener">GitHub ↗</a></div></div>
         <div class="set-item" id="upd-row" hidden><div class="set-label"><b>Доступна версия <span id="upd-latest">—</span></b><small id="upd-how">—</small></div>
           <div class="set-ctl"><a class="btn sm" id="upd-notes" target="_blank" rel="noopener">Что нового ↗</a><button class="btn sm primary" id="upd-go">Обновить</button></div></div>
         <pre class="set-cmd" id="upd-cmd" hidden></pre>
         <div class="set-item"><div class="set-label"><b>Что-то не работает?</b><small>Отчёт для Issue: версии панели, adb и прошивки, хук,
           своё на колонке и журнал панели (вкладка «Логи» → «журнал панели»). Токены, ключи, адреса и MAC в нём скрыты — но перед отправкой
           всё равно просмотрите.</small></div>
-          <div class="set-ctl"><button class="btn sm" data-report="set-report">Скопировать отчёт</button><a class="btn sm" href="https://github.com/dimap/yandex-station-web/issues/new" target="_blank" rel="noopener">Новое Issue ↗</a></div></div>
+          <div class="set-ctl"><button class="btn sm" data-report="set-report">Скопировать отчёт</button><a class="btn sm" href="https://github.com/dimap/yapanel-web/issues/new" target="_blank" rel="noopener">Новое Issue ↗</a></div></div>
         <textarea class="field mono report-text" id="set-report" readonly hidden aria-label="Отчёт для Issue"></textarea>
       </section>
 
@@ -2036,7 +2034,7 @@
           <strong>На <span id="as-exp-model">этой модели</span> ассистент не тестировался и может работать не так, как надо</strong>
           <p>Он проверен только на Станции Лайт 2: читает журнал Алисы и отменяет её ответ через отладочный CLI, а здесь это
             может быть устроено иначе. При загрузке колонки ассистент запускается через хук в <code>rootkeeper.sh</code> — если после перезагрузки он не запустился сам, включите его здесь.
-            Заработало или нет — напишите, пожалуйста, в <a href="https://github.com/dimap/yandex-station-web/issues" target="_blank" rel="noopener">Issues</a>
+            Заработало или нет — напишите, пожалуйста, в <a href="https://github.com/dimap/yapanel-web/issues" target="_blank" rel="noopener">Issues</a>
             с моделью и версией прошивки.</p>
         </div>
       </div>
@@ -2949,7 +2947,7 @@ $('#pat-stop').onclick = e => act(e.currentTarget, async () => {
 
 // ---------- кольцо ----------
 const hex2rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
-let ringHex = '#6C47FF';
+let ringHex = '#FF5A00';
 function pickColor(hex) {
   ringHex = hex.toUpperCase();
   $('#ring-preview').style.setProperty('--ring', ringHex);
@@ -3648,7 +3646,7 @@ function termInit() {
   term = new Terminal({
     fontFamily: "'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace", fontSize: 13, lineHeight: 1.2,
     cursorBlink: true, scrollback: 5000, allowProposedApi: false,
-    theme: { background: '#111116', foreground: '#E6E6EB', cursor: '#A78BFA', selectionBackground: '#6C47FF66',
+    theme: { background: '#111116', foreground: '#E6E6EB', cursor: '#FF9A5C', selectionBackground: '#E8590C66',
              black: '#16161D', brightBlack: '#5F5F6E' },
   });
   termFit = new FitAddon.FitAddon();
@@ -4577,7 +4575,7 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
 (() => {
   const cv = $('#model-viz'), ctx = cv.getContext('2d');
   const RAMP = ' .·:-=+*%#@', FS = 13;
-  let cw = 0, ch = 0, energy = 0, last = 0, color = '#6C47FF';
+  let cw = 0, ch = 0, energy = 0, last = 0, color = '#E8590C';
   const sb = [0, 0, 0, 0];   // сглаженные полосы спектра
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const readColor = () => { color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || color; };
@@ -6143,7 +6141,7 @@ const SC_NODES = {
   assistant: { name: 'Режим ассистента', icon: 'i-mic', group: 'Алиса', def: () => ({ mode: true }), assistant: true },
   vol: { name: 'Громкость', icon: 'i-vol', group: 'Звук и свет', def: () => ({ level: 3, ramp: 0 }) },
   sound: { name: 'Звук', icon: 'i-music', group: 'Звук и свет', def: () => ({ sound: 'sys:common/timer.wav' }) },
-  ring: { name: 'Кольцо', icon: 'i-palette', group: 'Звук и свет', def: () => ({ color: ringHex || '#6c47ff', secs: 10 }) },
+  ring: { name: 'Кольцо', icon: 'i-palette', group: 'Звук и свет', def: () => ({ color: ringHex || '#ff5a00', secs: 10 }) },
   anim: { name: 'Анимация', icon: 'i-palette', group: 'Звук и свет', def: () => ({ anim: 'ring:' + ((patterns.ring || []).find(n => n.startsWith('alice_thinking')) || (patterns.ring || [])[0] || ''), secs: 5 }) },
   stop: { name: 'Стоп', icon: 'i-stop', group: 'Звук и свет', def: () => ({}) },
   wait: { name: 'Пауза', icon: 'i-alarm', group: 'Время', def: () => ({ secs: 60 }) },

@@ -16,7 +16,7 @@ const untested=(tab,what,text)=>{   // what — фраза целиком: «б�
   const box=document.createElement('div');box.className='untested';box.setAttribute('role','alert');
   box.innerHTML='<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2 1 21h22L12 2zm1 15h-2v-2h2v2zm0-4h-2V9h2v4z"/></svg><div><strong></strong><p></p></div>';
   box.querySelector('strong').textContent='На '+profile.name.replace(/^Станция/,'Станции')+' '+what;
-  box.querySelector('p').innerHTML=text+' Заработало или нет — напишите, пожалуйста, в <a href="https://github.com/dimap/yandex-station-web/issues" target="_blank" rel="noopener">Issues</a> с моделью и версией прошивки.';
+  box.querySelector('p').innerHTML=text+' Заработало или нет — напишите, пожалуйста, в <a href="https://github.com/dimap/yapanel-web/issues" target="_blank" rel="noopener">Issues</a> с моделью и версией прошивки.';
   head.append(box);
 };
 // На пробу (TRIAL_FEATURES в profiles.py): предупреждение, пока функцию для модели не подтвердили люди (tested)
@@ -50,7 +50,7 @@ loading.remove();
 const gallery = document.getElementById("model-gallery");
 if (gallery) gallery.href = PanelContext.url("static/model-preview.html") + "?model=" + encodeURIComponent(visual.id);
 window.__deviceColor=status.color||window.__deviceColor;
-document.title=visual.name+' — панель';
+document.title=visual.name+' — yapanel';
 document.getElementById('model-name').textContent=visual.name;
 view.dataset.hardwareProfile=profile.id;
 if(visual.id!==profile.id){

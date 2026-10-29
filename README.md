@@ -1,4 +1,4 @@
-# Веб-панель для Яндекс Станций
+# yapanel — веб-панель для Яндекс Станций
 
 Локальная веб-панель для **Яндекс Станций с root-доступом по adb** — Лайт 2, а также Лайт, Мини 3 Про, Станции 2
 и Мини 3 (см. [Другие модели](#другие-модели-и-несколько-колонок)): музыка и плеер, будильник, который
@@ -7,7 +7,7 @@
 Отдельно ставить на колонку ничего не нужно.
 
 > [!WARNING]
-> Неофициальный проект, не связан с Яндексом. Панель работает только на колонке, где уже есть root-доступ по adb,
+> Неофициальный проект, не связан с Яндексом и не одобрен им. Панель работает только на колонке, где уже есть root-доступ по adb,
 > и сама колонку не рутирует. Консоль, файлы и некоторые функции дают полный доступ к системе колонки:
 > используйте на свой риск.
 
@@ -134,7 +134,7 @@
 
 ### Windows — запускать, когда нужно
 
-1. Скачайте со страницы [Releases](https://github.com/dimap/yandex-station-web/releases/latest) архив
+1. Скачайте со страницы [Releases](https://github.com/dimap/yapanel-web/releases/latest) архив
    `…-windows-x64.zip` (для ARM-ноутбуков — `…-windows-arm64.zip`) и распакуйте в любую папку.
 2. Дважды щёлкните **`start.bat`**.
 
@@ -164,8 +164,8 @@ Python в архиве уже есть. Остальное `start.bat` сдел�
 2. Скачайте **Code → Download ZIP** и распакуйте архив или склонируйте репозиторий:
 
    ```sh
-   git clone https://github.com/dimap/yandex-station-web.git
-   cd yandex-station-web
+   git clone https://github.com/dimap/yapanel-web.git
+   cd yapanel-web
    ```
 
 3. Дважды щёлкните **`start.command`** в Finder. Откроется Терминал, а панель — в браузере: при первом запуске
@@ -191,8 +191,8 @@ HTTPS использует доступный `openssl`; свой путь мо�
 
 ```sh
 # Debian/Ubuntu: sudo apt install python3 adb ffmpeg zstd      Fedora: sudo dnf install python3 android-tools ffmpeg zstd
-git clone https://github.com/dimap/yandex-station-web.git
-cd yandex-station-web
+git clone https://github.com/dimap/yapanel-web.git
+cd yapanel-web
 ./start.sh                  # первый раз панель сама найдёт колонку в сети и запомнит её адрес
 ./start.sh 192.168.1.50     # или сразу IP колонки
 ```
@@ -201,16 +201,16 @@ cd yandex-station-web
 
 ### Docker — постоянно на сервере
 
-Готовый образ: **`ghcr.io/dimap/yandex-station-web`** (amd64, arm64 и armv7 — подойдёт и Raspberry Pi).
+Готовый образ: **`ghcr.io/dimap/yapanel-web`** (amd64, arm64 и armv7 — подойдёт и Raspberry Pi).
 Раньше он назывался `ghcr.io/dimap/yandex-lite2-web` — под старым именем образ пока тоже обновляется.
 В нём уже есть adb, ffmpeg и openssl, клонировать репозиторий не нужно.
 
 Одной командой (вместо `192.168.1.50` — IP колонки):
 
 ```sh
-docker run -d --name yandex-station-web --network host --restart unless-stopped \
+docker run -d --name yapanel-web --network host --restart unless-stopped \
   -e ADB_SERIAL=192.168.1.50 -v "$PWD/data:/data" \
-  ghcr.io/dimap/yandex-station-web:latest
+  ghcr.io/dimap/yapanel-web:latest
 ```
 
 Или через Docker Compose — сохраните как `docker-compose.yml` и запустите `docker compose up -d`:
@@ -218,8 +218,8 @@ docker run -d --name yandex-station-web --network host --restart unless-stopped 
 ```yaml
 services:
   panel:
-    image: ghcr.io/dimap/yandex-station-web:latest
-    container_name: yandex-station-web
+    image: ghcr.io/dimap/yapanel-web:latest
+    container_name: yapanel-web
     network_mode: host               # сертификат HTTPS выпишется на адрес сервера в сети
     environment:
       ADB_SERIAL: "192.168.1.50"     # IP колонки (порт 5555 подставится сам)
@@ -258,7 +258,7 @@ services:
 </table>
 
 Панель целиком внутри приложения: компьютер не нужен. Скачайте со страницы
-[Releases](https://github.com/dimap/yandex-station-web/releases/latest) файл `yandex-station-web-….apk` и установите
+[Releases](https://github.com/dimap/yapanel-web/releases/latest) файл `yapanel-web-….apk` и установите
 (телефон попросит разрешить установку из этого источника). Нужен Android 7 или новее на 64-битном процессоре.
 
 - Колонка подключается **только по Wi-Fi** (`adb` по сети, порт 5555): adb встроен в приложение, ставить ничего не нужно.
@@ -284,7 +284,7 @@ services:
 | `mini2` (Мини 2 с часами) | 4 цифры, двоеточие, минус, градус / логотип 6 RGB | отключены | чтение, часы, кольцо, анимации, «Сказать» |
 | `station2` | без часов / LED-панель 88 RGB (framebuffer) | отключены | чтение, LED-панель |
 | `mini3` | запись отключена | отключены | нет, экспериментальный |
-| `lite` (Лайт 1-го поколения) | дисплея нет / кольцо 3 RGB | заставка отключена, будильник есть | кольцо, хук, будильник, звуки — автором [PR #6](https://github.com/dimap/yandex-station-web/pull/6) |
+| `lite` (Лайт 1-го поколения) | дисплея нет / кольцо 3 RGB | заставка отключена, будильник есть | кольцо, хук, будильник, звуки — автором [PR #6](https://github.com/dimap/yapanel-web/pull/6) |
 
 На других моделях скрипты загрузки Лайт 2 и будильник не подключаются. 3D-корпуса Станции 2, Мини 3,
 Мини 3 Про, Мини 2 и Лайт первого поколения — приблизительные реконструкции: Мини 2 — по фото и замерам
@@ -404,12 +404,15 @@ python3 multi.py --config speakers.json --data-dir data/multi --port 8765
 - 3D-модель Станции Лайт первого поколения — такая же приблизительная реконструкция по фотографиям
   (`static/model-studio.js`), лицензия MIT.
 - Поддержка других моделей, профили колонок и единая панель для нескольких колонок —
-  [PR №1](https://github.com/dimap/yandex-station-web/pull/1) от **[chelaxian](https://github.com/chelaxian)**.
+  [PR №1](https://github.com/dimap/yapanel-web/pull/1) от **[chelaxian](https://github.com/chelaxian)**.
   Галерея моделей, цвета подсветки Станции 2, обновление yamd и панели в режиме нескольких колонок —
-  [PR №4](https://github.com/dimap/yandex-station-web/pull/4) от него же.
+  [PR №4](https://github.com/dimap/yapanel-web/pull/4) от него же.
 - [three.js](https://threejs.org) (MIT), [xterm.js](https://xtermjs.org) (MIT),
   [QR Code Generator](https://github.com/kazuhikoarase/qrcode-generator) Kazuhiko Arase (MIT) — в `static/vendor`.
 - Тексты песен — [LRCLIB](https://lrclib.net); пакеты — [yam / yapkg](https://github.com/nyakokitsu/yam).
 - Протокол Glagol и вход по QR — по мотивам [YandexStation](https://github.com/AlexxIT/YandexStation) для Home Assistant.
 
-«Яндекс», «Алиса» и «Яндекс Станция» — товарные знаки ООО «Яндекс». Проект неофициальный.
+«Яндекс», «Алиса», «Яндекс Станция» и их логотипы — товарные знаки ООО «Яндекс». yapanel — неофициальный проект,
+не связан с Яндексом и не одобрен им. Названия используются только чтобы указать, с какими устройствами работает
+панель; логотипы и фирменный стиль Яндекса в проекте не используются, а 3D-модели колонок — приблизительные
+реконструкции формы корпуса без логотипов.

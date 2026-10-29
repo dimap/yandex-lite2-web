@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Станция</string>
+    <string name="app_name">yapanel</string>
     <string name="channel">Плеер колонки и панель</string>
     <string name="running">Панель колонки работает в фоне</string>
     <string name="stop">Остановить</string>

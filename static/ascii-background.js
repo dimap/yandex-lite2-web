@@ -6,7 +6,7 @@ export function startAsciiBackground(canvas, {playing = () => false, spectrum = 
   if (!ctx) return;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const bands = [0, 0, 0, 0], ramp = ' .·:-=+*%#@';
-  let width = 0, height = 0, last = -Infinity, visible = true, color = '#6c47ff';
+  let width = 0, height = 0, last = -Infinity, visible = true, color = '#e8590c';
   canvas.style.pointerEvents = 'none'; canvas.style.zIndex = '0';
   const readColor = () => { color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || color; };
   readColor(); window.addEventListener('themechange', readColor);

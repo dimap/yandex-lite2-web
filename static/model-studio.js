@@ -61,18 +61,17 @@ else if(lite){
   ribs.wrapS=T.RepeatWrapping;ribs.repeat.set(3,1);
   mesh(new T.LatheGeometry([[0,-28],[38.6,-28],[40.2,-27.3],[42,-25],[43.3,-20.5],[43.7,-16]].map(p=>new T.Vector2(...p)),160),
     new T.MeshStandardMaterial({color:'#ffffff',map:ribs,roughness:.8}));
-  // Светится только логотип Алисы в центре крышки (прорези декоративные, часов нет): в покое белый,
-  // при подсветке — её цвет.
-  const logoTex=canvasTexture(256,(c,n)=>{c.translate(n/2,n/2+8);const t=104,pts=[[0,-t],[t*.9,t*.62],[-t*.9,t*.62]];
-    c.beginPath();c.moveTo(t*.45,-t*.19);for(let i=0;i<3;i++){const p=pts[(i+1)%3],q=pts[(i+2)%3];c.arcTo(p[0],p[1],q[0],q[1],t*.42);}c.closePath();
-    const g=c.createRadialGradient(0,10,6,0,10,t);g.addColorStop(0,'#ffffff');g.addColorStop(1,'#dcd8e6');c.fillStyle=g;c.fill();});
+  // Светится индикатор в центре крышки (прорези декоративные, часов нет): в покое белый, при подсветке — её цвет.
+  // Нейтральный круг, а не логотип производителя.
+  const logoTex=canvasTexture(256,(c,n)=>{c.translate(n/2,n/2);const t=70;
+    c.beginPath();c.arc(0,0,t,0,Math.PI*2);
+    const g=c.createRadialGradient(0,0,6,0,0,t);g.addColorStop(0,'#ffffff');g.addColorStop(1,'#dcdce2');c.fillStyle=g;c.fill();});
   const logo=new T.MeshBasicMaterial({map:logoTex,transparent:true,depthWrite:false,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   logo.userData.logo=true;ledMaterials.push(logo);
   const logoMesh=mesh(new T.PlaneGeometry(15,15),logo,0,28);logoMesh.rotation.x=-Math.PI/2;logoMesh.renderOrder=2;
-  // плоская чёрная пластина с вдавленной «Я» на стыке корпуса и основания
+  // плоская чёрная пластина на стыке корпуса и основания (без надписей)
   const side=.62,tagGroup=new T.Group();tagGroup.position.set(44.45*Math.sin(side),-9.5,44.45*Math.cos(side));tagGroup.rotation.y=side;group.add(tagGroup);
-  const tagTex=canvasTexture(256,(c,n)=>{c.fillStyle='#1d1e22';c.fillRect(0,0,n,n);c.font='300 120px "Helvetica Neue", Arial, sans-serif';c.textAlign='center';c.textBaseline='middle';
-    c.translate(n/2,n/2+6);c.scale(1.05,1.75);c.lineJoin='round';c.strokeStyle='#5a5b62';c.lineWidth=1.6;c.strokeText('Я',1,.7);c.fillStyle='#08080a';c.fillText('Я',0,0);});
+  const tagTex=canvasTexture(256,(c,n)=>{c.fillStyle='#1d1e22';c.fillRect(0,0,n,n);});
   mesh(new T.BoxGeometry(10.5,15,.9),[0,0,0,0,1,0].map(i=>new T.MeshStandardMaterial(i?{color:'#ffffff',map:tagTex,roughness:.75}:{color:'#1d1e22',roughness:.75})),0,0,0,tagGroup);
   // USB-C сзади — рисунком на корпусе: скруглённое окно, внутри тёмный проём и светлый язычок
   const usb=canvasTexture(256,(c,n)=>{c.translate(n/2,n/2);c.fillStyle='#9a9aa2';c.beginPath();c.roundRect(-118,-44,236,88,44);c.fill();
@@ -109,10 +108,9 @@ else if(lite){
   marks.anisotropy=8;   // крышка видна под острым углом — иначе прорези размываются
   const marksMesh=mesh(new T.CircleGeometry(43.7,N),new T.MeshBasicMaterial({map:marks,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}),0,TOP-.45);
   marksMesh.rotation.x=-Math.PI/2;marksMesh.renderOrder=1;
-  // Вставка подсветки: кольцо 4,3–6,9 мм светится цветом колонки, логотип в центре — вполсилы; без подсветки — белый пластик.
+  // Вставка подсветки: кольцо 4,3–6,9 мм светится цветом колонки; без подсветки — белый пластик. Логотип производителя не рисуем.
   const alice=canvasTexture(256,(c,n)=>{c.translate(n/2,n/2);const k=n/16;c.lineWidth=2.6*k;c.strokeStyle='#ffffff';c.beginPath();c.arc(0,0,5.6*k,0,Math.PI*2);c.stroke();
-    c.strokeStyle='rgba(60,60,70,.3)';c.lineWidth=.22*k;for(const r of[6.95,4.25]){c.beginPath();c.arc(0,0,r*k,0,Math.PI*2);c.stroke();}
-    const t=2.3*k,pts=[[0,-t],[t*.9,t*.62],[-t*.9,t*.62]];c.beginPath();c.moveTo(t*.45,-t*.19);for(let i=0;i<3;i++){const p=pts[(i+1)%3],q=pts[(i+2)%3];c.arcTo(p[0],p[1],q[0],q[1],t*.42);}c.closePath();c.fillStyle='rgba(255,255,255,.6)';c.fill();});
+    c.strokeStyle='rgba(60,60,70,.3)';c.lineWidth=.22*k;for(const r of[6.95,4.25]){c.beginPath();c.arc(0,0,r*k,0,Math.PI*2);c.stroke();}});
   const aliceMat=new T.MeshBasicMaterial({map:alice,transparent:true,depthWrite:false,toneMapped:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   aliceMat.userData.logo=true;ledMaterials.push(aliceMat);
   const aliceMesh=mesh(new T.PlaneGeometry(16,16),aliceMat,0,TOP-.4);aliceMesh.rotation.x=-Math.PI/2;aliceMesh.renderOrder=2;
@@ -152,7 +150,7 @@ else if(lite){
     c.fillStyle='#55555c';c.beginPath();c.arc(...mm(12.5,37.5),.9*k,0,Math.PI*2);c.fill();}   // AUX сверху, под ним питание (контакт в центре)
   const stripTex=new T.CanvasTexture(stripCanvas);stripTex.colorSpace=T.SRGBColorSpace;
   mesh(new T.CylinderGeometry(R+.25,R+.25,stripH,32,1,true,Math.PI-stripArc/2,stripArc),new T.MeshBasicMaterial({map:stripTex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}),0,stripY);
-  // Ярлык «Я» — мягкая силиконовая лента 9 мм толщиной 1,1 мм: свисает по боку на 12 мм, перегибается через
+  // Ярлык — мягкая силиконовая лента (без надписи) 9 мм толщиной 1,1 мм: свисает по боку на 12 мм, перегибается через
   // скруглённый край и ложится на тканевый поясок до диска. Справа от дисплея (≈50°). Сетка 6 × 96 сужается
   // по контуру со скруглёнными углами и изгибается по пути ленты (вершины переносятся вдоль неё).
   const side=.87,tagW=9,hang=11.8,thick=1.1,bend=2.25+thick/2,lay=1.9,len=hang+bend*Math.PI/2+lay,Cx=R-2.2,Cy=TOP-2.2;
@@ -167,9 +165,6 @@ else if(lite){
       pos.setXYZ(i,x,y,rad);}
     tagGeo.computeVertexNormals();}
   const tag=new T.Group();tag.rotation.y=side;group.add(tag);mesh(tagGeo,silicone,0,0,0,tag);
-  const tagTex=canvasTexture(256,(c,n)=>{c.font='500 115px "Helvetica Neue", Arial, sans-serif';c.textAlign='center';c.textBaseline='middle';c.translate(n/2,n*.6);c.scale(1,.72);
-    c.lineJoin='round';c.strokeStyle='rgba(255,255,255,.3)';c.lineWidth=2.5;c.strokeText('Я',1,1.5);c.fillStyle='rgba(0,0,0,.4)';c.fillText('Я',0,0);});
-  mesh(new T.PlaneGeometry(tagW,hang),new T.MeshBasicMaterial({map:tagTex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1}),0,TOP-2.2-hang/2,R+thick+.08,tag);
   topY=TOP;baseY=BOT;
 }else if(mini){
   const points=[[0,-35],[43,-35],[47,-34],[49.4,-31],[50.4,-26],[51,-18],[51,20],[50.8,28],[49.6,31],[0,31]].map(p=>new T.Vector2(...p));

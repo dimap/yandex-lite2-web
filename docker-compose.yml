@@ -1,9 +1,9 @@
 services:
   panel:
-    image: ghcr.io/dimap/yandex-station-web:latest
+    image: ghcr.io/dimap/yapanel-web:latest
     # или собрать самому из исходников:
     # build: .
-    container_name: yandex-station-web
+    container_name: yapanel-web
     # host — чтобы сертификат HTTPS выписался на адрес сервера в локальной сети
     network_mode: host
     environment:
