@@ -1507,6 +1507,16 @@
       </section>
 
       <section class="card set-card">
+        <div class="set-head"><span class="set-ic"><svg width="18" height="18" aria-hidden="true"><use href="#i-lock"/></svg></span><div><h2>Защищённое соединение</h2><p>Как панель связана с колонкой</p></div></div>
+        <div class="set-item"><div class="set-label"><b>Агент панели</b><small id="agent-state">—</small></div>
+          <div class="set-ctl"><button class="btn sm primary" id="agent-install" hidden>Включить</button><button class="btn sm" id="agent-remove" hidden>Выключить</button></div></div>
+        <p class="set-note">Без агента панель управляет колонкой через adb: по сети он не шифруется и не спрашивает пароль. Агент — небольшая
+          программа на колонке (порт 7861): команды, файлы и консоль идут по TLS и только с ключом этой панели. adb остаётся как был —
+          через него агент ставится и обновляется, а если агент не ответит, панель продолжит работать через adb. Сам сетевой adb колонки
+          открыт по-прежнему: его включил способ рутования. Убрать агента — «Выключить» здесь или «Убрать всё» в блоке «Колонка».</p>
+      </section>
+
+      <section class="card set-card">
         <div class="set-head"><span class="set-ic"><svg width="18" height="18" aria-hidden="true"><use href="#i-expand"/></svg></span><div><h2>Приложение</h2><p>Панель с иконкой и в отдельном окне — на компьютере или телефоне</p></div></div>
         <div class="set-item"><div class="set-label"><b>Установить как приложение</b><small id="app-state">—</small></div>
           <div class="set-ctl"><button class="btn sm primary" id="app-install" hidden>Установить</button></div></div>
@@ -2651,7 +2661,7 @@ async function refreshStatus() {
     const s = status = await api('/api/status');
     lastOk = Date.now();
     $('#conn').className = 'dot on';
-    $('#conn-text').textContent = 'Подключено по adb';
+    $('#conn-text').textContent = s.via === 'agent' ? 'Защищённое подключение' : 'Подключено по adb';
     $('#conn-ip').innerHTML = secret('ip', s.ip_address);
 
     tilesFromStatus(s);
@@ -3843,7 +3853,7 @@ function showTab() {
   rdPoll(tab === 'radio');
   asPoll(tab === 'assistant');
   if (tab === 'charts') loadCharts();
-  if (tab === 'settings') { loadAccess(); loadFootprint(); loadPanelVersion().catch(() => {}); loadPanelModel(); }
+  if (tab === 'settings') { loadAccess(); loadAgent(); loadFootprint(); loadPanelVersion().catch(() => {}); loadPanelModel(); }
   if (tab === 'overview') loadBt();
   if (tab === 'player') { renderMusic(); loadPlayerExtras(); loadMusic(); }
   updateMinibar();
@@ -5378,6 +5388,25 @@ $('#pw-others').onclick = e => act(e.currentTarget, async () => {
 
 // Что панель поставила на колонку, и полный откат.
 let footprint = null;
+// Защищённое соединение: агент на колонке вместо голого adb (adb остаётся запасным путём и для установки)
+async function loadAgent() {
+  try { renderAgent(await api('/api/agent')); } catch (e) { if (!e.offline) $('#agent-state').textContent = e.message; }
+}
+function renderAgent(a) {
+  $('#agent-state').textContent = !a.network ? 'Нужно подключение к колонке по сети (по IP-адресу), не по USB'
+    : !a.installed ? 'Выключен — панель работает через adb'
+    : a.active ? `Включён${a.version ? ', версия ' + a.version : ''}: команды, файлы и консоль идут по защищённому каналу`
+                 + (a.outdated ? '. Есть новая версия' : '') + (a.boot ? '' : '. Автозапуск не подключён — после перезагрузки колонки его запустит панель')
+    : a.paired ? 'Установлен, но не отвечает — пока работаем через adb' + (a.error ? ` (${a.error})` : '')
+    : 'Установлен на колонке, но эта панель ещё не подключена';
+  $('#agent-install').hidden = !a.network || (a.active && !a.outdated);
+  $('#agent-install').textContent = !a.installed || !a.paired ? 'Включить' : a.outdated ? 'Обновить' : 'Перезапустить';
+  $('#agent-remove').hidden = !a.installed;
+}
+$('#agent-install').onclick = e => act(e.currentTarget, async () => renderAgent(await api('/api/agent/install', {})), 'Агент включён');
+$('#agent-remove').onclick = e => confirm('Выключить агента и удалить его с колонки? Панель продолжит работать через adb.')
+  && act(e.currentTarget, async () => { renderAgent(await api('/api/agent/remove', {})); loadFootprint(); }, 'Агент выключен');
+
 async function loadFootprint() {
   try { footprint = await api('/api/footprint'); } catch { return; }
   const f = footprint, kb = x => x >= 1024 ? (x / 1024).toFixed(1) + ' МБ' : x + ' КБ';

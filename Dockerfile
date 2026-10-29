@@ -7,6 +7,11 @@ COPY device/assistant/ ./
 COPY VERSION /VERSION
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=$(cat /VERSION)" -o /out/assistantd . \
  && cp /VERSION /out/VERSION
+# агент панели (device/agent) — так же
+WORKDIR /agent
+COPY device/agent/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=$(cat /VERSION)" -o /out-agent/yapanel-agent . \
+ && cp /VERSION /out-agent/VERSION
 
 FROM python:3.14-slim
 
@@ -15,10 +20,11 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY server.py access.py glagol.py profiles.py managed_yam.py multi.py pyadb.py speakers.example.json VERSION ./
+COPY server.py access.py agent.py glagol.py profiles.py managed_yam.py multi.py pyadb.py speakers.example.json VERSION ./
 COPY static ./static
 COPY device ./device
 COPY --from=assistant /out/assistantd /out/VERSION ./device/assistant/build/
+COPY --from=assistant /out-agent/yapanel-agent /out-agent/VERSION ./device/agent/build/
 COPY LICENSE ./
 
 # /data — токен Яндекса, пароль панели, сертификаты, история графиков и ключ adb (HOME).

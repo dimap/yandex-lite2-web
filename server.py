@@ -22,6 +22,7 @@ import posixpath
 import shutil
 import signal
 import socket
+import secrets
 import ssl
 import stat
 import subprocess
@@ -39,6 +40,7 @@ import urllib.request
 from urllib.parse import parse_qs, quote, unquote, urlencode, urlparse
 
 import access
+import agent as agentlink
 import glagol
 
 ROOT = Path(__file__).resolve().parent
@@ -136,7 +138,7 @@ DATA_DIR = ROOT
 
 
 def set_data_dir(path):
-    global DATA_DIR, AUTH_FILE, PANEL_AUTH_FILE, METRICS_FILE, TLS_DIR, SETTINGS_FILE
+    global DATA_DIR, AUTH_FILE, PANEL_AUTH_FILE, METRICS_FILE, TLS_DIR, SETTINGS_FILE, AGENT_FILE
     DATA_DIR = Path(path).resolve()
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     AUTH_FILE = DATA_DIR / ".yandex_auth.json"
@@ -144,6 +146,7 @@ def set_data_dir(path):
     METRICS_FILE = DATA_DIR / ".metrics.json"
     TLS_DIR = DATA_DIR / ".tls"
     SETTINGS_FILE = DATA_DIR / ".panel_settings.json"
+    AGENT_FILE = DATA_DIR / ".agent.json"
     JOURNAL.open(DATA_DIR / ".panel_journal.jsonl")
 
 
@@ -279,6 +282,15 @@ ASSIST_CMD = "/tmp/webpanel_assistant.cmd"
 ASSIST_SD = "/tmp/webpanel_assistant.sd"
 ASSIST_RUN = f"exec {ASSISTD} -dir {ASSIST_DIR} >{ASSIST_DIR}/assistant.log 2>&1"
 ASSIST_SRC = Path(__file__).resolve().parent / "device" / "assistant"
+# Агент панели (device/agent): команды, файлы и консоль по TLS с токеном — рядом с adb, а не вместо него.
+# adb ставит, обновляет и чинит агента; агент молчит — панель работает через adb, как раньше.
+AGENT_DIR = f"{WEB_DIR}/agent"
+AGENT_BIN = f"{AGENT_DIR}/yapanel-agent"
+AGENT_TOKENS = f"{AGENT_DIR}/tokens"            # sha256 токенов панелей — сами токены на колонке не хранятся
+AGENT_CERT = f"{AGENT_DIR}/cert.pem"
+AGENT_SD = "/tmp/webpanel_agent.sd"
+AGENT_RUN = f"exec {AGENT_BIN} -dir {AGENT_DIR} -addr :{agentlink.PORT} >{AGENT_DIR}/agent.log 2>&1"
+AGENT_SRC = Path(__file__).resolve().parent / "device" / "agent"
 # Звук через Bluetooth-колонку: колонка остаётся «мозгом» (слушает, отвечает), а играет подключённая по Bluetooth.
 # Весь звук Quasar держит один процесс (maind --mediad); конец его цепочки ALSA (dmix_spk_plug) подменяем на
 # bluealsa своим asound.conf через bind mount. Регулятору громкости Алисы (softvol «Master») карту указываем явно:
@@ -364,6 +376,7 @@ BOOT_HOOK_SCRIPT = (
     f"[ -f {ALARM_CONF} ] && [ -f {ALARMD} ] && start-stop-daemon -S -b -m -p {ALARM_SD} -x /bin/sh -- {ALARMD}\n"
     f"[ -f {ASSIST_CONF} ] && [ -x {ASSISTD} ] && start-stop-daemon -S -b -m -p {ASSIST_SD} -x /bin/sh -- -c {shlex.quote(ASSIST_RUN)}\n"
     f"[ -f {BTOUT_MAC} ] && [ -f {BTOUT_SH} ] && start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}\n"
+    f"[ -f {AGENT_TOKENS} ] && [ -x {AGENT_BIN} ] && start-stop-daemon -S -b -m -p {AGENT_SD} -x /bin/sh -- -c {shlex.quote(AGENT_RUN)}\n"
     # службы пакетов yam 2, отмеченные «при загрузке»
     f"for f in {YAM2_SVC_DIR}/boot/*; do [ -f \"$f\" ] && [ -f \"{YAM2_SVC_DIR}/${{f##*/}}.sh\" ] && "
     f"start-stop-daemon -S -b -m -p \"{YAM2_SVC_PID}${{f##*/}}.pid\" -x /bin/sh -- \"{YAM2_SVC_DIR}/${{f##*/}}.sh\"; done\n"
@@ -650,6 +663,33 @@ class Adb:
         self.serial = serial
         self.lock = threading.Lock()
         self.conn = None  # Connection; сообщаем ему, когда связь пропала посреди команды
+        # Защищённый канал (yapanel-agent): если настроен и отвечает — команды и файлы идут через него,
+        # иначе как раньше через adb. Через adb всегда: установка и обновление самого агента.
+        self.agent = None
+        self.agent_ok = False         # последний вызов через агента удался
+        self._agent_retry = 0.0       # агент не ответил — до этого времени идём через adb
+        self._local = threading.local()
+
+    @contextlib.contextmanager
+    def only_adb(self):
+        """Команды этого потока — только через adb (агент перезапускается или удаляется)."""
+        prev = getattr(self._local, "adb", False)
+        self._local.adb = True
+        try:
+            yield
+        finally:
+            self._local.adb = prev
+
+    def _agent(self):
+        if self.agent and not getattr(self._local, "adb", False) and time.time() >= self._agent_retry:
+            return self.agent
+        return None
+
+    def _agent_down(self, err):
+        if self.agent_ok:
+            JOURNAL.add(f"агент: {err} — пока через adb", "warn")
+        self.agent_ok = False
+        self._agent_retry = time.time() + 30
 
     @contextlib.contextmanager
     def _transfer(self):
@@ -669,6 +709,16 @@ class Adb:
     RC_MARK = "@@webpanel-rc="
 
     def shell(self, cmd, timeout=15, check=True):
+        a = self._agent()
+        if a:
+            try:
+                out, rc = a.exec(cmd, timeout)
+                self.agent_ok = True
+                return out, "", rc        # stdout и stderr вместе — как у adb shell через pty
+            except TimeoutError:
+                raise AdbError(f"Колонка не ответила за {timeout} с") from None
+            except agentlink.AgentError as e:
+                self._agent_down(e)
         try:
             p = subprocess.run(self._base() + ["shell", f"(\n{cmd}\n); printf '\\n{self.RC_MARK}%d\\n' $?"],
                                capture_output=True, timeout=timeout)
@@ -695,6 +745,18 @@ class Adb:
         return crlf(out), crlf(err), rc
 
     def pull(self, remote, local, timeout=300):
+        a = self._agent()
+        if a:
+            try:
+                data = a.read_file(remote, timeout)
+            except (agentlink.AgentError, TimeoutError) as e:
+                self._agent_down(e)
+            except OSError as e:          # нет файла и т. п. — ответ агента, а не обрыв
+                raise AdbError(str(e)) from None
+            else:
+                self.agent_ok = True
+                Path(local).write_bytes(data)
+                return
         # exec-out этот adbd не поддерживает ("error: closed"), а shell идёт через pty
         # и портит бинарные данные, поэтому файлы забираем только через pull.
         with self._transfer():
@@ -710,6 +772,16 @@ class Adb:
 
     def ls(self, remote):
         """Листинг через sync-протокол: [(mode, size, mtime, name)], имена с пробелами не ломаются."""
+        a = self._agent()
+        if a:
+            try:
+                res = a.ls(remote)
+                self.agent_ok = True
+                return res
+            except (agentlink.AgentError, TimeoutError) as e:
+                self._agent_down(e)
+            except OSError as e:
+                raise AdbError(str(e)) from None
         p = subprocess.run(self._base() + ["ls", remote], capture_output=True, timeout=20)
         out = p.stdout.decode("utf-8", "replace")
         if p.returncode != 0:
@@ -724,10 +796,34 @@ class Adb:
         return res
 
     def push(self, local, remote, timeout=120):
+        a = self._agent()
+        if a:
+            try:
+                a.write_file(remote, Path(local).read_bytes(), os.stat(local).st_mode & 0o777, timeout)
+                self.agent_ok = True
+                return
+            except (agentlink.AgentError, TimeoutError) as e:
+                self._agent_down(e)
+            except OSError as e:
+                raise AdbError(str(e)) from None
         with self._transfer():
             p = subprocess.run(self._base() + ["push", str(local), remote], capture_output=True, timeout=timeout)
         if p.returncode != 0:
             raise AdbError(adb_usage_error(p.stderr.decode("utf-8", "replace").strip(), "push"))
+
+    def popen(self, cmd, pty=False, text=False, cols=80, rows=24):
+        """Долгая команда на колонке, похожая на subprocess.Popen (stdout, stdin.write, kill, wait).
+        pty — в псевдотерминале (консоль). Через adb pty есть всегда: этот adbd иначе не умеет."""
+        a = self._agent()
+        if a:
+            try:
+                proc = a.popen(cmd, pty=pty, cols=cols, rows=rows, text=text)
+                self.agent_ok = True
+                return proc
+            except agentlink.AgentError as e:
+                self._agent_down(e)
+        return subprocess.Popen(self._base() + ["shell", cmd], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, bufsize=0 if not text else -1, text=text)
 
     def devices(self):
         p = subprocess.run([self.adb, "devices", "-l"], capture_output=True, timeout=10)
@@ -821,9 +917,28 @@ class Connection:
         self.wake.wait(seconds)
         self.wake.clear()
 
+    def _agent_alive(self):
+        a = self.adb._agent()
+        if not a:
+            return False
+        try:
+            a.ping()
+            self.adb.agent_ok = True
+            return True
+        except (agentlink.AgentError, TimeoutError) as e:
+            self.adb._agent_down(e)
+            return False
+
     def run(self):
         network = bool(self.adb.serial and ":" in self.adb.serial)
         while True:
+            if self._agent_alive():
+                if not self.online:
+                    self.note(f"Подключено через агента: {self.adb.serial}")
+                self.attempts = 0
+                self._set("online")
+                self._sleep(3)
+                continue
             state, err = self._adb_state()
             if state == "device" and network and not self._reachable():
                 self.note(f"{self.adb.serial} пропала из сети", "warn")
@@ -1198,8 +1313,7 @@ class LedStream:
         try:
             self._kill_device_loop()   # хвосты прошлого запуска сервера
             while time.time() - self.wanted <= 3:
-                proc = subprocess.Popen(self.adb._base() + ["shell", loop], stdout=subprocess.PIPE,
-                                        stderr=subprocess.DEVNULL, text=True)
+                proc = self.adb.popen(loop, text=True)
                 try:
                     for line in proc.stdout:
                         parts = line.split()
@@ -1541,6 +1655,7 @@ echo @@BLUEZ
         st.update(self.version())
         st["ffmpeg"] = bool(self.ffmpeg)
         st["vol_level"] = alsa_to_level(st.get("vol_master"))
+        st["via"] = "agent" if self.adb.agent and self.adb.agent_ok else "adb"
         return st
 
     # ---------- громкость ----------
@@ -2106,7 +2221,8 @@ echo @@BLUEZ
     # Что держится на хуке: без него после перезагрузки колонки пропадает
     HOOK_USERS = (("заставка", BOOT_CUSTOM), ("звук запуска", SOUND_CUSTOM), ("заставка при каждой загрузке", BOOT_ALWAYS),
                   ("автозапуск yamd", YAM_AUTOSTART), ("будильник", ALARM_CONF), ("блокировка аналитики", HOSTS_CUSTOM),
-                  ("ассистент", ASSIST_CONF), ("звук через Bluetooth-колонку", BTOUT_MAC))
+                  ("ассистент", ASSIST_CONF), ("звук через Bluetooth-колонку", BTOUT_MAC),
+                  ("защищённое соединение (агент)", AGENT_TOKENS))
 
     def _hook_users_script(self):
         """Печатает по строке на каждую функцию, которой нужен хук."""
@@ -2288,57 +2404,60 @@ echo @@BLUEZ
     ASSIST_ASSET = "assistantd-linux-arm64"
 
     def _assist_binary(self, download=True):
-        """Программа помощника для колонки (linux/arm64), по порядку:
-        1) есть Go — собираем из device/assistant (для тех, кто меняет код помощника);
+        return self._device_binary(ASSIST_SRC, "assistantd", self.ASSIST_ASSET, "помощника", download)
+
+    def _device_binary(self, src, name, asset, what, download=True):
+        """Программа для колонки (linux/arm64) из device/<…>, по порядку:
+        1) есть Go — собираем из исходников (для тех, кто меняет её код);
         2) готовая сборка своей версии рядом (Docker, архив для Windows);
         3) скачанная с релиза GitHub для этой версии панели — с проверкой SHA256SUMS, как yamd;
         4) готовая сборка другой версии — лучше, чем ничего."""
-        build = ASSIST_SRC / "build" / "assistantd"
+        build = src / "build" / name
         go = shutil.which("go")
         if go:
-            sources = list(ASSIST_SRC.glob("*.go")) + [ASSIST_SRC / "go.mod"]
+            sources = list(src.glob("*.go")) + [src / "go.mod"]
             fresh = build.exists() and all(f.stat().st_mtime <= build.stat().st_mtime for f in sources if f.exists())
             if not fresh:
                 env = {**os.environ, "CGO_ENABLED": "0", "GOOS": "linux", "GOARCH": "arm64"}
                 r = subprocess.run([go, "build", "-trimpath", "-ldflags", f"-s -w -X main.version={VERSION}",
-                                    "-o", str(build), "."], cwd=ASSIST_SRC, env=env, capture_output=True, text=True, timeout=300)
+                                    "-o", str(build), "."], cwd=src, env=env, capture_output=True, text=True, timeout=300)
                 if r.returncode:
-                    raise AdbError("не удалось собрать помощника: " + (r.stderr or r.stdout).strip()[-400:])
+                    raise AdbError(f"не удалось собрать программу {what}: " + (r.stderr or r.stdout).strip()[-400:])
             return build
         try:
-            bundled = (ASSIST_SRC / "build" / "VERSION").read_text().strip()
+            bundled = (src / "build" / "VERSION").read_text().strip()
         except OSError:
             bundled = ""
         if build.exists() and bundled == VERSION:
             return build
-        cached = DATA_DIR / f".assistantd-{VERSION}"
+        cached = DATA_DIR / f".{name}-{VERSION}"
         if cached.exists():
             return cached
         if download:
             try:
-                return self._assist_download(cached)
+                return self._release_download(asset, cached, name)
             except (OSError, ValueError, AdbError) as e:
                 if not build.exists():
-                    raise AdbError(f"не удалось скачать помощника для версии {VERSION}: {e}") from None
+                    raise AdbError(f"не удалось скачать программу {what} для версии {VERSION}: {e}") from None
         if build.exists():
             return build
-        raise AdbError("нет программы помощника для колонки: она скачивается с релиза GitHub — проверьте интернет")
+        raise AdbError(f"нет программы {what} для колонки: она скачивается с релиза GitHub — проверьте интернет")
 
-    def _assist_download(self, dest):
+    def _release_download(self, asset, dest, name):
         base = f"https://github.com/{REPO}/releases/download/v{VERSION}/"
-        get = lambda name, limit: urllib.request.urlopen(urllib.request.Request(
-            base + name, headers={"User-Agent": f"yapanel-web/{VERSION}"}), timeout=60).read(limit)
+        get = lambda n, limit: urllib.request.urlopen(urllib.request.Request(
+            base + n, headers={"User-Agent": f"yapanel-web/{VERSION}"}), timeout=60).read(limit)
         sums = get("SHA256SUMS", 64 * 1024).decode("utf-8", "replace")
-        want = next((ln.split()[0] for ln in sums.splitlines() if ln.split()[-1:] == [self.ASSIST_ASSET]), None)
+        want = next((ln.split()[0] for ln in sums.splitlines() if ln.split()[-1:] == [asset]), None)
         if not want:
-            raise AdbError(f"в SHA256SUMS релиза нет {self.ASSIST_ASSET}")
-        blob = get(self.ASSIST_ASSET, 64 * 1024 * 1024)
+            raise AdbError(f"в SHA256SUMS релиза нет {asset}")
+        blob = get(asset, 64 * 1024 * 1024)
         if hashlib.sha256(blob).hexdigest() != want.lower():
-            raise AdbError("контрольная сумма программы помощника не совпала")
+            raise AdbError(f"контрольная сумма {asset} не совпала")
         tmp = dest.with_name(dest.name + ".part")
         tmp.write_bytes(blob)
         os.replace(tmp, dest)
-        for old in DATA_DIR.glob(".assistantd-*"):   # прежние версии больше не нужны
+        for old in DATA_DIR.glob(f".{name}-*"):   # прежние версии больше не нужны
             if old != dest:
                 old.unlink(missing_ok=True)
         return dest
@@ -2854,9 +2973,9 @@ echo @@BLUEZ
             f"[ -d {OVR_DIR}/sounds ] && du -sk {OVR_DIR}/sounds | cut -f1 || echo 0",
             f"find {OVR_DIR}/ledpatterns -type f 2>/dev/null | wc -l",
             f"find {MY_ANIM_DIR} -type f 2>/dev/null | wc -l",
-            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC)])
+            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC), q(AGENT_BIN)])
         v = self.adb.shell(cmd, check=False)[0].split()
-        v = (v + ["0"] * 26)[:26]
+        v = (v + ["0"] * 27)[:27]
         b = [x == "1" for x in v]
         n = lambda x: int(x) if x.isdigit() else 0
         items = [
@@ -2870,6 +2989,8 @@ echo @@BLUEZ
             {"key": "yamd", "name": "Автозапуск yamd", "on": b[5]},
             {"key": "yam2", "name": "Автозапуск служб yam 2", "on": n(v[23]) > 0, "detail": f"служб: {n(v[23])}"},
             {"key": "btout", "name": "Звук через Bluetooth-колонку", "on": b[25], "detail": "сторож и своя /etc/asound.conf, пока колонка подключена"},
+            {"key": "agent", "name": "Агент панели (защищённое соединение)", "on": b[26],
+             "detail": f"порт {agentlink.PORT}, вход по токену"},
             {"key": "privacy", "name": "Блокировка аналитики", "on": b[15] or b[16], "detail": "свой /etc/hosts"},
             {"key": "assistant", "name": "Голосовой помощник", "on": b[17], "size_kb": n(v[18])},
             {"key": "alarm", "name": "Будильник и сценарии", "on": b[6],
@@ -2883,8 +3004,15 @@ echo @@BLUEZ
 
     def footprint_reset(self):
         """Возвращает колонку к исходному: снимает подмены, гасит наши демоны, убирает строку из rootkeeper.sh
-        и удаляет /data/quasar/webpanel. yam не трогаем — это отдельный проект со своим удалением."""
+        и удаляет /data/quasar/webpanel. yam не трогаем — это отдельный проект со своим удалением.
+        Всё — через adb: агента это тоже удаляет."""
+        self._agent_forget()
+        with self.adb.only_adb():
+            return self._footprint_reset()
+
+    def _footprint_reset(self):
         self.adb.shell(
+            f"start-stop-daemon -K -q -p {AGENT_SD} 2>/dev/null; rm -f {AGENT_SD}; "
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; start-stop-daemon -K -p {ASSIST_SD} 2>/dev/null; "
             f"start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
@@ -2912,6 +3040,143 @@ echo @@BLUEZ
             res["note"] = (f"rootkeeper.sh после нашей строки менялся кем-то ещё, поэтому копия оригинала "
                            f"оставлена: {ROOTKEEPER}.webpanel.bak")
         return res
+
+    # ---------- агент: защищённый канал ----------
+    AGENT_ASSET = "yapanel-agent-linux-arm64"
+
+    def _agent_host(self):
+        serial = self.adb.serial or ""
+        return serial.rpartition(":")[0] if ":" in serial else None
+
+    @staticmethod
+    def _agent_store():
+        try:
+            return json.loads(AGENT_FILE.read_text())
+        except (OSError, ValueError):
+            return {}
+
+    @staticmethod
+    def _agent_save(store):
+        tmp = AGENT_FILE.with_name(AGENT_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(store, ensure_ascii=False, indent=1))
+        try:
+            os.chmod(tmp, 0o600)        # токен агента — как токен Яндекса: только владельцу
+        except OSError:
+            pass
+        os.replace(tmp, AGENT_FILE)
+
+    def agent_attach(self):
+        """При запуске: для этой колонки есть свой токен — работаем через агента."""
+        host, entry = self._agent_host(), self._agent_store().get(self.adb.serial or "")
+        if host and entry:
+            try:
+                self.adb.agent = agentlink.AgentLink(host, entry["token"], entry["cert"])
+            except (KeyError, ssl.SSLError, ValueError) as e:
+                JOURNAL.add(f"агент: сохранённые ключи не подходят ({e})", "warn")
+
+    def _agent_forget(self):
+        self.adb.agent, self.adb.agent_ok = None, False
+        store = self._agent_store()
+        if store.pop(self.adb.serial or "", None) is not None:
+            self._agent_save(store)
+
+    def agent_status(self):
+        out, _, _ = self.adb.shell(
+            f"[ -x {AGENT_BIN} ] && echo @bin; [ -s {AGENT_TOKENS} ] && echo @tokens; "
+            f"p=$(cat {AGENT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo @run; {hook_active()} && echo @hook; true",
+            check=False)
+        flags = set(strip_ansi(out).split())
+        res = {"installed": "@bin" in flags, "running": "@run" in flags, "boot": "@hook" in flags,
+               "paired": bool(self.adb.agent), "active": bool(self.adb.agent and self.adb.agent_ok),
+               "network": bool(self._agent_host()), "port": agentlink.PORT, "panel_version": VERSION, "version": None}
+        if self.adb.agent:
+            try:
+                res["version"] = self.adb.agent.ping().get("version")
+                res["active"] = True
+            except (agentlink.AgentError, TimeoutError) as e:
+                res["error"] = str(e)
+        res["outdated"] = bool(res["version"]) and res["version"] != VERSION
+        return res
+
+    def agent_install(self):
+        """Ставит или обновляет агента — только через adb — и подключает эту панель своим токеном."""
+        host = self._agent_host()
+        if not host:
+            raise AdbError("агент работает по сети: подключите колонку по адресу, а не по USB")
+        store = self._agent_store()
+        entry = store.get(self.adb.serial) or {}
+        token = entry.get("token") or secrets.token_urlsafe(32)
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        name = re.sub(r"[^\w.-]", "_", f"{platform.node() or 'panel'}-{hashlib.sha256(str(DATA_DIR).encode()).hexdigest()[:6]}")
+        with self.adb.only_adb():
+            arch = strip_ansi(self.adb.shell("uname -m", check=False)[0]).strip()
+            if arch not in ("aarch64", "arm64"):
+                raise AdbError(f"агент пока собирается только для arm64, а у этой колонки {arch or 'неизвестно что'}")
+            binary = self._device_binary(AGENT_SRC, "yapanel-agent", self.AGENT_ASSET, "агента")
+            self.adb.shell(f"mkdir -p {AGENT_DIR} && chmod 700 {AGENT_DIR}; "
+                           f"start-stop-daemon -K -q -p {AGENT_SD} 2>/dev/null; rm -f {AGENT_SD}; true", check=False)
+            self.adb.push(binary, AGENT_BIN + ".new", timeout=300)
+            self.adb.shell(f"chmod 755 {AGENT_BIN}.new && mv {AGENT_BIN}.new {AGENT_BIN}; touch {AGENT_TOKENS}; "
+                           f"chmod 600 {AGENT_TOKENS}; grep -q '^{digest} ' {AGENT_TOKENS} || echo '{digest} {name}' >> {AGENT_TOKENS}; "
+                           f"start-stop-daemon -S -b -m -p {AGENT_SD} -x /bin/sh -- -c {shlex.quote(AGENT_RUN)}")
+            for _ in range(40):          # сертификат агент создаёт при первом запуске
+                if "@cert" in self.adb.shell(f"[ -s {AGENT_CERT} ] && echo @cert; true", check=False)[0]:
+                    break
+                time.sleep(0.25)
+            cert = self.adb.read_bytes(AGENT_CERT).decode("ascii", "replace")
+        link = agentlink.AgentLink(host, token, cert)
+        err = None
+        for _ in range(20):
+            try:
+                link.ping()
+                break
+            except (agentlink.AgentError, TimeoutError) as e:
+                err = e
+                time.sleep(0.25)
+        else:
+            raise AdbError(f"агент запущен, но не отвечает по сети: {err}. Работаем через adb")
+        store[self.adb.serial] = {"token": token, "cert": cert}
+        self._agent_save(store)
+        self.adb.agent, self.adb.agent_ok, self.adb._agent_retry = link, True, 0.0
+        JOURNAL.add(f"агент {VERSION} установлен — команды идут по защищённому каналу")
+        try:
+            self._ensure_hook()
+        except AdbError as e:
+            JOURNAL.add(f"агент: автозапуск не подключён ({e}) — после перезагрузки колонки панель запустит его сама", "warn")
+        return self.agent_status()
+
+    def agent_remove(self):
+        self._agent_forget()
+        with self.adb.only_adb():
+            self.adb.shell(f"start-stop-daemon -K -q -p {AGENT_SD} 2>/dev/null; rm -f {AGENT_SD}; rm -rf {AGENT_DIR}; true",
+                           check=False)
+            self._drop_hook_if_unused()
+        JOURNAL.add("агент удалён — команды снова идут через adb")
+        return self.agent_status()
+
+    def agent_keeper(self, conn):
+        """Раз в минуту: агент подключён, но молчит, а adb работает — запускаем его (колонка перезагрузилась
+        без хука); версия не совпала с панелью — обновляем (один раз за запуск)."""
+        updated = False
+        while True:
+            time.sleep(60 if updated else 20)
+            if not self.adb.agent or not conn.online:
+                continue
+            try:
+                if not self.adb.agent_ok:
+                    with self.adb.only_adb():
+                        self.adb.shell(f"[ -x {AGENT_BIN} ] && [ -s {AGENT_TOKENS} ] && ! kill -0 $(cat {AGENT_SD} 2>/dev/null) "
+                                       f"2>/dev/null && start-stop-daemon -S -b -m -p {AGENT_SD} -x /bin/sh -- -c "
+                                       f"{shlex.quote(AGENT_RUN)}; true", check=False)
+                    self.adb._agent_retry = 0.0
+                    continue
+                if not updated and self.adb.agent.ping().get("version") != VERSION:
+                    updated = True
+                    self.agent_install()
+                updated = True
+            except (AdbError, agentlink.AgentError, OSError) as e:
+                updated = True
+                JOURNAL.add(f"агент: {e}", "warn")
 
     # ---------- резервная копия ----------
     # Что берём из /data/quasar/webpanel: только своё. Копии оригиналов не берём — на другой прошивке они
@@ -4588,8 +4853,7 @@ class Terminal:
         cols, rows = max(20, min(400, cols)), max(5, min(200, rows))
         cmd = (f"echo $$ $(tty) > {self.info}; stty rows {rows} cols {cols} 2>/dev/null; "
                f"export TERM=xterm-256color PS1={shlex.quote(self.PS1)}; {YAM_PATH}cd /data 2>/dev/null; exec sh")
-        self.proc = subprocess.Popen(adb._base() + ["shell", cmd], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, bufsize=0)
+        self.proc = adb.popen(cmd, pty=True, cols=cols, rows=rows)
 
     def _pump(self):
         try:
@@ -4966,6 +5230,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/ring/frames": lambda: p.ring_frames(q.get("name", "")),
             "/api/anim/custom": p.anim_custom,
             "/api/hook": p.hook_status,
+            "/api/agent": p.agent_status,
             "/api/report": self._report,
             "/api/anim/original": lambda: p.anim_original(q.get("kind", ""), q.get("name", "")),
             "/api/led/patterns": p.led_patterns,
@@ -5088,6 +5353,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/pattern/stop": lambda: p.stop_pattern(d.get("kind")),
             "/api/ring": lambda: p.ring(d),
             "/api/led": lambda: p.led(d),
+            "/api/agent/install": p.agent_install,
+            "/api/agent/remove": p.agent_remove,
             "/api/clock": lambda: p.clock(d),
             "/api/clock/play": lambda: p.play_clock(d["frames"], d.get("seconds", 10)),
             "/api/anim/install": lambda: p.anim_install(d.get("kind"), d.get("name"), d.get("frames"), d.get("text")),
@@ -5173,7 +5440,7 @@ class PanelUpdater:
     """Проверка новых релизов панели на GitHub и обновление — в зависимости от того, как панель установлена:
     zip (Windows-сборка, Download ZIP) — скачать релиз и заменить файлы панели; git — git pull --ff-only;
     docker — только подсказать команду (образ изнутри не обновить)."""
-    FILES = ("server.py", "access.py", "glagol.py", "profiles.py", "managed_yam.py", "multi.py", "pyadb.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
+    FILES = ("server.py", "access.py", "agent.py", "glagol.py", "profiles.py", "managed_yam.py", "multi.py", "pyadb.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
              "Dockerfile", "docker-compose.yml")
     DIRS = ("static", "device")
     OBSOLETE = ("3d", "tools", "docs")  # папки прежних версий: модель переехала в static/models, остальное не нужно
@@ -5556,11 +5823,13 @@ def main():
     host = device.rpartition(":")[0] if device and ":" in device else None
     panel.glagol = glagol.Glagol(panel.auth, host, None, GLAGOL_PLATFORM)
     panel.ymusic = glagol.YandexMusic(panel.auth)
+    panel.agent_attach()
     panel.conn = Connection(adb)
     panel.leds = LedStream(adb)
     panel.metrics = Metrics(adb, panel.conn)
     threading.Thread(target=panel.metrics.run, daemon=True, name="metrics").start()
     threading.Thread(target=panel.conn.run, daemon=True, name="adb-connection").start()
+    threading.Thread(target=panel.agent_keeper, args=(panel.conn,), daemon=True, name="agent").start()
     # в режиме нескольких колонок (multi.py) профиль задан явно: перезапуск сменил бы порт процесса
     if auto and not os.environ.get("PANEL_GATEWAY_SECRET"):
         threading.Thread(target=watch_model, args=(adb, panel.conn, model), daemon=True, name="model").start()

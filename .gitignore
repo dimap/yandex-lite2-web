@@ -2,6 +2,7 @@
 .yandex_auth.json
 .panel_auth.json
 .panel_settings.json
+.agent.json
 .metrics.json
 .radio_alice.json
 .radio_logos
@@ -23,6 +24,8 @@ dist/
 # сборка помощника для колонки (панель собирает её сама, если есть Go)
 device/assistant/build/
 .assistantd-*
+device/agent/build/
+.yapanel-agent-*
 
 # локальные настройки Command Code
 .commandcode/

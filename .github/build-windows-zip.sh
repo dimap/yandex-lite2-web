@@ -14,12 +14,16 @@ trap 'rm -rf "$WORK"' EXIT
 
 mkdir -p "$WORK/$NAME/runtime/python" "$OUT"
 cd "$ROOT"
-cp -r server.py access.py glagol.py profiles.py managed_yam.py multi.py speakers.example.json VERSION static device start.bat LICENSE README.md CONTRIBUTION.md "$WORK/$NAME/"
+cp -r server.py access.py agent.py glagol.py profiles.py managed_yam.py multi.py speakers.example.json VERSION static device start.bat LICENSE README.md CONTRIBUTION.md "$WORK/$NAME/"
 # помощник для колонки (linux/arm64): на Windows Go обычно нет, поэтому кладём готовую сборку
 rm -rf "$WORK/$NAME/device/assistant/build"
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go -C device/assistant build -trimpath -ldflags "-s -w -X main.version=$VER" \
   -o "$WORK/$NAME/device/assistant/build/assistantd" .
 echo "$VER" > "$WORK/$NAME/device/assistant/build/VERSION"
+rm -rf "$WORK/$NAME/device/agent/build"
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go -C device/agent build -trimpath -ldflags "-s -w -X main.version=$VER" \
+  -o "$WORK/$NAME/device/agent/build/yapanel-agent" .
+echo "$VER" > "$WORK/$NAME/device/agent/build/VERSION"
 curl -fsSL -o "$WORK/python.zip" "https://www.python.org/ftp/python/$PYVER/python-$PYVER-embed-$ARCH.zip"
 unzip -q "$WORK/python.zip" -d "$WORK/$NAME/runtime/python"
 # портативный Python не видит папку скрипта — добавляем корень панели (путь относительно ._pth)

@@ -52,3 +52,18 @@ jobs:
       - run: go vet ./...
       - run: go test ./...
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o /dev/null .
+
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: device/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: device/agent/go.mod
+      - run: test -z "$(gofmt -l .)"
+      - run: go vet ./...
+      - run: go test ./...
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w" -o /dev/null .
