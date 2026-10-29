@@ -285,35 +285,69 @@ class BtOut(unittest.TestCase):
 
 
 class BtOutResume(unittest.TestCase):
-    """После перезапуска Алиса забывает, что играло: включаем то же самое заново, трек — с того же места."""
+    """После перезапуска: Алиса восстановила сама — не трогаем; иначе «продолжить»; не помогло — то же заново,
+    трек — с прежнего места, но не дальше конца (иначе включился бы следующий)."""
 
-    def run_resume(self, before):
+    def run_resume(self, before, react):
         from unittest.mock import patch
         p = server.Panel(Mock())
         sent = []
         g = SimpleNamespace(ws=object(), state={"playing": True, "playerState": before}, updated=0.0)
-        g.send = lambda cmd: (sent.append(cmd), {"status": "SUCCESS"})[1]
+        def send(cmd):
+            sent.append(cmd)
+            react(g, cmd)
+            return {"status": "SUCCESS"}
+        g.send = send
         p.glagol = g
         p.adb.shell = lambda cmd, *a, **k: ("changed", "", 0)
         p.detach = lambda *a: None
         with patch.object(server.threading, "Thread", lambda target, args=(), daemon=None: SimpleNamespace(start=lambda: None)):
-            p._btout_switch(mount=True)          # запоминаем, что играло
-        g.ws = None                              # Quasar перезапустился: старое соединение оборвалось…
+            p._btout_switch(mount=True)
+        g.ws = None
         def sleep(_):
-            if g.ws is None:                     # …и через «время» Glagol снова на связи, с пустым плеером
-                g.ws, g.state, g.updated = object(), {"playing": False, "playerState": {}}, 10**10
-            elif sent:
-                g.state = {"playing": True}
+            if g.ws is None:   # перезапуск: соединение вернулось, плеер пуст (или сам восстановлен — см. react)
+                g.ws, g.updated = object(), 10**10
+                g.state = react(g, None) or {"playing": False, "playerState": {}}
         with patch.object(server.time, "sleep", sleep):
-            self.assertTrue(p._btout_resume())
-        return sent
+            ok = p._btout_resume()
+        return ok, sent
+
+    TRACK = {"id": "29016012", "playlistType": "Album", "progress": 95, "duration": 245}
+
+    def test_alice_restored_itself(self):
+        ok, sent = self.run_resume(self.TRACK, lambda g, cmd: {"playing": True, "playerState": dict(self.TRACK)} if cmd is None else None)
+        self.assertTrue(ok)
+        self.assertEqual(sent, [])
+
+    def test_continue_is_enough(self):
+        def react(g, cmd):
+            if cmd and cmd["command"] == "play":
+                g.state = {"playing": True, "playerState": dict(self.TRACK)}
+        ok, sent = self.run_resume(self.TRACK, react)
+        self.assertEqual(sent, [{"command": "play"}])
+
+    def test_same_track_from_same_place(self):
+        def react(g, cmd):
+            if cmd and cmd["command"] == "playMusic":
+                g.state = {"playing": True, "playerState": {**self.TRACK, "progress": 0}}
+        ok, sent = self.run_resume(self.TRACK, react)
+        self.assertEqual([c["command"] for c in sent], ["play", "playMusic", "rewind"])
+        self.assertEqual(sent[1], {"command": "playMusic", "id": "29016012", "type": "track"})
+        self.assertTrue(95 <= sent[2]["position"] < 235)
+
+    def test_no_rewind_past_the_end(self):
+        near_end = {**self.TRACK, "progress": 240}
+        def react(g, cmd):
+            if cmd and cmd["command"] == "playMusic":
+                g.state = {"playing": True, "playerState": {**near_end, "progress": 0}}
+        ok, sent = self.run_resume(near_end, react)
+        self.assertNotIn("rewind", [c["command"] for c in sent])
 
     def test_radio(self):
-        sent = self.run_resume({"id": "1", "playlistId": "user:onyourwave", "playlistType": "Radio", "progress": 50})
-        self.assertEqual(sent[0], {"command": "playMusic", "id": "user:onyourwave", "type": "radio"})
-
-    def test_track_from_same_place(self):
-        sent = self.run_resume({"id": "29016012", "playlistType": "Album", "progress": 95})
-        self.assertEqual(sent[0], {"command": "playMusic", "id": "29016012", "type": "track"})
-        self.assertEqual(sent[-1]["command"], "rewind")
-        self.assertGreaterEqual(sent[-1]["position"], 95)
+        radio = {"id": "1", "playlistId": "user:onyourwave", "playlistType": "Radio", "progress": 50, "duration": 200}
+        def react(g, cmd):
+            if cmd and cmd["command"] == "playMusic":
+                g.state = {"playing": True, "playerState": {"id": "2"}}
+        ok, sent = self.run_resume(radio, react)
+        self.assertEqual(sent[1], {"command": "playMusic", "id": "user:onyourwave", "type": "radio"})
+        self.assertNotIn("rewind", [c["command"] for c in sent])
