@@ -28,8 +28,9 @@ export function startAsciiBackground(canvas, {playing = () => false, spectrum = 
     // Настоящий спектр есть только первые секунды трека (эквалайзер Quasar на часах). Без него, пока играет музыка, —
     // честная имитация: удары ~120 в минуту, полосы со сдвигом и своей «частотой»; на паузе узор просто переливается.
     const beat = Math.exp(-((t * 2) % 1) * 5);
-    const fake = i => active && !reduced.matches ? .25 + .55 * beat * (.6 + .4 * Math.sin(t * (1.3 + i * .7) + i * 2)) : 0;
+    const fake = i => active && !reduced.matches ? .15 + .85 * beat * (.55 + .45 * Math.sin(t * (1.3 + i * .7) + i * 2)) : 0;
     bands.forEach((_, i) => { bands[i] += ((live ? sample.bands[i] : fake(i)) - bands[i]) * .3; });
+    const loud = (bands[0] + bands[1] + bands[2] + bands[3]) / 4;
     const fs = 13, col = fs * .62, row = fs * 1.1;
     const cx = width / 2, cy = height / 2, radius = Math.min(width, height) * .63 * size;
     ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = colorOf() || color;
@@ -37,10 +38,10 @@ export function startAsciiBackground(canvas, {playing = () => false, spectrum = 
       const dx = x - cx, dy = y - cy, r = Math.hypot(dx, dy) / radius, a = Math.atan2(dy, dx);
       const wave = .78 + .12 * Math.sin(a * 3 + t * .8) + .07 * Math.sin(a * 7 - t);
       const band = bands[Math.min(3, Math.floor(Math.abs(a) / Math.PI * 4))];
-      const reach = wave + (active ? .08 : 0) + band * .2;
+      const reach = wave + (active ? .08 : 0) + band * .45;   // полосы заметно выталкивают край узора
       const v = Math.max(0, 1 - (r / reach) ** 2);
       if (v < .07) continue;
-      ctx.globalAlpha = Math.min(.65 * alpha, v * (active ? .65 : .5) * alpha);
+      ctx.globalAlpha = Math.min(.8 * alpha, v * (active ? .45 + .9 * loud : .5) * alpha);   // на ударе — ярче
       ctx.fillText(ramp[Math.min(ramp.length - 1, Math.floor(v * ramp.length))], x, y);
     }
     ctx.globalAlpha = 1;
