@@ -32,7 +32,7 @@ android {
         targetSdk = 34
         versionCode = versionCodeOf(panelVersion)
         versionName = panelVersion
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }   // Python 3.14 (в нём zstd) — только 64 бита
     }
 
     signingConfigs {
@@ -58,7 +58,7 @@ android {
 
 chaquopy {
     defaultConfig {
-        version = "3.13"
+        version = "3.14"
         pyc { src = false }   // байткод соберётся на телефоне: не нужен Python той же версии на машине сборки
     }
 }

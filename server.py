@@ -5381,7 +5381,8 @@ def main():
         import webbrowser
         threading.Timer(1.0, webbrowser.open, (f"http://{shown}:{args.port}/",)).start()
     # kill (SIGTERM) — как Ctrl+C: выходим через finally и успеваем сохранить историю графиков
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    if threading.current_thread() is threading.main_thread():   # в приложении для Android сервер — не в главном потоке
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

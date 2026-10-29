@@ -8,11 +8,11 @@
 
 ## Сборка
 
-Нужны JDK 17 или 21 и Android SDK (platform 34). Gradle 8.14:
+Нужны JDK (проверено на 25) и Android SDK (platform 34), Gradle 9.1+:
 
 ```sh
 cd android
-export JAVA_HOME=/usr/lib/jvm/java-21-openjdk
+export JAVA_HOME=/usr/lib/jvm/java-25-openjdk
 echo "sdk.dir=$HOME/Android/Sdk" > local.properties
 gradle assembleRelease          # → app/build/outputs/apk/release/app-release.apk
 ```
