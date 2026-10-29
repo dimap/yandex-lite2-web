@@ -797,6 +797,11 @@
   #pl-meta { min-height: 26px; flex-wrap: nowrap; overflow: hidden;
              -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent); }
   #pl-meta > * { flex: none; white-space: nowrap; }
+  /* компьютер: выбор колонки прямо в плеере (если панель управляет несколькими); на телефоне — в листе громкости */
+  .pl-speaker { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+  .pl-speaker[hidden] { display: none; }
+  .pl-speaker select { min-height: 36px; padding: 0 10px; max-width: 280px; }
+  @media (max-width: 760px) { .pl-speaker { display: none !important; } }
   .pl-controls { justify-content: flex-start; gap: 6px; margin-left: -6px; }
   .pl-controls .cbtn { width: 48px; height: 48px; }
   .pl-controls .cbtn.big { width: 64px; height: 64px; }
@@ -1506,6 +1511,8 @@
           <div class="controls pl-controls" data-mu-controls="full"></div>
           <div class="mu-volrow"><svg width="18" height="18" aria-hidden="true"><use href="#i-vol"/></svg>
             <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span></div>
+          <label class="pl-speaker" id="pl-speaker-row" hidden><svg width="16" height="16" aria-hidden="true"><use href="#i-vol"/></svg>
+            <span class="meta">Колонка</span><select class="field" id="pl-speaker" aria-label="Колонка, которой управляет плеер"></select></label>
 
           <form class="row mu-ask-form" id="pl-command" hidden>
             <div class="voice-field"><textarea class="field" name="text" rows="1" placeholder="Попросить Алису: «включи джаз»" aria-label="Команда Алисе в плеере" aria-describedby="pl-command-count"></textarea></div>
@@ -4009,6 +4016,18 @@ $('#tab-player .pl-cover-box').addEventListener('click', e => {
   clearTimeout(plTapTimer);
   plTapTimer = setTimeout(() => { plTapTimer = null; musicAction('play', null); }, side ? 260 : 0);
 });
+// Компьютер: выбор колонки рядом с громкостью большого плеера — тот же список, что в боковом меню
+(async () => {
+  if (!PanelContext.deviceId) return;
+  try {
+    const list = (await PanelContext.fetch('/api/speakers').then(x => x.json())).devices || [];
+    if (list.length < 2) return;
+    const sel = $('#pl-speaker');
+    sel.innerHTML = list.map(d => `<option value="${esc(d.id)}" ${d.id === PanelContext.deviceId ? 'selected' : ''}>${esc(d.name)}</option>`).join('');
+    sel.onchange = () => { sel.disabled = true; location.assign('/speaker/' + encodeURIComponent(sel.value) + '/#player'); };
+    $('#pl-speaker-row').hidden = false;
+  } catch {}
+})();
 // Громкость и колонки — листом по кнопке в углу; колонки — если панель управляет несколькими (speakers.json)
 $('#pl-vol-btn').onclick = async () => {
   plSheet(plOpen === 'vol' ? '' : 'vol');
