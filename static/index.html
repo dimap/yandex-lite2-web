@@ -2510,7 +2510,7 @@ async function refreshStatus() {
     if (!volDragging) {
       const [m, b] = [+s.vol_level || 0, +s.vol_bt || 0];
       showLevel(m);
-      $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b);
+      if (!btVolOut()) { $('#vol-bt').max = 255; $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b); }
     }
     $('#ffmpeg-hint').textContent = s.ffmpeg ? 'ffmpeg найден — подходят любые форматы.' : 'ffmpeg не найден — подходят только WAV.';
 
@@ -2547,9 +2547,11 @@ for (const [id, key] of [['#vol-master', 'level'], ['#vol-bt', 'bt']]) {
   el.addEventListener('input', () => {
     volDragging = true;
     if (key === 'level') showLevel(+el.value);
-    else $('#vol-bt-v').textContent = pct(el.value);
+    else $('#vol-bt-v').textContent = btVolOut() ? el.value + '%' : pct(el.value);
     clearTimeout(volTimer);
-    volTimer = setTimeout(() => act(null, () => api('/api/volume', { [key]: +el.value })), 150);
+    // звук идёт в Bluetooth-колонку — ползунок её громкости, иначе — громкости звука с телефона
+    volTimer = setTimeout(() => act(null, () => key === 'bt' && btVolOut() ? api('/api/btout/volume', { level: +el.value })
+      : api('/api/volume', { [key]: +el.value })), 150);
   });
   el.addEventListener('change', () => setTimeout(() => volDragging = false, 1500));
 }
@@ -3326,6 +3328,14 @@ function renderBt() {
 }
 const btDo = (btn, body, msg) => act(btn, async () => { btData = await api('/api/bt', body); renderBt(); }, msg);
 // ---- звук через Bluetooth-колонку ----
+// Пока звук идёт в Bluetooth-колонку, нижний ползунок виджета — её собственная громкость (bluealsa, в %)
+const btVolOut = () => btData?.out?.on && btData.out.state === 'bt' && btData.out.volume != null;
+function renderBtVol() {
+  const out = btVolOut();
+  $('.vol-bt label').textContent = out ? btData.out.name : 'Громкость';
+  $('.vol-bt label').title = out ? 'Громкость Bluetooth-колонки' : 'Громкость звука с телефона по Bluetooth';
+  if (out && !volDragging) { $('#vol-bt').max = 100; $('#vol-bt').value = btData.out.volume; $('#vol-bt-v').textContent = btData.out.volume + '%'; }
+}
 function renderBtOut() {
   const o = btData?.out || { on: false }, last = !o.on && o.last;
   const self = `из колонки «${esc($('#model-name').textContent.trim() || 'Станция')}»`;   // откуда звук на самом деле
@@ -3341,6 +3351,7 @@ function renderBtOut() {
   $('#bt-out-btn').classList.toggle('primary', !o.on);
   $('#bt-out-other').hidden = !last;
   if (o.on) $('#bt-out-pick').hidden = true;
+  renderBtVol();
 }
 // «Выбрать колонку» / «Другая колонка»: ищем рядом и показываем список
 function btOutScan(b) {

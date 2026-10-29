@@ -3851,10 +3851,12 @@ echo @@BLUEZ
                                         f"echo @@OUT; cat {BTOUT_MAC} 2>/dev/null; echo; cat {BTOUT_STATE} 2>/dev/null; echo; "
                                         f"p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch; "
                                         # имя — последним: всё, что после @@NAME, считается именем
+                                        f"echo @@VOL; grep -q bt {BTOUT_STATE} 2>/dev/null && amixer -D bluealsa scontents 2>/dev/null | head -12; "
                                         f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; echo @@NAME; cat {BTOUT_NAME} 2>/dev/null; true",
                                         check=False, timeout=20)[0])
         out, _, outinfo = out.partition("@@OUT")
-        outinfo, _, last = outinfo.partition("@@LAST")
+        outinfo, _, vol = outinfo.partition("@@VOL")
+        vol, _, last = vol.partition("@@LAST")
         last, _, saved = last.partition("@@NAME")
         self._btout_saved_name = saved.strip()[:60]
         bluez, _, pair = out.partition("@@PAIR")
@@ -3876,8 +3878,24 @@ echo @@BLUEZ
             "powered": bool(adapter.get("Powered")), "discoverable": bool(adapter.get("Discoverable")),
             "pairable": bool(adapter.get("Pairable")), "alias": adapter.get("Alias") or adapter.get("Name"),
             "pair_until": pair_until if pair_until and pair_until > time.time() else None,
-            "devices": devices, "out": {**self._btout_info(outinfo, devices, self._btout_saved_name), **self._btout_last(devices)},
+            "devices": devices, "out": {**self._btout_info(outinfo, devices, self._btout_saved_name), **self._btout_last(devices),
+                                        **self._btout_vol(vol)},
         }
+
+    @staticmethod
+    def _btout_vol(text):
+        """Громкость самой Bluetooth-колонки — регулятор bluealsa «<имя> A2DP» (0–127, показываем в %)."""
+        m = re.search(r"Simple mixer control '([^']*A2DP)',0.*?\[(\d+)%\]", text, re.S)
+        return {"volume": int(m.group(2)), "volume_ctl": m.group(1)} if m else {}
+
+    def btout_volume(self, level):
+        level = max(0, min(100, int(level)))
+        out, _, _ = self.adb.shell("amixer -D bluealsa scontrols 2>/dev/null; true", check=False)
+        m = re.search(r"Simple mixer control '([^']*A2DP)',0", strip_ansi(out))
+        if not m:
+            raise AdbError("Bluetooth-колонка не подключена")
+        self.adb.shell(f"amixer -D bluealsa sset {shlex.quote(m.group(1))} {level}% >/dev/null", check=False)
+        return {"volume": level}
 
     def _btout_last(self, devices):
         mac = getattr(self, "_btout_last_mac", None)
@@ -4866,6 +4884,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/btout/scan": lambda: p.btout_scan(d.get("seconds", 12)),
             "/api/btout/use": lambda: p.btout_use(d.get("mac")),
             "/api/btout/off": p.btout_off,
+            "/api/btout/volume": lambda: p.btout_volume(d.get("level", 50)),
             "/api/system": lambda: p.system(d["action"]),
             "/api/fs/write": lambda: p.fs_write(d["path"], d["text"]),
             "/api/fs/delete": lambda: p.fs_delete(d["path"]),
