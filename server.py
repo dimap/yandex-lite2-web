@@ -3889,7 +3889,13 @@ echo @@BLUEZ
     def _btout_switch(self, mount):
         """Переключаем выход сразу (а не ждём сторожа) и перезапускаем Алису; играла музыка — после перезапуска
         продолжаем её: перезапуск её прерывает."""
-        was = bool((self.glagol.state or {}).get("playing")) if getattr(self, "glagol", None) else False
+        st = (self.glagol.state or {}) if getattr(self, "glagol", None) else {}
+        was = bool(st.get("playing"))
+        # что играло — после перезапуска Алиса это забывает, «продолжить» ей нечего: включим то же самое заново
+        p = st.get("playerState") or {}
+        pos = (p.get("progress") or 0) + max(0.0, time.time() - (self.glagol.updated or time.time())) if was else 0
+        self._btout_was = {"id": str(p.get("id") or ""), "playlist": p.get("playlistId") or "",
+                           "ptype": p.get("playlistType"), "pos": pos} if was and p.get("playerType") != "bluetooth" else None
         cmd = (f"grep -q ' /etc/asound.conf ' /proc/mounts || {{ mount --bind {BTOUT_CONF} /etc/asound.conf && echo changed; }}" if mount else
                f"grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
                f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; echo changed; }}")
@@ -3916,14 +3922,28 @@ echo @@BLUEZ
         else:
             return False
         time.sleep(3)                                   # Алиса ещё дозагружается — даём ей пару секунд
+        w = getattr(self, "_btout_was", None) or {}
+        # станция — заново как станция, иначе — тот же трек с того же места; не знаем, что играло, — просто «играть»
+        if w.get("ptype") == "Radio" and w.get("playlist"):
+            cmd = {"command": "playMusic", "id": w["playlist"], "type": "radio"}
+        elif w.get("id"):
+            cmd = {"command": "playMusic", "id": w["id"], "type": "track"}
+        else:
+            cmd = {"command": "play"}
         for _ in range(3):
             try:
-                self.music_cmd({"command": "play"})
+                self.glagol.send(cmd)
             except Exception:
                 pass
             for _ in range(8):
                 time.sleep(1)
                 if (g.state or {}).get("playing"):
+                    if cmd.get("type") == "track" and w.get("pos", 0) > 5:   # тот же трек — с того же места
+                        time.sleep(1)
+                        try:
+                            self.glagol.send({"command": "rewind", "position": int(w["pos"])})
+                        except Exception:
+                            pass
                     return True
         return False
 

@@ -282,3 +282,38 @@ class BtOut(unittest.TestCase):
         # колонки нет в списке сопряжённых — имя запомненное или общее, но не MAC-адрес
         self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n", [], "BT Speaker")["name"], "BT Speaker")
         self.assertEqual(server.Panel._btout_info(f"{self.MAC}\n", [])["name"], "Bluetooth-колонка")
+
+
+class BtOutResume(unittest.TestCase):
+    """После перезапуска Алиса забывает, что играло: включаем то же самое заново, трек — с того же места."""
+
+    def run_resume(self, before):
+        from unittest.mock import patch
+        p = server.Panel(Mock())
+        sent = []
+        g = SimpleNamespace(ws=object(), state={"playing": True, "playerState": before}, updated=0.0)
+        g.send = lambda cmd: (sent.append(cmd), {"status": "SUCCESS"})[1]
+        p.glagol = g
+        p.adb.shell = lambda cmd, *a, **k: ("changed", "", 0)
+        p.detach = lambda *a: None
+        with patch.object(server.threading, "Thread", lambda target, args=(), daemon=None: SimpleNamespace(start=lambda: None)):
+            p._btout_switch(mount=True)          # запоминаем, что играло
+        g.ws = None                              # Quasar перезапустился: старое соединение оборвалось…
+        def sleep(_):
+            if g.ws is None:                     # …и через «время» Glagol снова на связи, с пустым плеером
+                g.ws, g.state, g.updated = object(), {"playing": False, "playerState": {}}, 10**10
+            elif sent:
+                g.state = {"playing": True}
+        with patch.object(server.time, "sleep", sleep):
+            self.assertTrue(p._btout_resume())
+        return sent
+
+    def test_radio(self):
+        sent = self.run_resume({"id": "1", "playlistId": "user:onyourwave", "playlistType": "Radio", "progress": 50})
+        self.assertEqual(sent[0], {"command": "playMusic", "id": "user:onyourwave", "type": "radio"})
+
+    def test_track_from_same_place(self):
+        sent = self.run_resume({"id": "29016012", "playlistType": "Album", "progress": 95})
+        self.assertEqual(sent[0], {"command": "playMusic", "id": "29016012", "type": "track"})
+        self.assertEqual(sent[-1]["command"], "rewind")
+        self.assertGreaterEqual(sent[-1]["position"], 95)
