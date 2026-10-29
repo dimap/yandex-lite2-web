@@ -55,7 +55,7 @@ func fail(w http.ResponseWriter, code int, err error) {
 }
 
 func (a *agent) ping(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"version": version, "uptime": int(time.Since(a.started).Seconds()), "pid": os.Getpid()})
+	writeJSON(w, http.StatusOK, map[string]any{"version": version, "build": build, "uptime": int(time.Since(a.started).Seconds()), "pid": os.Getpid()})
 }
 
 type limitWriter struct {

@@ -6,17 +6,38 @@
 package main
 
 import (
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"time"
 )
 
 var version = "dev"
+
+// build — начало sha256 файла агента: панель сравнивает его со своей сборкой и обновляет агента,
+// даже если номер версии тот же (сборка из изменённых исходников).
+var build string
+
+func exeHash() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])[:16]
+}
 
 func main() {
 	dir := flag.String("dir", "/data/quasar/webpanel/agent", "папка агента: сертификат и токены")
@@ -28,10 +49,21 @@ func main() {
 		return
 	}
 	log.SetFlags(log.LstdFlags)
+	// Памяти на колонке мало (свободно ~30 МБ): один поток для Go-кода, сборка мусора чаще, потолок кучи —
+	// и раз в полминуты отдаём системе то, что освободилось после всплеска (большой файл, длинный вывод).
+	runtime.GOMAXPROCS(1)
+	debug.SetGCPercent(25)
+	debug.SetMemoryLimit(6 << 20)
+	go func() {
+		for range time.Tick(30 * time.Second) {
+			debug.FreeOSMemory()
+		}
+	}()
 	cert, err := loadOrCreateCert(filepath.Join(*dir, "cert.pem"), filepath.Join(*dir, "key.pem"))
 	if err != nil {
 		log.Fatalf("сертификат: %v", err)
 	}
+	build = exeHash()
 	a := &agent{tokens: newTokens(filepath.Join(*dir, "tokens")), started: time.Now()}
 	srv := &http.Server{
 		Addr:              *addr,

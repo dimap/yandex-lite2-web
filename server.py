@@ -3091,12 +3091,23 @@ echo @@BLUEZ
                "network": bool(self._agent_host()), "port": agentlink.PORT, "panel_version": VERSION, "version": None}
         if self.adb.agent:
             try:
-                res["version"] = self.adb.agent.ping().get("version")
-                res["active"] = True
+                ping = self.adb.agent.ping()
+                res["version"], res["active"] = ping.get("version"), True
+                res["outdated"] = self._agent_outdated(ping)
             except (agentlink.AgentError, TimeoutError) as e:
                 res["error"] = str(e)
-        res["outdated"] = bool(res["version"]) and res["version"] != VERSION
+        res.setdefault("outdated", False)
         return res
+
+    def _agent_outdated(self, ping):
+        """Другая версия — или та же, но своя сборка отличается (меняли исходники агента)."""
+        if ping.get("version") != VERSION:
+            return True
+        try:
+            local = self._device_binary(AGENT_SRC, "yapanel-agent", self.AGENT_ASSET, "агента", download=False)
+        except AdbError:
+            return False
+        return bool(ping.get("build")) and hashlib.sha256(local.read_bytes()).hexdigest()[:16] != ping["build"]
 
     def agent_install(self):
         """Ставит или обновляет агента — только через adb — и подключает эту панель своим токеном."""
@@ -3170,7 +3181,7 @@ echo @@BLUEZ
                                        f"{shlex.quote(AGENT_RUN)}; true", check=False)
                     self.adb._agent_retry = 0.0
                     continue
-                if not updated and self.adb.agent.ping().get("version") != VERSION:
+                if not updated and self._agent_outdated(self.adb.agent.ping()):
                     updated = True
                     self.agent_install()
                 updated = True
