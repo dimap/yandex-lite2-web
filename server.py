@@ -3828,9 +3828,10 @@ echo @@BLUEZ
 
     def bt_state(self):
         out = strip_ansi(self.adb.shell(f"{BLUEZ_DUMP}; echo @@PAIR; cat {self.BT_PAIR_FLAG} 2>/dev/null; "
-                                        f"echo @@OUT; cat {BTOUT_MAC} 2>/dev/null; echo; cat {BTOUT_STATE} 2>/dev/null; "
-                                        f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; echo @@NAME; cat {BTOUT_NAME} 2>/dev/null; "
-                                        f"p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch; true",
+                                        f"echo @@OUT; cat {BTOUT_MAC} 2>/dev/null; echo; cat {BTOUT_STATE} 2>/dev/null; echo; "
+                                        f"p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch; "
+                                        # имя — последним: всё, что после @@NAME, считается именем
+                                        f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; echo @@NAME; cat {BTOUT_NAME} 2>/dev/null; true",
                                         check=False, timeout=20)[0])
         out, _, outinfo = out.partition("@@OUT")
         outinfo, _, last = outinfo.partition("@@LAST")
@@ -3869,13 +3870,16 @@ echo @@BLUEZ
         """Переключаем выход сразу (а не ждём сторожа) и перезапускаем Алису; играла музыка — после перезапуска
         продолжаем её: перезапуск её прерывает."""
         was = bool((self.glagol.state or {}).get("playing")) if getattr(self, "glagol", None) else False
-        cmd = (f"grep -q ' /etc/asound.conf ' /proc/mounts || mount --bind {BTOUT_CONF} /etc/asound.conf" if mount else
+        cmd = (f"grep -q ' /etc/asound.conf ' /proc/mounts || {{ mount --bind {BTOUT_CONF} /etc/asound.conf && echo changed; }}" if mount else
                f"grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
-               f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; }}")
-        self.adb.shell(cmd + "; true", check=False)
+               f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; echo changed; }}")
+        out, _, _ = self.adb.shell(cmd + "; true", check=False)
+        if "changed" not in out:     # выход и так тот — Алису зря не перезапускаем
+            return False
         self.detach("quasar", f"{QUASAR}/q restart >/dev/null 2>&1")
         if was:
             threading.Thread(target=self._btout_resume, daemon=True).start()
+        return True
 
     def _btout_resume(self):
         # ждём, пока Алиса поднимется и Glagol снова на связи (до 90 с), и просим продолжить
@@ -3961,24 +3965,28 @@ echo @@BLUEZ
             self.adb.push(Path(td) / "name", BTOUT_NAME)
         self._ensure_hook()
         self.adb.shell(f"chmod 755 {BTOUT_SH}; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; true", check=False)
-        self._btout_switch(mount=True)
+        restarted = self._btout_switch(mount=True)
         # сторож дальше следит за подключением (подмена уже стоит — он её не трогает, пока колонка на связи)
         self.adb.shell(f"start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}")
-        return self.bt_state()
+        return {**self.bt_state(), "restarted": restarted}
 
     def btout_off(self):
         """Встроенный динамик: убираем выбор — сторож снимет подмену, перезапустит Алису и выйдет."""
         # сторожа гасим сами и сразу возвращаем встроенный динамик (с продолжением музыки)
         self.adb.shell(f"rm -f {BTOUT_MAC} {BTOUT_STATE}; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; true", check=False)
-        self._btout_switch(mount=False)
+        restarted = self._btout_switch(mount=False)
         self._drop_hook_if_unused()
-        return self.bt_state()
+        return {**self.bt_state(), "restarted": restarted}
 
     def bt_action(self, data):
         act, mac = data.get("action"), str(data.get("mac") or "")
         if act in ("connect", "disconnect", "remove", "trust", "untrust"):
             if not re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac):
                 raise AdbError("неверный адрес устройства")
+            # отключили или забыли колонку, через которую идёт звук, — значит, через неё больше не играем: звук сразу
+            # в саму колонку, а сторож перестаёт её ждать (иначе раз в 30 с подключал бы её обратно)
+            if act in ("disconnect", "remove") and self.adb.shell(f"cat {BTOUT_MAC} 2>/dev/null; true", check=False)[0].strip() == mac:
+                self.btout_off()
             out, _, _ = self.adb.shell(f"bluetoothctl {act} {mac} 2>&1 | tail -n 2; true", timeout=30, check=False)
             out = strip_ansi(out)
             if re.search(r"Failed|not available|Error", out):

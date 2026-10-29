@@ -231,10 +231,24 @@ class BtOut(unittest.TestCase):
         code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
         self.assertNotIn("bluetoothctl", code)   # сторож проверяет по D-Bus, без утечки
         self.assertTrue(any("start-stop-daemon -S" in c and server.BTOUT_SH in c for c in self.cmds))
-        p.adb.shell = lambda cmd, *a, **k: (self.cmds.append(cmd), ("", "", 0))[1]
+        p.adb.shell = lambda cmd, *a, **k: (self.cmds.append(cmd), ("changed" if "umount" in cmd else "", "", 0))[1]
         self.cmds.clear(); p.btout_off()
         self.assertTrue(any("umount /etc/asound.conf" in c for c in self.cmds) and any("q restart" in c for c in self.cmds))
         self.assertFalse(any(server.BTOUT_LAST in c for c in self.cmds))   # последнюю колонку помним
+        # подмены не было (колонку ждали) — Алису зря не перезапускаем
+        p.adb.shell = lambda cmd, *a, **k: (self.cmds.append(cmd), ("", "", 0))[1]
+        self.cmds.clear(); self.assertFalse(p.btout_off()["restarted"])
+        self.assertFalse(any("q restart" in c for c in self.cmds))
+
+    def test_disconnect_in_panel_stops_bt_output(self):
+        p = self.panel("")
+        calls = []
+        p.btout_off = lambda: calls.append("off")
+        p.adb.shell = lambda cmd, *a, **k: ((self.MAC + "\n") if cmd.startswith("cat") else "", "", 0)
+        p.bt_action({"action": "disconnect", "mac": self.MAC})
+        self.assertEqual(calls, ["off"])
+        p.bt_action({"action": "disconnect", "mac": "11:22:33:44:55:66"})
+        self.assertEqual(calls, ["off"])
         import subprocess
         self.assertEqual(subprocess.run(["sh", "-n"], input=sh.encode()).returncode, 0)
 

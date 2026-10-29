@@ -3328,14 +3328,16 @@ const btDo = (btn, body, msg) => act(btn, async () => { btData = await api('/api
 // ---- звук через Bluetooth-колонку ----
 function renderBtOut() {
   const o = btData?.out || { on: false }, last = !o.on && o.last;
-  $('#bt-out-row').classList.toggle('on', !!o.on);
-  $('#bt-out-text').innerHTML = !o.on ? 'Звук — встроенный динамик'
-    : (o.name === 'Bluetooth-колонка' ? 'Звук через Bluetooth-колонку' : `Звук через «${esc(o.name)}»`) + (o.state === 'bt' ? '' : ' · ждём колонку');
+  const self = `из колонки «${esc($('#model-name').textContent.trim() || 'Станция')}»`;   // откуда звук на самом деле
+  const bt = n => n === 'Bluetooth-колонка' ? 'Bluetooth-колонку' : `«${esc(n)}»`;
+  $('#bt-out-row').classList.toggle('on', o.on && o.state === 'bt');
+  $('#bt-out-text').innerHTML = !o.on ? `Звук — ${self}`
+    : o.state === 'bt' ? `Звук — через ${bt(o.name)}` : `Звук — ${self} · ждём ${bt(o.name)}`;
   $('#bt-out-hint').textContent = !o.on ? (last ? `Можно вернуть звук в «${last.name}» — она уже сопряжена. Алиса перезапустится, играющая музыка продолжится`
       : 'Можно играть через Bluetooth-колонку: Алиса слушает и отвечает, а звук — из неё')
     : o.state === 'bt' ? 'Алиса, музыка и её звуки — из Bluetooth-колонки. Громкость — как обычно. Звуки панели (будильник, «Сказать») в это время могут не звучать'
-    : 'Колонка не подключена — пока звук из встроенного динамика. Включите её: подключение и звук вернутся сами';
-  $('#bt-out-btn').textContent = o.on ? 'Вернуть встроенный динамик' : last ? `Играть через «${last.name}»` : 'Выбрать колонку';
+    : 'Bluetooth-колонка не подключена, поэтому звук пока из самой колонки. Включите её — подключение и звук вернутся сами';
+  $('#bt-out-btn').textContent = o.on ? (o.state === 'bt' ? 'Вернуть звук в колонку' : 'Больше не ждать') : last ? `Играть через «${last.name}»` : 'Выбрать колонку';
   $('#bt-out-btn').classList.toggle('primary', !o.on);
   $('#bt-out-other').hidden = !last;
   if (o.on) $('#bt-out-pick').hidden = true;
@@ -3355,13 +3357,13 @@ function btOutScan(b) {
 }
 function btOutUse(b, mac) {
   toast('Подключаю колонку — Алиса перезапустится и заговорит из неё; играющая музыка продолжится');
-  act(b, async () => { btData = await api('/api/btout/use', { mac }); renderBt(); aliceRestarting('Звук переходит на Bluetooth-колонку — Алиса перезапускается, это около 30 секунд'); }, 'Звук — через Bluetooth-колонку');
+  act(b, async () => { btData = await api('/api/btout/use', { mac }); renderBt(); if (btData.restarted) aliceRestarting('Звук переходит на Bluetooth-колонку — Алиса перезапускается, это около 30 секунд'); }, 'Звук — через Bluetooth-колонку');
 }
 $('#bt-out-btn').onclick = e => {
   const b = e.currentTarget, o = btData?.out || {};
   if (o.on) {
-    if (!confirm('Вернуть звук во встроенный динамик? Алиса перезапустится (~30 с), играющая музыка продолжится.')) return;
-    return act(b, async () => { btData = await api('/api/btout/off', {}); renderBt(); aliceRestarting('Звук возвращается во встроенный динамик — Алиса перезапускается, это около 30 секунд'); }, 'Звук — во встроенный динамик');
+    if (o.state === 'bt' && !confirm('Вернуть звук в саму колонку? Алиса перезапустится (~30 с), играющая музыка продолжится.')) return;
+    return act(b, async () => { btData = await api('/api/btout/off', {}); renderBt(); if (btData.restarted) aliceRestarting('Звук возвращается во встроенный динамик — Алиса перезапускается, это около 30 секунд'); }, 'Звук — во встроенный динамик');
   }
   if (o.last) return btOutUse(b, o.last.mac);
   btOutScan(b);
