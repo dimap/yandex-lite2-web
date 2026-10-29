@@ -22,6 +22,11 @@
     const gl = localStorage.getItem('ui.glow') || 'cursor';
     if (gl !== 'off') document.documentElement.dataset.glow = gl;
     if (th === 'light' || th === 'dark') document.documentElement.dataset.theme = th;
+    if (window.AndroidPanel) {   // приложение для Android: окно под статус-баром, отступы — от приложения
+      const [top, bottom] = String(AndroidPanel.insets()).split(','), s = document.documentElement.style;
+      document.documentElement.classList.add('in-app');
+      s.setProperty('--sa-top', top + 'px'); s.setProperty('--sa-bottom', bottom + 'px');
+    }
     if (ac) {
       const s = document.documentElement.style;
       s.setProperty('--accent', ac);
@@ -34,6 +39,25 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+  /* отступы под системные панели: в браузере — env(), в приложении для Android их задаёт само приложение */
+  :root { --sa-top: env(safe-area-inset-top, 0px); --sa-bottom: env(safe-area-inset-bottom, 0px); }
+  html.in-app body { padding-top: var(--sa-top); }
+  /* вход в Яндекс: на компьютере — QR для телефона, на телефоне — та же ссылка кнопкой */
+  .qr-phone { display: none; }
+  @media (max-width: 760px) {
+    #mu-qr, .qr-desk { display: none; }
+    .qr-phone { display: block; }
+    a.qr-phone { display: inline-flex; justify-content: center; }
+    a.qr-phone[aria-disabled] { opacity: .5; pointer-events: none; }
+  }
+  html.in-app::before { content: ''; position: fixed; z-index: 70; top: 0; left: 0; right: 0; height: var(--sa-top);
+                        background: color-mix(in srgb, var(--bg) 55%, transparent); backdrop-filter: blur(14px);
+                        -webkit-backdrop-filter: blur(14px); pointer-events: none; opacity: 0; transition: opacity .2s; }
+  html.in-app.scrolled::before { opacity: 1; }   /* наверху страницы фон сплошной — полоса нужна, только когда под ней текст */
+  @media (max-width: 760px) {
+    html.in-app body[data-tab="player"] { padding-top: 0; }
+    html.in-app:has(body[data-tab="player"])::before { display: none; }
+  }
   :root {
     --bg: #F6F6F8; --card: #FFFFFF; --field: #F6F6F8; --line: #E6E6EB; --line-2: #EEEEF2; --btn-line: #DCDCE3;
     --text: #16161D; --text-2: #3A3A46; --muted: #5F5F6E;
@@ -122,7 +146,7 @@
   /* телефон: сверху — название и связь, внизу — четыре главные вкладки и «Ещё» (лист со всеми разделами) */
   .mbar, .nav-backdrop, .sheet-head { display: none; }
   @media (max-width: 760px) {
-    :root { --mbar-h: calc(62px + env(safe-area-inset-bottom)); }
+    :root { --mbar-h: calc(62px + var(--sa-bottom)); }
     body { padding-bottom: var(--mbar-h); }
     aside { flex-basis: 100%; flex-direction: row; align-items: center; justify-content: space-between; padding: 12px 16px 4px; gap: 12px; }
     .brand { min-width: 0; }
@@ -132,7 +156,7 @@
     .conn small { display: none; }
     .conn b { font-size: 12.5px; }
     nav.side { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: min(78vh, 640px); overflow-y: auto;
-               overscroll-behavior: contain; padding: 8px 12px calc(16px + env(safe-area-inset-bottom)); background: var(--card);
+               overscroll-behavior: contain; padding: 8px 12px calc(16px + var(--sa-bottom)); background: var(--card);
                border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25); display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
                transform: translateY(105%); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
     body.nav-open nav.side { transform: none; visibility: visible; transition: transform .25s ease; }
@@ -147,7 +171,7 @@
     body.nav-open .nav-backdrop { opacity: 1; pointer-events: auto; }
     body.nav-open { overflow: hidden; }
     .mbar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
-            height: var(--mbar-h); padding: 0 4px env(safe-area-inset-bottom); background: var(--card); border-top: 1px solid var(--line); }
+            height: var(--mbar-h); padding: 0 4px var(--sa-bottom); background: var(--card); border-top: 1px solid var(--line); }
     .mbar a, .mbar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 0;
             border: 0; background: none; color: var(--muted); font-size: 11.5px; font-weight: 600; text-decoration: none; padding: 0 2px; }
     .mbar span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -474,10 +498,10 @@
   .sc-field[hidden] + .sc-expand, .sc-board-top, .sc-open { display: none; }
   .sc-board.full-open { position: fixed; inset: 0; z-index: 60; margin: 0; background: var(--bg); display: grid; gap: 12px;
                         grid-template-columns: 250px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
-                        padding: calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)); }
+                        padding: calc(12px + var(--sa-top)) 12px calc(12px + var(--sa-bottom)); }
   /* кнопки — поверх поля, в его правом верхнем углу */
   .sc-board.full-open .sc-board-top { display: flex; gap: 6px; position: absolute; z-index: 5;
-                                      top: calc(22px + env(safe-area-inset-top)); right: 22px; }
+                                      top: calc(22px + var(--sa-top)); right: 22px; }
   .sc-board.full-open .sc-board-top .btn { box-shadow: var(--shadow); }
   .sc-board.full-open .sc-field-wrap { grid-column: 2; grid-row: 1; min-height: 0; }
   .sc-board.full-open .sc-field { height: 100%; resize: none; }
@@ -488,7 +512,7 @@
   .sc-board.full-open .sc-palette .grp { flex-direction: column; align-items: stretch; gap: 6px; }
   .sc-board.full-open .sc-palette .grp .btn { justify-content: flex-start; }
   .sc-fab, .sc-pal-backdrop { display: none; }
-  .sc-fab { position: absolute; z-index: 5; right: 22px; bottom: calc(22px + env(safe-area-inset-bottom)); width: 58px; height: 58px;
+  .sc-fab { position: absolute; z-index: 5; right: 22px; bottom: calc(22px + var(--sa-bottom)); width: 58px; height: 58px;
             border-radius: 50%; border: 0; place-items: center; background: var(--accent); color: var(--on-accent);
             box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 45%, transparent); }
   .sc-field.panning { cursor: grabbing; }
@@ -503,13 +527,13 @@
     .sc-expand { display: none; }
     .sc-board.full-open { display: flex; flex-direction: column; gap: 8px; }
     .sc-board.full-open .sc-field-wrap { flex: 1; }
-    .sc-board.full-open .sc-board-top { top: calc(20px + env(safe-area-inset-top)); right: 20px; }
+    .sc-board.full-open .sc-board-top { top: calc(20px + var(--sa-top)); right: 20px; }
     .sc-board-top .sc-long { display: none; }
     /* кнопки нод — листом снизу по кнопке «＋»: всё видно сразу, крупно, а поле занимает весь экран */
     .sc-board.full-open .sc-fab { display: grid; }
     .sc-board.full-open .sc-palette { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; max-height: 70%; overflow-y: auto;
       overscroll-behavior: contain; background: var(--card); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25);
-      padding: 18px 14px calc(16px + env(safe-area-inset-bottom)); gap: 14px;
+      padding: 18px 14px calc(16px + var(--sa-bottom)); gap: 14px;
       transform: translateY(105%); visibility: hidden; transition: transform .25s ease, visibility 0s .25s; }
     .sc-board.full-open.pal-open .sc-palette { transform: none; visibility: visible; transition: transform .25s ease; }
     .sc-board.full-open .sc-palette .grp { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -827,7 +851,7 @@
     .msheet-open .meta { margin-left: auto; }
     .msheet { display: flex; flex-direction: column; gap: 10px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; max-height: 82dvh;
       overflow-y: auto; overscroll-behavior: contain; background: var(--card); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25);
-      padding: 0 16px calc(16px + env(safe-area-inset-bottom)); transform: translateY(105%); visibility: hidden;
+      padding: 0 16px calc(16px + var(--sa-bottom)); transform: translateY(105%); visibility: hidden;
       transition: transform .25s ease, visibility 0s .25s; }
     .msheet.open { transform: none; visibility: visible; transition: transform .25s ease; }
     .msheet-head { display: flex; align-items: center; gap: 8px; position: sticky; top: 0; z-index: 1; background: var(--card); padding: 14px 0 6px; }
@@ -859,7 +883,7 @@
     /* плеер — ровно в экран: страница не прокручивается и не пружинит (листы внутри — прокручиваются) */
     html:has(body[data-tab="player"]), body[data-tab="player"] { overflow: hidden; overscroll-behavior: none; height: 100dvh; }
     body[data-tab="player"] #tab-player { padding: 0 16px; }
-    #tab-player #pl-body { height: 100dvh; gap: 10px; padding: calc(6px + env(safe-area-inset-top)) 0 calc(12px + env(safe-area-inset-bottom));
+    #tab-player #pl-body { height: 100dvh; gap: 10px; padding: calc(6px + var(--sa-top)) 0 calc(12px + var(--sa-bottom));
                            transition: transform .25s ease, opacity .25s; }
     #tab-player #pl-body.dragging { transition: none; }
     /* цвет обложки — только фон страницы (пятно за обложкой и в углах) и визуализатор; кнопки — в акценте темы.
@@ -920,14 +944,14 @@
     #tab-player .pl-body-cols, #tab-player .pl-body-cols > .col { display: contents; }
     #tab-player [data-pl-sec] { position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; max-height: 78dvh; overflow-y: auto; margin: 0;
       overscroll-behavior: contain; border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25);
-      padding-bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateY(105%); visibility: hidden;
+      padding-bottom: calc(18px + var(--sa-bottom)); transform: translateY(105%); visibility: hidden;
       transition: transform .25s ease, visibility 0s .25s; }
     #tab-player [data-pl-sec].open { transform: none; visibility: visible; transition: transform .25s ease; }
     #tab-player [data-pl-sec] .lyrics, #tab-player [data-pl-sec] .tlist { max-height: none; }
     .pl-sheet-bg { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .25s; }
     .pl-sheet-bg.open { opacity: 1; pointer-events: auto; }
     /* «Алисе»: поле просьбы — тоже листом снизу */
-    #tab-player.pl-ask #pl-command { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; margin: 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    #tab-player.pl-ask #pl-command { display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; margin: 0; padding: 16px 16px calc(16px + var(--sa-bottom));
       background: var(--card); border-radius: 22px 22px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.25); }
   }
   .lyrics { position: relative; white-space: pre-line; font-size: 17px; line-height: 1.65; max-height: 560px; overflow: auto; }
@@ -1339,7 +1363,9 @@
               <div class="qr" id="mu-qr"><div class="empty">QR-код…</div></div>
               <div class="col" style="gap:8px">
                 <b>Войдите в Яндекс, чтобы видеть и переключать музыку</b>
-                <p class="hint">Отсканируйте QR-код камерой телефона, на котором выполнен вход в Яндекс, и подтвердите вход.</p>
+                <p class="hint qr-desk">Отсканируйте QR-код камерой телефона, на котором выполнен вход в Яндекс, и подтвердите вход.</p>
+                <p class="hint qr-phone">Откроется Яндекс (в браузере или приложении, где вы уже вошли) — подтвердите вход и вернитесь сюда.</p>
+                <a class="btn primary qr-phone" id="mu-qr-link" target="_blank" rel="noopener" aria-disabled="true">Войти через Яндекс</a>
                 <span class="meta" id="mu-qr-status"></span>
               </div>
             </div>
@@ -3343,7 +3369,7 @@ function renderBtOut() {
   $('#bt-out-row').classList.toggle('on', o.on && o.state === 'bt');
   $('#bt-out-text').innerHTML = !o.on ? `Звук — ${self}`
     : o.state === 'bt' ? `Звук — через ${bt(o.name)}` : `Звук — ${self} · ждём ${bt(o.name)}`;
-  $('#bt-out-hint').textContent = !o.on ? (last ? `Можно вернуть звук в «${last.name}» — она уже сопряжена. Алиса перезапустится, играющая музыка продолжится`
+  $('#bt-out-hint').textContent = !o.on ? (last ? `Можно вернуть звук в «${last.name}» — она уже сопряжена. Алиса перезапустится, играющая музыка остановится`
       : 'Можно играть через Bluetooth-колонку: Алиса слушает и отвечает, а звук — из неё')
     : o.state === 'bt' ? 'Алиса, музыка, её звуки и звуки панели — из Bluetooth-колонки. Громкость — как обычно, голосом или здесь'
     : 'Bluetooth-колонка не подключена, поэтому звук пока из самой колонки. Включите её — подключение и звук вернутся сами';
@@ -3372,16 +3398,18 @@ function btOutUse(b, mac) {
       + '• подменит настройку звука /etc/asound.conf своей копией (системный раздел не меняется, подмена накрывает его поверх);\n'
       + '• загрузит модуль ядра snd-aloop (виртуальная петля для смешивания звука);\n'
       + '• оставит на колонке сторожа, который держит это, пока Bluetooth-колонка подключена, и запускается после перезагрузки.\n\n'
-      + 'Алиса перезапустится (~30 с). Вернуть всё как было — кнопкой «Вернуть звук в колонку» здесь же '
+      + 'Алиса перезапустится (~30 с), играющая музыка остановится — включите её снова. Вернуть всё как было — кнопкой «Вернуть звук в колонку» здесь же '
       + '(или в «Настройках» → «Своё на колонке»). Продолжить?')) return;
+  else if (store.get('btout.ok') && mu.info?.glagol?.state?.playing
+           && !confirm('Перевести звук в Bluetooth-колонку? Алиса перезапустится (~30 с), музыка остановится — включите её снова.')) return;
   store.set('btout.ok', '1');
-  toast('Подключаю колонку — Алиса перезапустится и заговорит из неё; играющая музыка продолжится');
+  toast('Подключаю колонку — Алиса перезапустится и заговорит из неё');
   act(b, async () => { btData = await api('/api/btout/use', { mac }); renderBt(); if (btData.restarted) aliceRestarting('Звук переходит на Bluetooth-колонку — Алиса перезапускается, это около 30 секунд'); }, 'Звук — через Bluetooth-колонку');
 }
 $('#bt-out-btn').onclick = e => {
   const b = e.currentTarget, o = btData?.out || {};
   if (o.on) {
-    if (o.state === 'bt' && !confirm('Вернуть звук в саму колонку? Алиса перезапустится (~30 с), играющая музыка продолжится.')) return;
+    if (o.state === 'bt' && !confirm('Вернуть звук в саму колонку? Алиса перезапустится (~30 с), играющая музыка остановится — включите её снова.')) return;
     return act(b, async () => { btData = await api('/api/btout/off', {}); renderBt(); if (btData.restarted) aliceRestarting('Звук возвращается во встроенный динамик — Алиса перезапускается, это около 30 секунд'); }, 'Звук — во встроенный динамик');
   }
   if (o.last) return btOutUse(b, o.last.mac);
@@ -4311,6 +4339,8 @@ async function startQr() {
   try {
     const [r, a] = await Promise.all([api('/api/auth/qr', {}), api('/api/auth')]);
     mu.qr = r.link;
+    $('#mu-qr-link').href = r.link;   // телефон: та же ссылка, что в QR, — открываем её прямо здесь
+    $('#mu-qr-link').removeAttribute('aria-disabled');
     $('#mu-oauth').href = a.oauth_url;
     const q = qrcode(0, 'M');
     q.addData(r.link);
@@ -4333,7 +4363,8 @@ async function pollQr() {
     if (r.state === 'done') { stopQr(); toast('Вход выполнен' + (r.login ? ': ' + r.login : '')); loadMusic(); }
     else if (r.state === 'expired' || r.state === 'none') {
       clearInterval(mu.qrTimer);
-      $('#mu-qr-status').innerHTML = 'QR-код устарел. <button class="btn sm" id="mu-qr-new">Новый код</button>';
+      $('#mu-qr-link').setAttribute('aria-disabled', 'true');
+      $('#mu-qr-status').innerHTML = (plMobile() ? 'Ссылка для входа устарела.' : 'QR-код устарел.') + ' <button class="btn sm" id="mu-qr-new">Новый код</button>';
       $('#mu-qr-new').onclick = () => startQr();
     }
   } catch (e) { if (!e.offline) $('#mu-qr-status').textContent = e.message; }
@@ -5071,8 +5102,17 @@ function applyUI() {
   if (logText) renderLog();
   $('#set-minibar').checked = store.get('ui.minibar') !== '0';
   updateMinibar();
+  appBars();
   window.dispatchEvent(new Event('themechange'));
 }
+// приложение для Android: светлые или тёмные значки статус-бара под тему страницы
+function appBars() {
+  if (!window.AndroidPanel) return;
+  const t = document.documentElement.dataset.theme;
+  AndroidPanel.theme(t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', appBars);
+if (window.AndroidPanel) addEventListener('scroll', () => document.documentElement.classList.toggle('scrolled', scrollY > 4), { passive: true });
 $$('#set-theme button').forEach(b => b.onclick = () => { store.set('ui.theme', b.dataset.v); applyUI(); });
 $$('#set-glow button').forEach(b => b.onclick = () => { store.set('ui.glow', b.dataset.v); applyUI(); });
 // «За указателем»: где мышь внутри блока — оттуда и светит

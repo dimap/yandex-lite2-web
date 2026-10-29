@@ -36,13 +36,14 @@ import java.io.OutputStream;
 public class PanelService extends Service {
     static final String TAG = "panel";
     static final int PORT = 8765;
-    static final String CHANNEL = "panel";
+    static final String CHANNEL = "player";   // «panel» был с важностью MIN — плеер в нём не виден на экране блокировки
     static final String ACTION_STOP = "stop";
     static final String PREF_ARGS = "args";
 
     private PowerManager.WakeLock wake;
     private WifiManager.MulticastLock multicast;
     private static Thread server;
+    private MediaBridge media;
 
     @Override
     public void onCreate() {
@@ -53,6 +54,8 @@ public class PanelService extends Service {
         wake.acquire();
         multicast = ((WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE)).createMulticastLock("panel");
         multicast.acquire();
+        media = new MediaBridge(this);
+        media.start();
     }
 
     @Override
@@ -62,6 +65,10 @@ public class PanelService extends Service {
             stopSelf();
             android.os.Process.killProcess(android.os.Process.myPid());
             return START_NOT_STICKY;
+        }
+        if (intent != null && intent.getAction() != null && intent.getAction().startsWith(MediaBridge.ACTION_PREFIX)) {
+            media.onAction(intent.getAction());
+            return START_STICKY;
         }
         startServer();
         return START_STICKY;
@@ -74,6 +81,7 @@ public class PanelService extends Service {
 
     @Override
     public void onDestroy() {
+        media.stop();
         if (wake.isHeld()) wake.release();
         if (multicast.isHeld()) multicast.release();
         super.onDestroy();
@@ -172,25 +180,42 @@ public class PanelService extends Service {
     private void startForeground() {
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= 26) {
+            nm.deleteNotificationChannel("panel");
             nm.createNotificationChannel(new NotificationChannel(CHANNEL, getString(R.string.channel),
-                    NotificationManager.IMPORTANCE_MIN));
+                    NotificationManager.IMPORTANCE_LOW));
         }
-        int imm = Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0;
-        PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), imm);
-        PendingIntent stop = PendingIntent.getService(this, 1,
-                new Intent(this, PanelService.class).setAction(ACTION_STOP), imm);
-        Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
-        Notification n = b.setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-                .setContentTitle(getString(R.string.app_name))
-                .setContentText(getString(R.string.running))
-                .setContentIntent(open)
-                .setOngoing(true)
-                .addAction(new Notification.Action.Builder(null, getString(R.string.stop), stop).build())
-                .build();
+        Notification n = idleNotification();
         if (Build.VERSION.SDK_INT >= 34) {
             startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
         } else {
             startForeground(1, n);
         }
+    }
+
+    /** Основа уведомления службы: и «панель работает», и плеер колонки (MediaBridge). */
+    Notification.Builder notificationBuilder() {
+        int imm = Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0;
+        PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), imm);
+        Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
+        return b.setSmallIcon(android.R.drawable.stat_sys_headset)
+                .setContentIntent(open)
+                .setOngoing(true)
+                .setShowWhen(false);
+    }
+
+    private Notification idleNotification() {
+        int imm = Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0;
+        PendingIntent stop = PendingIntent.getService(this, 1,
+                new Intent(this, PanelService.class).setAction(ACTION_STOP), imm);
+        return notificationBuilder()
+                .setContentTitle(getString(R.string.app_name))
+                .setContentText(getString(R.string.running))
+                .addAction(new Notification.Action.Builder(null, getString(R.string.stop), stop).build())
+                .build();
+    }
+
+    /** null — снова «панель работает в фоне». */
+    void showNotification(Notification n) {
+        ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).notify(1, n != null ? n : idleNotification());
     }
 }

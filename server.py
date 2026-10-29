@@ -3917,16 +3917,8 @@ echo @@BLUEZ
         return {"last": {"mac": mac, "name": dev.get("name") or getattr(self, "_btout_saved_name", "") or "Bluetooth-колонка"}} if dev else {}
 
     def _btout_switch(self, mount):
-        """Переключаем выход сразу (а не ждём сторожа) и перезапускаем Алису; играла музыка — после перезапуска
-        продолжаем её: перезапуск её прерывает."""
-        st = (self.glagol.state or {}) if getattr(self, "glagol", None) else {}
-        was = bool(st.get("playing"))
-        # что играло — после перезапуска Алиса это забывает, «продолжить» ей нечего: включим то же самое заново
-        p = st.get("playerState") or {}
-        pos = (p.get("progress") or 0) + max(0.0, time.time() - (self.glagol.updated or time.time())) if was else 0
-        self._btout_was = {"id": str(p.get("id") or ""), "playlist": p.get("playlistId") or "",
-                           "ptype": p.get("playlistType"), "pos": pos, "dur": p.get("duration") or 0} \
-            if was and p.get("playerType") != "bluetooth" else None
+        """Переключаем выход сразу (а не ждём сторожа) и перезапускаем Алису. Играющая музыка при этом
+        останавливается: продолжать её сами больше не пытаемся — после перезапуска это работало ненадёжно."""
         cmd = (f"grep -q ' /etc/asound.conf ' /proc/mounts || {{ mount --bind {BTOUT_CONF} /etc/asound.conf && echo changed; }}" if mount else
                f"grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
                f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; echo changed; }}")
@@ -3934,63 +3926,6 @@ echo @@BLUEZ
         if "changed" not in out:     # выход и так тот — Алису зря не перезапускаем
             return False
         self.detach("quasar", f"{QUASAR}/q restart >/dev/null 2>&1")
-        if was:
-            threading.Thread(target=self._btout_resume, daemon=True).start()
-        return True
-
-    def _btout_resume(self):
-        """Продолжить музыку после перезапуска Алисы. Раньше «играть» иногда уходило в ещё живое старое соединение
-        Glagol и терялось: теперь ждём, пока оно оборвётся, и нового состояния от колонки, а затем проверяем, что
-        заиграло (до трёх попыток)."""
-        g, t0 = self.glagol, time.time()
-        while g.ws and time.time() - t0 < 30:          # старое соединение рвётся вместе с Quasar
-            time.sleep(0.5)
-        t1 = time.time()
-        while time.time() - t0 < 120:                   # новое соединение и свежее состояние после перезапуска
-            if g.ws and g.state and g.updated > t1:
-                break
-            time.sleep(1)
-        else:
-            return False
-        w = getattr(self, "_btout_was", None) or {}
-        playing = lambda: bool((g.state or {}).get("playing"))
-        def wait(sec):
-            for _ in range(sec):
-                time.sleep(1)
-                if playing():
-                    return True
-            return False
-        # 1) Алиса часто сама восстанавливает воспроизведение после перезапуска — тогда ничего не трогаем
-        if wait(6):
-            return True
-        # 2) обычное «продолжить»
-        try:
-            g.send({"command": "play"})
-        except Exception:
-            pass
-        if not wait(8):
-            # 3) не вышло — включаем то же самое заново: станцию как станцию, иначе тот же трек
-            if w.get("ptype") == "Radio" and w.get("playlist"):
-                cmd = {"command": "playMusic", "id": w["playlist"], "type": "radio"}
-            elif w.get("id"):
-                cmd = {"command": "playMusic", "id": w["id"], "type": "track"}
-            else:
-                return False
-            try:
-                g.send(cmd)
-            except Exception:
-                pass
-            if not wait(10):
-                return False
-        # тот же трек, но с начала — на прежнее место, если оно заведомо внутри трека (иначе перемотка за конец
-        # включила бы следующий)
-        ps = (g.state or {}).get("playerState") or {}
-        pos, dur = w.get("pos", 0), ps.get("duration") or w.get("dur") or 0
-        if w.get("id") and str(ps.get("id") or "") == w["id"] and 5 < pos < dur - 10 and (ps.get("progress") or 0) < pos - 5:
-            try:
-                g.send({"command": "rewind", "position": int(pos)})
-            except Exception:
-                pass
         return True
 
     @staticmethod
