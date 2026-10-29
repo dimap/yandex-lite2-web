@@ -377,6 +377,33 @@ ROOTKEEPER_CALLER = "/system/vendor/quasar/onboot.sh"
 ROOTKEEPER_DROP_CREATED = (f"if [ -f {ROOTKEEPER_CREATED} ] && [ -z \"$(grep -v '^#' {ROOTKEEPER} 2>/dev/null | grep -v '^[[:space:]]*$')\" ]; "
                            f"then rm -f {ROOTKEEPER} {ROOTKEEPER_CREATED} {ROOTKEEPER}.webpanel.bak; fi")
 HOOK_MARK = "# webpanel-boot-hook"
+# Если rootkeeper.sh нет и штатный onboot.sh его не вызывает (колонка рутована другим способом), но /etc/init.d
+# доступна для записи (так её оставляют некоторые способы рутования: alicebridge, dropbear кладут туда S99z…),
+# хук запускается своим скриптом оттуда. Корень сами не перемонтируем. Запускается после S99quasar: будильник,
+# ассистент и службы успевают, а своя заставка и звук запуска могут не успеть.
+INITD_DIR = "/etc/init.d"
+INITD_HOOK = f"{INITD_DIR}/S99zwebpanel"
+
+
+def initd_hook_script():
+    return (f"#!/bin/sh\n{HOOK_MARK} — автозапуск веб-панели (rootkeeper.sh нет)\n"
+            f"[ \"$1\" = start ] || exit 0\n[ -x {BOOT_HOOK} ] && {BOOT_HOOK}\nexit 0\n")
+
+
+def initd_writable():
+    """sh: в init.d можно писать. Пробуем по-настоящему: test -w у busybox для root не видит, что раздел только для чтения."""
+    return f"{{ touch {INITD_DIR}/.webpanel_w 2>/dev/null && rm -f {INITD_DIR}/.webpanel_w; }}"
+
+
+def hook_active():
+    """sh: хук подключён — строка в rootkeeper.sh или свой скрипт в init.d."""
+    return f"{{ grep -q '{HOOK_MARK}' {ROOTKEEPER} 2>/dev/null || grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null; }}"
+
+
+def hook_drop():
+    """sh: снять хук — строку из rootkeeper.sh (и созданный нами файл), свой скрипт из init.d."""
+    return (f"[ -f {ROOTKEEPER} ] && sed -i '/{HOOK_MARK}/d' {ROOTKEEPER}; {ROOTKEEPER_DROP_CREATED}; "
+            f"grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null && rm -f {INITD_HOOK}")
 
 
 # Сегменты 7-сегментного индикатора: A — верх, B — верх-право, C — низ-право,
@@ -1772,7 +1799,7 @@ echo @@BLUEZ
             f"grep -q ' {BOOT_TARGET} ' /proc/mounts && echo mounted; "
             f"[ -f {SOUND_TARGET} ] && echo s_target; [ -f {SOUND_CUSTOM} ] && echo s_custom; "
             f"grep -q ' {SOUND_TARGET} ' /proc/mounts && echo s_mounted; "
-            f"grep -q {q(HOOK_MARK)} {ROOTKEEPER} 2>/dev/null && echo hook; "
+            f"{hook_active()} && echo hook; "
             f"[ -f {NO_BOOT_SOUND} ] && echo nosound; [ -f {BOOT_ALWAYS} ] && echo always; true")
         flags = set(out.split())
         res = {"supported": "target" in flags, "custom": "custom" in flags, "mounted": "mounted" in flags,
@@ -1802,15 +1829,21 @@ echo @@BLUEZ
             self.adb.shell(f"mkdir -p {WEB_DIR}")
             self.adb.push(Path(td) / "hook", BOOT_HOOK)
         _, err, rc = self.adb.shell(
-            f"chmod 755 {BOOT_HOOK}; [ -f {ROOTKEEPER} ] || {{ grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null || exit 3; "
+            f"chmod 755 {BOOT_HOOK}; "
+            f"if [ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null; then "
+            f"[ -f {ROOTKEEPER} ] || {{ "
             f"printf '#!/bin/sh\\n# создан веб-панелью: штатный onboot.sh запускает этот файл, если он есть\\n' > {ROOTKEEPER} "
             f"&& chmod 755 {ROOTKEEPER} && touch {ROOTKEEPER_CREATED} || exit 4; }}; "
             f"[ -f {ROOTKEEPER}.webpanel.bak ] || cp {ROOTKEEPER} {ROOTKEEPER}.webpanel.bak; "
             f"grep -q '{HOOK_MARK}' {ROOTKEEPER} || "
-            f"sed -i '1a [ -x {BOOT_HOOK} ] && {BOOT_HOOK} {HOOK_MARK}' {ROOTKEEPER}", check=False)
+            f"sed -i '1a [ -x {BOOT_HOOK} ] && {BOOT_HOOK} {HOOK_MARK}' {ROOTKEEPER}; "
+            f"elif {initd_writable()}; then "
+            f"grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null || "
+            f"{{ printf '%s' {shlex.quote(initd_hook_script())} > {INITD_HOOK} && chmod 755 {INITD_HOOK}; }} || exit 4; "
+            f"else exit 3; fi", check=False)
         if rc == 3:
-            raise AdbError(f"нет {ROOTKEEPER}, и штатная загрузка ({ROOTKEEPER_CALLER}) его не вызывает: "
-                           "подключить к загрузке не к чему")
+            raise AdbError(f"нет {ROOTKEEPER}, штатная загрузка ({ROOTKEEPER_CALLER}) его не вызывает, а /etc/init.d "
+                           "только для чтения: подключить к загрузке не к чему")
         if rc != 0:
             raise AdbError(err.strip() or "не удалось подключить хук к загрузке")
 
@@ -1829,8 +1862,8 @@ echo @@BLUEZ
     def hook_status(self):
         """Подключён ли хук, свежий ли он и нужен ли — для общей плашки «не переживёт перезагрузку»."""
         out, _, _ = self.adb.shell(
-            f"{self._hook_users_script()}; grep -q '{HOOK_MARK}' {ROOTKEEPER} 2>/dev/null && echo hook; "
-            f"{{ [ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null; }} && echo possible; "
+            f"{self._hook_users_script()}; {hook_active()} && echo hook; grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null && echo initd; "
+            f"{{ [ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null || {initd_writable()}; }} && echo possible; "
             f"md5sum {BOOT_HOOK} 2>/dev/null; true", check=False)
         out = strip_ansi(out)
         flags = set(out.split())
@@ -1838,7 +1871,8 @@ echo @@BLUEZ
         hook = "hook" in flags
         fresh = hashlib.md5(BOOT_HOOK_SCRIPT.encode()).hexdigest() in out
         return {"hook": hook, "fresh": hook and fresh, "users": users, "possible": "possible" in flags,
-                "broken": bool(users) and not (hook and fresh), "rootkeeper": ROOTKEEPER}
+                "broken": bool(users) and not (hook and fresh), "rootkeeper": ROOTKEEPER,
+                "file": INITD_HOOK if "initd" in flags else ROOTKEEPER}
 
     def hook_repair(self):
         self._ensure_hook()
@@ -1848,7 +1882,7 @@ echo @@BLUEZ
         # Хук нужен, пока есть хоть что-то своё; иначе возвращаем rootkeeper.sh к исходному виду.
         self.adb.shell(
             f"if [ -z \"$({self._hook_users_script()})\" ]; then "
-            f"[ -f {ROOTKEEPER} ] && sed -i '/{HOOK_MARK}/d' {ROOTKEEPER}; {ROOTKEEPER_DROP_CREATED}; rm -f {BOOT_HOOK}; fi; true")
+            f"{hook_drop()}; rm -f {BOOT_HOOK}; fi; true")
 
     def _install_override(self, data, custom, target, orig=None):
         """Кладёт свой файл и сразу монтирует его поверх стандартного. orig — копия оригинала (для заставки и звука
@@ -2554,7 +2588,7 @@ echo @@BLUEZ
             q(BOOT_ALWAYS), q(YAM_AUTOSTART), q(ALARMD),
             f"echo $(cat {ALARM_CONF} 2>/dev/null | grep -c .)/$(grep -c '^S|' {SCENES_CONF} 2>/dev/null)",
             q(BOOT_ORIG), q(SOUND_ORIG), q(f"{ROOTKEEPER}.webpanel.bak"),
-            f"grep -q '{HOOK_MARK}' {ROOTKEEPER} 2>/dev/null && echo 1 || echo 0",
+            f"{hook_active()} && echo 1 || echo 0",
             f"[ -d {WEB_DIR} ] && du -sk {WEB_DIR} | cut -f1 || echo 0",
             f"[ -d {ALARM_DIR} ] && du -sk {ALARM_DIR} | cut -f1 || echo 0",
             q(YAMD),
@@ -2586,7 +2620,7 @@ echo @@BLUEZ
              "detail": f"будильников: {n(v[7].split('/')[0])}, сценариев: {n((v[7].split('/') + ['0'])[1])}", "size_kb": n(v[13])},
             {"key": "backup", "name": "Копии оригиналов", "on": b[8] or b[9] or b[10],
              "detail": "заставка, звук запуска, rootkeeper.sh — на случай отката"},
-            {"key": "hook", "name": "Строка автозапуска в rootkeeper.sh", "on": b[11]},
+            {"key": "hook", "name": "Автозапуск: строка в rootkeeper.sh или скрипт в /etc/init.d", "on": b[11]},
         ]
         return {"items": items, "dir": WEB_DIR, "size_kb": n(v[12]), "any": any(i["on"] for i in items),
                 "yam_installed": b[14] or b[24]}
@@ -2609,7 +2643,7 @@ echo @@BLUEZ
             f"grep -q ' {HOSTS_TARGET} ' /proc/mounts && {{ umount {HOSTS_TARGET} || umount -l {HOSTS_TARGET}; }}; "
             f"[ -d {OVR_DIR} ] && (cd {OVR_DIR} && find . -type f) | while read -r f; do t=\"{QUASAR}/${{f#./}}\"; "
             f"grep -q \" $t \" /proc/mounts && {{ umount \"$t\" || umount -l \"$t\"; }}; done; "
-            f"[ -f {ROOTKEEPER} ] && sed -i '/{HOOK_MARK}/d' {ROOTKEEPER}; {ROOTKEEPER_DROP_CREATED}; true", check=False)
+            f"{hook_drop()}; true", check=False)
         # Копию rootkeeper.sh удаляем, только если без нашей строки файл совпал с ней: значит, других правок не было.
         out, _, _ = self.adb.shell(
             f"b={ROOTKEEPER}.webpanel.bak; if [ -f $b ]; then "
@@ -3137,7 +3171,7 @@ echo @@BLUEZ
         out, _, _ = self.adb.shell(
             f"[ -x {YAMD} ] && echo installed; pidof yamd >/dev/null && echo running; "
             f"awk '$4==\"0A\" && $2 ~ /:{YAM_PORT:04X}$/ {{f=1}} END{{if(f)print \"listening\"}}' "
-            f"/proc/net/tcp /proc/net/tcp6; [ -f {YAM_AUTOSTART} ] && grep -q '{HOOK_MARK}' {ROOTKEEPER} && echo autostart; true")
+            f"/proc/net/tcp /proc/net/tcp6; [ -f {YAM_AUTOSTART} ] && {hook_active()} && echo autostart; true")
         flags = set(out.split())
         return {"installed": "installed" in flags, "running": "running" in flags and "listening" in flags,
                 "autostart": "autostart" in flags,
@@ -4531,7 +4565,9 @@ class Handler(BaseHTTPRequestHandler):
             def hook():
                 h = p.hook_status()
                 state = "подключён" + ("" if h["fresh"] else ", устарел") if h["hook"] else "не подключён"
-                return f"{state}; держится на нём: {', '.join(h['users']) or 'ничего'}" + ("" if h["possible"] else "; rootkeeper.sh нет")
+                return (f"{state}; держится на нём: {', '.join(h['users']) or 'ничего'}"
+                        + ("" if h["possible"] else "; rootkeeper.sh нет, /etc/init.d только для чтения")
+                        + (f"; через {h['file']}" if h["hook"] else ""))
             row("Хук загрузки", hook)
             row("Своё на колонке", lambda: ", ".join(f"{i['name']}" + (f" ({i['detail']})" if i.get("detail") else "")
                                                      for i in p.footprint()["items"] if i["on"]) or "ничего")
