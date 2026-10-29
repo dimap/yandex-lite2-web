@@ -207,6 +207,7 @@ class BtOut(unittest.TestCase):
         p = server.Panel(Mock())
         self.cmds, self.pushed = [], {}
         p.adb.shell = lambda cmd, *a, **k: (self.cmds.append(cmd), (info if "bluetoothctl info" in cmd
+                                                                    else "yes" if "snd-aloop" in cmd and "insmod" not in cmd
                                                                     else "changed" if "mount --bind" in cmd else "", "", 0))[1]
         p.adb.push = lambda local, remote, **k: self.pushed.__setitem__(remote, Path(local).read_text())
         p._original_bytes = lambda path: b"pcm.!default {\n  type asym\n}\n"
@@ -218,7 +219,9 @@ class BtOut(unittest.TestCase):
         p = self.panel("\tConnected: yes\n\tUUID: Audio Sink (0000110b)\n")
         p.btout_use(self.MAC.lower())
         conf = self.pushed[server.BTOUT_CONF]
-        self.assertIn(f'slave.pcm "bluealsa:DEV={self.MAC},PROFILE=a2dp"', conf)
+        # смешивание — как обычно (dmix), но в петлю snd-aloop; в Bluetooth-колонку переливает сторож
+        self.assertIn('pcm "hw:Loopback,0,0"', conf)
+        self.assertNotIn("bluealsa", conf)
         self.assertIn("card 0", conf)                     # без карты softvol плеер Алисы не открывает вывод
         self.assertIn(server.BTOUT_MARK, conf)
         self.assertTrue(conf.startswith("pcm.!default"))  # исходная настройка — целиком, подмена дописана в конец
@@ -229,6 +232,9 @@ class BtOut(unittest.TestCase):
         sh = self.pushed[server.BTOUT_SH]
         self.assertNotIn("__", sh)
         self.assertIn("dev_$(echo", sh)
+        self.assertIn("aplay -q -D bluealsa:DEV=$M,PROFILE=a2dp", sh)
+        self.assertIn("arecord -q -D hw:Loopback,1,0", sh)
+        self.assertIn("snd-aloop.ko", sh)
         code = "\n".join(l for l in sh.splitlines() if not l.lstrip().startswith("#"))
         self.assertNotIn("bluetoothctl", code)   # сторож проверяет по D-Bus, без утечки
         self.assertTrue(any("start-stop-daemon -S" in c and server.BTOUT_SH in c for c in self.cmds))
@@ -252,6 +258,12 @@ class BtOut(unittest.TestCase):
         self.assertEqual(calls, ["off"])
         p.bt_action({"action": "disconnect", "mac": "11:22:33:44:55:66"})
         self.assertEqual(calls, ["off"])
+
+    def test_refuses_without_loop_module(self):
+        p = self.panel("\tConnected: yes\n\tUUID: Audio Sink\n")
+        p.adb.shell = lambda cmd, *a, **k: ("", "", 0)
+        with self.assertRaisesRegex(server.AdbError, "snd-aloop"):
+            p.btout_use(self.MAC)
 
     def test_refuses_without_connection_or_a2dp(self):
         with self.assertRaisesRegex(server.AdbError, "не подключилась"):

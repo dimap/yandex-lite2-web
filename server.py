@@ -292,35 +292,54 @@ BTOUT_SH = f"{BTOUT_DIR}/watch.sh"
 BTOUT_SD = "/tmp/webpanel_btout.sd"
 BTOUT_STATE = "/tmp/webpanel_btout.state"   # bt — играет через неё; waiting — ждём её, звук на встроенном
 BTOUT_MARK = "# webpanel: btout"
+BTOUT_FWD_SD = "/tmp/webpanel_btfwd.sd"
 BTOUT_WATCH = r"""#!/bin/sh
-# Веб-панель: звук через Bluetooth-колонку. Пока она подключена — своя /etc/asound.conf (выход на bluealsa)
-# и перезапуск Алисы; пропала (2 проверки подряд) — встроенный динамик. Подключение проверяем по D-Bus:
-# каждый bluetoothctl оставляет в bluetoothd прошивки немного памяти навсегда.
+# Веб-панель: звук через Bluetooth-колонку. Bluetooth-выход принимает один поток, а у Алисы голос и музыка —
+# разные плееры, поэтому звук смешивается как обычно (dmix), только не в динамик, а в виртуальную петлю
+# (snd-aloop), а переливалка arecord | aplay несёт смешанный поток в колонку. Пока колонка подключена —
+# своя /etc/asound.conf, петля и переливалка; пропала (2 проверки подряд) — встроенный динамик.
+# Подключение проверяем по D-Bus: каждый bluetoothctl оставляет в bluetoothd прошивки немного памяти навсегда.
 D=__DIR__
 M=$(cat $D/device 2>/dev/null) || exit 0
 P=/org/bluez/hci0/dev_$(echo "$M" | tr : _)
 S=__STATE__
-conn() { dbus-send --system --print-reply --dest=org.bluez "$P" org.freedesktop.DBus.Properties.Get   string:org.bluez.Device1 string:Connected 2>/dev/null | grep -q 'boolean true'; }
+F=__FWD__
+conn() { dbus-send --system --print-reply --dest=org.bluez "$P" org.freedesktop.DBus.Properties.Get \
+  string:org.bluez.Device1 string:Connected 2>/dev/null | grep -q 'boolean true'; }
 ours() { grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '__MARK__' /etc/asound.conf; }
 quasar() { /system/vendor/quasar/q restart >/dev/null 2>&1; }
+loop() { grep -q snd_aloop /proc/modules || insmod $(find /lib/modules -name snd-aloop.ko | head -n 1) pcm_substreams=1; }
+fwd() {
+  p=$(cat $F 2>/dev/null) && kill -0 "$p" 2>/dev/null && return
+  start-stop-daemon -S -b -m -p $F -x /bin/sh -- -c "arecord -q -D hw:Loopback,1,0 -f S16_LE -c 2 -r 48000 -t raw \
+    --buffer-time=100000 | aplay -q -D bluealsa:DEV=$M,PROFILE=a2dp -f S16_LE -c 2 -r 48000 -t raw --buffer-time=200000"
+}
+fwd_stop() {   # переливалка — sh с двумя детьми: гасим всю группу процессов
+  p=$(cat $F 2>/dev/null) && g=$(awk '{print $5}' /proc/$p/stat 2>/dev/null) && [ "${g:-0}" -gt 1 ] && kill -- -$g 2>/dev/null
+  rm -f $F
+}
 miss=0; n=0
 while [ -f $D/device ]; do
   if conn; then
     miss=0
+    loop
     ours || { mount --bind $D/asound.conf /etc/asound.conf && quasar; }
+    fwd
     echo bt > $S
   else
     miss=$((miss + 1))
-    if ours && [ $miss -ge 2 ]; then umount /etc/asound.conf || umount -l /etc/asound.conf; quasar; fi
+    if ours && [ $miss -ge 2 ]; then fwd_stop; umount /etc/asound.conf || umount -l /etc/asound.conf; quasar; fi
     ours || echo waiting > $S
     # раз в 30 с просим колонку подключиться: включили её снова — звук вернётся на неё сам
     [ $((n % 6)) -eq 0 ] && dbus-send --system --dest=org.bluez "$P" org.bluez.Device1.Connect >/dev/null 2>&1 &
   fi
   n=$((n + 1)); sleep 5
 done
+fwd_stop
 ours && { umount /etc/asound.conf || umount -l /etc/asound.conf; quasar; }
 rm -f $S
 """
+
 
 BOOT_HOOK_SCRIPT = (
     "#!/bin/sh\n"
@@ -2571,7 +2590,8 @@ echo @@BLUEZ
         self.adb.shell(
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; start-stop-daemon -K -p {ASSIST_SD} 2>/dev/null; "
-            f"start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
+            f"start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
+            f"grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
             f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; ( {QUASAR}/q restart >/dev/null 2>&1 & ); }}; "
             # службы yam 2 запускала панель — гасим их группы процессов (сами пакеты остаются в yam)
             f"for f in {YAM2_SVC_PID}*.pid; do [ -f \"$f\" ] && p=$(cat \"$f\") && kill -0 \"$p\" 2>/dev/null && {{ {YAM2_KILL}; }}; "
@@ -3934,6 +3954,11 @@ echo @@BLUEZ
     def btout_use(self, mac):
         """Сопрягаем (если ещё нет), доверяем, подключаем — и включаем сторож: он переводит звук на колонку."""
         mac = self._bt_mac(mac)
+        has_loop = self.adb.shell("grep -q snd_aloop /proc/modules || find /lib/modules -name snd-aloop.ko | grep -q . && echo yes; true",
+                                  check=False)[0]
+        if "yes" not in has_loop:
+            raise AdbError("в прошивке этой колонки нет модуля snd-aloop — без него голос Алисы и музыка не смогут "
+                           "звучать в Bluetooth-колонке одновременно")
         out, _, _ = self.adb.shell(
             f"bluetoothctl info {mac} 2>/dev/null | grep -q 'Paired: yes' || bluetoothctl --timeout 25 pair {mac} 2>&1 | tail -2; "
             f"bluetoothctl trust {mac} >/dev/null 2>&1; bluetoothctl --timeout 15 connect {mac} 2>&1 | tail -1; sleep 2; "
@@ -3947,11 +3972,14 @@ echo @@BLUEZ
                      for i in parse_bluez(strip_ansi(self.adb.shell(BLUEZ_DUMP + "; true", check=False, timeout=20)[0])).values()
                      if i.get("org.bluez.Device1", {}).get("Address") == mac), "")
         conf = self._original_bytes("/etc/asound.conf").decode("utf-8", "replace").rstrip("\n") + (
-            f"\n\n{BTOUT_MARK} — звук на Bluetooth-колонку\n"
+            f"\n\n{BTOUT_MARK} — смешивание в петлю snd-aloop, в Bluetooth-колонку переливает сторож\n"
             "pcm.!speakers {\n  type softvol\n  min_dB -60.0\n  slave.pcm \"playback_metrics_tap\"\n"
             "  control {\n    name \"Master Playback Volume\"\n    card 0\n  }\n}\n"
-            f"pcm.!dmix_spk_plug {{\n  type plug\n  slave.pcm \"bluealsa:DEV={mac},PROFILE=a2dp\"\n}}\n")
-        script = BTOUT_WATCH.replace("__DIR__", BTOUT_DIR).replace("__STATE__", BTOUT_STATE).replace("__MARK__", BTOUT_MARK)
+            "pcm.!dmix_spk_plug {\n  type plug\n  slave.pcm \"dmix_loop\"\n}\n"
+            "pcm.dmix_loop {\n  type dmix\n  ipc_key 1031\n  ipc_key_add_uid false\n  ipc_perm 0666\n"
+            "  slave {\n    pcm \"hw:Loopback,0,0\"\n    channels 2\n    rate 48000\n    buffer_size 7680\n    period_size 960\n  }\n}\n")
+        script = (BTOUT_WATCH.replace("__DIR__", BTOUT_DIR).replace("__STATE__", BTOUT_STATE).replace("__MARK__", BTOUT_MARK)
+                  .replace("__FWD__", BTOUT_FWD_SD))
         with tempfile.TemporaryDirectory() as td:
             write_unix(Path(td) / "conf", conf)
             write_unix(Path(td) / "sh", script)
@@ -3973,7 +4001,8 @@ echo @@BLUEZ
     def btout_off(self):
         """Встроенный динамик: убираем выбор — сторож снимет подмену, перезапустит Алису и выйдет."""
         # сторожа гасим сами и сразу возвращаем встроенный динамик (с продолжением музыки)
-        self.adb.shell(f"rm -f {BTOUT_MAC} {BTOUT_STATE}; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; true", check=False)
+        self.adb.shell(f"rm -f {BTOUT_MAC} {BTOUT_STATE}; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; "
+                       f"p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {YAM2_KILL.replace('kill $p;', 'kill $p;')}; rm -f {BTOUT_FWD_SD}; true", check=False)
         restarted = self._btout_switch(mount=False)
         self._drop_hook_if_unused()
         return {**self.bt_state(), "restarted": restarted}
