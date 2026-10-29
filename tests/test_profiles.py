@@ -87,7 +87,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(s.LED_PREFIX, 'micro')
         self.assertEqual(s.detect_model(SimpleNamespace(shell=lambda *a, **k: ('yandex,station-micro amlogic,axg', '', 0))),
                          ('lite', 'station-micro'))
-        self.assertEqual(set(profiles.PROFILES['lite']['tested']), {'alarm', 'sounds'})   # остальное — на пробу
+        self.assertEqual(set(profiles.PROFILES['lite']['tested']), {'alarm', 'sounds', 'say'})   # остальное — на пробу
 
     def test_mini2_maps_lite2_clock_names_to_its_segments(self):
         s = fresh_server()
