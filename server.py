@@ -291,6 +291,20 @@ AGENT_CERT = f"{AGENT_DIR}/cert.pem"
 AGENT_SD = "/tmp/webpanel_agent.sd"
 AGENT_RUN = f"exec {AGENT_BIN} -dir {AGENT_DIR} -addr :{agentlink.PORT} >{AGENT_DIR}/agent.log 2>&1"
 AGENT_SRC = Path(__file__).resolve().parent / "device" / "agent"
+# Bluetooth выключен из панели: «Алиса, выключи блютуз» только закрывает сопряжение, а адаптер остаётся включённым.
+# Флаг держит его выключенным и после перезагрузки (хук); «Алиса, включи блютуз» включает его обратно — это не мешаем.
+BT_OFF = f"{WEB_DIR}/bt_off"
+
+
+def bt_power_sh(on):
+    return (f"dbus-send --system --print-reply --dest=org.bluez /org/bluez/hci0 org.freedesktop.DBus.Properties.Set "
+            f"string:org.bluez.Adapter1 string:Powered variant:boolean:{'true' if on else 'false'} >/dev/null")
+
+
+# при загрузке Bluetooth поднимается сам — первые две минуты гасим его, если панель велела держать выключенным
+BT_OFF_BOOT = (f"[ -f {BT_OFF} ] && ( i=0; while [ $i -lt 120 ]; do dbus-send --system --print-reply --dest=org.bluez "
+               f"/org/bluez/hci0 org.freedesktop.DBus.Properties.Get string:org.bluez.Adapter1 string:Powered 2>/dev/null "
+               f"| grep -q true && {bt_power_sh(False)}; sleep 5; i=$((i + 5)); done ) >/dev/null 2>&1 &")
 # Звук через Bluetooth-колонку: колонка остаётся «мозгом» (слушает, отвечает), а играет подключённая по Bluetooth.
 # Весь звук Quasar держит один процесс (maind --mediad); конец его цепочки ALSA (dmix_spk_plug) подменяем на
 # bluealsa своим asound.conf через bind mount. Регулятору громкости Алисы (softvol «Master») карту указываем явно:
@@ -376,6 +390,7 @@ BOOT_HOOK_SCRIPT = (
     f"[ -f {ALARM_CONF} ] && [ -f {ALARMD} ] && start-stop-daemon -S -b -m -p {ALARM_SD} -x /bin/sh -- {ALARMD}\n"
     f"[ -f {ASSIST_CONF} ] && [ -x {ASSISTD} ] && start-stop-daemon -S -b -m -p {ASSIST_SD} -x /bin/sh -- -c {shlex.quote(ASSIST_RUN)}\n"
     f"[ -f {BTOUT_MAC} ] && [ -f {BTOUT_SH} ] && start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}\n"
+    f"{BT_OFF_BOOT}\n"
     f"[ -f {AGENT_TOKENS} ] && [ -x {AGENT_BIN} ] && start-stop-daemon -S -b -m -p {AGENT_SD} -x /bin/sh -- -c {shlex.quote(AGENT_RUN)}\n"
     # службы пакетов yam 2, отмеченные «при загрузке»
     f"for f in {YAM2_SVC_DIR}/boot/*; do [ -f \"$f\" ] && [ -f \"{YAM2_SVC_DIR}/${{f##*/}}.sh\" ] && "
@@ -2222,7 +2237,7 @@ echo @@BLUEZ
     HOOK_USERS = (("заставка", BOOT_CUSTOM), ("звук запуска", SOUND_CUSTOM), ("заставка при каждой загрузке", BOOT_ALWAYS),
                   ("автозапуск yamd", YAM_AUTOSTART), ("будильник", ALARM_CONF), ("блокировка аналитики", HOSTS_CUSTOM),
                   ("ассистент", ASSIST_CONF), ("звук через Bluetooth-колонку", BTOUT_MAC),
-                  ("защищённое соединение (агент)", AGENT_TOKENS))
+                  ("защищённое соединение (агент)", AGENT_TOKENS), ("Bluetooth выключен", BT_OFF))
 
     def _hook_users_script(self):
         """Печатает по строке на каждую функцию, которой нужен хук."""
@@ -2973,9 +2988,9 @@ echo @@BLUEZ
             f"[ -d {OVR_DIR}/sounds ] && du -sk {OVR_DIR}/sounds | cut -f1 || echo 0",
             f"find {OVR_DIR}/ledpatterns -type f 2>/dev/null | wc -l",
             f"find {MY_ANIM_DIR} -type f 2>/dev/null | wc -l",
-            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC), q(AGENT_BIN)])
+            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC), q(AGENT_BIN), q(BT_OFF)])
         v = self.adb.shell(cmd, check=False)[0].split()
-        v = (v + ["0"] * 27)[:27]
+        v = (v + ["0"] * 28)[:28]
         b = [x == "1" for x in v]
         n = lambda x: int(x) if x.isdigit() else 0
         items = [
@@ -2991,6 +3006,7 @@ echo @@BLUEZ
             {"key": "btout", "name": "Звук через Bluetooth-колонку", "on": b[25], "detail": "сторож и своя /etc/asound.conf, пока колонка подключена"},
             {"key": "agent", "name": "Агент панели (защищённое соединение)", "on": b[26],
              "detail": f"порт {agentlink.PORT}, вход по токену"},
+            {"key": "btoff", "name": "Bluetooth выключен", "on": b[27], "detail": "и после перезагрузки"},
             {"key": "privacy", "name": "Блокировка аналитики", "on": b[15] or b[16], "detail": "свой /etc/hosts"},
             {"key": "assistant", "name": "Голосовой помощник", "on": b[17], "size_kb": n(v[18])},
             {"key": "alarm", "name": "Будильник и сценарии", "on": b[6],
@@ -3012,7 +3028,7 @@ echo @@BLUEZ
 
     def _footprint_reset(self):
         self.adb.shell(
-            f"start-stop-daemon -K -q -p {AGENT_SD} 2>/dev/null; rm -f {AGENT_SD}; "
+            f"[ -f {BT_OFF} ] && {bt_power_sh(True)}; "            f"start-stop-daemon -K -q -p {AGENT_SD} 2>/dev/null; rm -f {AGENT_SD}; "
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; start-stop-daemon -K -p {ASSIST_SD} 2>/dev/null; "
             f"start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
@@ -4426,12 +4442,14 @@ echo @@BLUEZ
                                         f"p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch; "
                                         # имя — последним: всё, что после @@NAME, считается именем
                                         f"echo @@VOL; grep -q bt {BTOUT_STATE} 2>/dev/null && amixer -D bluealsa scontents 2>/dev/null | head -12; "
-                                        f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; echo @@NAME; cat {BTOUT_NAME} 2>/dev/null; true",
+                                        f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; [ -f {BT_OFF} ] && echo @@KEEPOFF; echo @@NAME; cat {BTOUT_NAME} 2>/dev/null; true",
                                         check=False, timeout=20)[0])
         out, _, outinfo = out.partition("@@OUT")
         outinfo, _, vol = outinfo.partition("@@VOL")
         vol, _, last = vol.partition("@@LAST")
         last, _, saved = last.partition("@@NAME")
+        keep_off = "@@KEEPOFF" in last
+        last = last.replace("@@KEEPOFF", "")
         self._btout_saved_name = saved.strip()[:60]
         bluez, _, pair = out.partition("@@PAIR")
         self._btout_last_mac = next((w for w in last.split() if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", w)), None)
@@ -4449,7 +4467,7 @@ echo @@BLUEZ
         pair_until = next((int(l) for l in pair.split() if l.isdigit()), None)
         devices.sort(key=lambda d: (not d["connected"], not d["paired"], d["name"].lower()))
         return {
-            "powered": bool(adapter.get("Powered")), "discoverable": bool(adapter.get("Discoverable")),
+            "powered": bool(adapter.get("Powered")), "keep_off": keep_off, "discoverable": bool(adapter.get("Discoverable")),
             "pairable": bool(adapter.get("Pairable")), "alias": adapter.get("Alias") or adapter.get("Name"),
             "pair_until": pair_until if pair_until and pair_until > time.time() else None,
             "devices": devices, "out": {**self._btout_info(outinfo, devices, self._btout_saved_name), **self._btout_last(devices),
@@ -4518,7 +4536,8 @@ echo @@BLUEZ
     def btout_scan(self, seconds=12):
         """Ищем устройства рядом (колонку надо заранее перевести в режим сопряжения). Колонки и наушники — первыми."""
         seconds = max(5, min(20, int(seconds)))
-        self.adb.shell(f"bluetoothctl --timeout {seconds} scan on >/dev/null 2>&1; true", check=False, timeout=seconds + 15)
+        self.adb.shell(f"[ -f {BT_OFF} ] && {{ rm -f {BT_OFF}; {bt_power_sh(True)}; sleep 1; }}; "
+                       f"bluetoothctl --timeout {seconds} scan on >/dev/null 2>&1; true", check=False, timeout=seconds + 17)
         found = []
         for path, ifaces in parse_bluez(strip_ansi(self.adb.shell(BLUEZ_DUMP + "; true", check=False, timeout=20)[0])).items():
             d = ifaces.get("org.bluez.Device1")
@@ -4537,6 +4556,7 @@ echo @@BLUEZ
         mac = self._bt_mac(mac)
         has_loop = self.adb.shell("grep -q snd_aloop /proc/modules || find /lib/modules -name snd-aloop.ko | grep -q . && echo yes; true",
                                   check=False)[0]
+        self.adb.shell(f"[ -f {BT_OFF} ] && {{ rm -f {BT_OFF}; {bt_power_sh(True)}; sleep 1; }}; true", check=False)  # был выключен
         if "yes" not in has_loop:
             raise AdbError("в прошивке этой колонки нет модуля snd-aloop — без него голос Алисы и музыка не смогут "
                            "звучать в Bluetooth-колонке одновременно")
@@ -4608,9 +4628,20 @@ echo @@BLUEZ
                 msg = re.sub(r".*(Failed[^\n]*|Error[^\n]*).*", r"\1", out.strip().replace("\n", " "))
                 raise AdbError({"connect": "Не удалось подключить", "disconnect": "Не удалось отключить",
                                 "remove": "Не удалось забыть"}.get(act, "Ошибка") + f": {msg[:120]}")
+        elif act == "power_off":
+            if self.adb.shell(f"[ -f {BTOUT_MAC} ] && echo on; true", check=False)[0].strip() == "on":
+                raise AdbError("Звук идёт через Bluetooth-колонку — сначала верните его в колонку")
+            self.adb.shell(f"{bt_power_sh(False)} && mkdir -p {WEB_DIR} && touch {BT_OFF}; rm -f {self.BT_PAIR_FLAG}")
+            try:
+                self._ensure_hook()
+            except AdbError as e:
+                JOURNAL.add(f"Bluetooth выключен до перезагрузки: автозапуск не подключён ({e})", "warn")
+        elif act == "power_on":
+            self.adb.shell(f"rm -f {BT_OFF}; {bt_power_sh(True)}")
+            self._drop_hook_if_unused()
         elif act == "pair_on":
             until = int(time.time()) + self.BT_PAIR_SECONDS
-            self.adb.shell(f"bluetoothctl pairable on >/dev/null; bluetoothctl discoverable on >/dev/null; "
+            self.adb.shell(f"rm -f {BT_OFF}; {bt_power_sh(True)}; bluetoothctl pairable on >/dev/null; bluetoothctl discoverable on >/dev/null; "
                            f"echo {until} > {self.BT_PAIR_FLAG}")
             # через 3 минуты сами скрываемся, если флаг не сменился (повторное включение продлевает)
             self.detach("bt_pair", f"sleep {self.BT_PAIR_SECONDS}; [ \"$(cat {self.BT_PAIR_FLAG} 2>/dev/null)\" = {until} ] && "

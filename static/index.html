@@ -1433,8 +1433,11 @@
         </section>
 
         <section class="card" data-widget="bt" data-title="Bluetooth">
-          <div class="card-head"><h2>Bluetooth</h2><span class="badge" id="bt-badge">—</span></div>
-          <div class="bt-pair">
+          <div class="card-head"><h2>Bluetooth</h2><div class="row" style="gap:10px"><span class="badge" id="bt-badge">—</span>
+            <input type="checkbox" class="switch" id="bt-power" aria-label="Bluetooth колонки" title="Bluetooth колонки"></div></div>
+          <p class="hint" id="bt-off-hint" hidden>Bluetooth выключен и останется выключенным после перезагрузки: телефоны не подключатся,
+            музыки по Bluetooth не будет. Включить — переключателем или «Алиса, включи блютуз».</p>
+          <div class="bt-pair" id="bt-pair-row">
             <div class="info"><b id="bt-pair-text">Скрыта</b><span class="meta" id="bt-pair-hint">—</span></div>
             <span class="bt-left" id="bt-pair-left" hidden>—</span>
             <button class="btn sm" id="bt-pair-btn">Сделать видимой</button>
@@ -3467,6 +3470,11 @@ function btLeft() {
 setInterval(() => btData?.pair_until && btLeft(), 1000);
 function renderBt() {
   const d = btData, conn = d.devices.filter(x => x.connected), vis = d.discoverable;
+  const card = $('[data-widget="bt"]');
+  $('#bt-power').checked = d.powered;
+  $('#bt-off-hint').hidden = d.powered;
+  for (const el of [$('#bt-pair-row'), $('#bt-list'), card.querySelector('.vol-bt'), $('#bt-out-row')]) el.hidden = !d.powered;
+  if (!d.powered) $('#bt-out-pick').hidden = true;
   $('#bt-badge').textContent = !d.powered ? 'выключен' : conn.length ? 'подключено' : 'включён';
   $('#bt-badge').className = 'badge' + (d.powered ? ' ok' : '');
   $('.bt-pair').classList.toggle('on', vis);
@@ -3486,6 +3494,13 @@ function renderBt() {
     : '<div class="empty">Сопряжённых устройств нет</div>';
 }
 const btDo = (btn, body, msg) => act(btn, async () => { btData = await api('/api/bt', body); renderBt(); }, msg);
+$('#bt-power').onchange = e => {
+  const on = e.target.checked;
+  if (!on && !confirm('Выключить Bluetooth колонки? Телефоны не смогут подключиться, музыки по Bluetooth не будет. '
+      + 'Он останется выключенным и после перезагрузки — пока не включите здесь или фразой «Алиса, включи блютуз».')) { e.target.checked = true; return; }
+  btDo(e.target, { action: on ? 'power_on' : 'power_off' }, on ? 'Bluetooth включён' : 'Bluetooth выключен')
+    .then(() => { if (btData) $('#bt-power').checked = btData.powered; });
+};
 // ---- звук через Bluetooth-колонку ----
 // Пока звук идёт в Bluetooth-колонку, нижний ползунок виджета — её собственная громкость (bluealsa, в %)
 const btVolOut = () => btData?.out?.on && btData.out.state === 'bt' && btData.out.volume != null;

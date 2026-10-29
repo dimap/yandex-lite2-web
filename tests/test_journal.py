@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server
@@ -294,3 +294,41 @@ class BtOutVolume(unittest.TestCase):
         self.assertEqual(p.btout_volume(130), {"volume": 100})
         self.assertIn("sset 'Колонка A2DP' 100%", cmds[-1])
         self.assertIn("SoftVolume variant:boolean:true", cmds[-1])
+
+
+class BtPower(unittest.TestCase):
+    def test_off_refused_while_sound_goes_to_bt_speaker(self):
+        p = server.Panel(Mock())
+        p.adb.shell.side_effect = lambda cmd, **kw: ("on\n", "", 0) if server.BTOUT_MAC in cmd and "echo on" in cmd else ("", "", 0)
+        with self.assertRaisesRegex(server.AdbError, "верните его в колонку"):
+            p.bt_action({"action": "power_off"})
+        self.assertFalse(any("Powered variant:boolean:false" in c.args[0] for c in p.adb.shell.call_args_list))
+
+    def test_boot_keeps_it_off_and_reset_turns_it_on(self):
+        self.assertIn(server.BT_OFF_BOOT, server.BOOT_HOOK_SCRIPT)
+        self.assertIn("Bluetooth выключен", dict(server.Panel.HOOK_USERS))
+        p = server.Panel(MagicMock())
+        p.adb.shell.return_value = ("", "", 0)
+        p.ring_reset = Mock()
+        p.footprint = Mock(return_value={})
+        p._agent_store = Mock(return_value={})
+        p.footprint_reset()
+        first = p.adb.shell.call_args_list[0].args[0]
+        self.assertIn(f"[ -f {server.BT_OFF} ] && {server.bt_power_sh(True)}", first)
+
+    def test_boot_snippet_switches_adapter_off(self):
+        import shutil
+        import subprocess
+        import tempfile
+        if not shutil.which("sh"):
+            self.skipTest("нужен sh")
+        with tempfile.TemporaryDirectory() as td:
+            flag, log = Path(td) / "bt_off", Path(td) / "log"
+            flag.touch()
+            fake = Path(td) / "dbus-send"
+            fake.write_text(f'#!/bin/sh\ncase "$*" in *Get*) echo "variant boolean true";; *Set*) echo "$*" >> {log};; esac\n')
+            fake.chmod(0o755)
+            snippet = server.BT_OFF_BOOT.replace(server.BT_OFF, str(flag)).replace("sleep 5", "exit")
+            snippet = snippet.replace(" >/dev/null 2>&1 &", "")
+            subprocess.run(["sh", "-c", snippet], env={"PATH": f"{td}:/usr/bin:/bin"}, timeout=10)
+            self.assertIn("boolean:false", log.read_text())
