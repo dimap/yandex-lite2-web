@@ -4953,7 +4953,9 @@ class PanelUpdater:
 
     @staticmethod
     def kind():
-        if os.environ.get("PANEL_INSTALL") == "docker" or Path("/.dockerenv").exists():
+        if os.environ.get("PANEL_INSTALL") in ("docker", "android"):
+            return os.environ["PANEL_INSTALL"]
+        if Path("/.dockerenv").exists():
             return "docker"
         return "git" if (ROOT / ".git").exists() else "zip"
 
@@ -5001,6 +5003,8 @@ class PanelUpdater:
             kind = info["install"]
             if kind == "docker":
                 raise AdbError("в Docker обновите образ: docker compose pull && docker compose up -d")
+            if kind == "android":
+                raise AdbError("в приложении для Android установите новый APK со страницы релиза")
             if kind == "git":
                 r = subprocess.run(["git", "-C", str(ROOT), "pull", "--ff-only"], capture_output=True, text=True, timeout=120)
                 if r.returncode:
@@ -5218,7 +5222,12 @@ def restart_self(device=None):
     except Exception:  # noqa: BLE001
         pass
     sys.stdout.flush()
+    if RESTART_HOOK:     # Android: Python внутри приложения, exec некуда — перезапуск делает служба
+        return RESTART_HOOK(args[1:])
     os.execv(sys.executable, [sys.executable] + args)
+
+
+RESTART_HOOK = None   # (аргументы без имени скрипта) → перезапуск снаружи, см. android/
 
 
 class TLSServer(ThreadingHTTPServer):

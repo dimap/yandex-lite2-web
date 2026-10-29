@@ -3466,6 +3466,16 @@ setInterval(() => $('#log-follow').checked && !$('#tab-logs').hidden && loadLog(
 // xterm.js ↔ WebSocket /api/term ↔ adb shell с псевдотерминалом на сервере. Сеанс живёт, пока открыта страница.
 let term = null, termFit = null, termWs = null;
 // Буфер обмена: navigator.clipboard есть только на HTTPS и localhost, иначе — старый execCommand через textarea.
+// Сохранить файл из JS. В приложении для Android WebView не скачивает blob: — отдаём файл приложению.
+async function saveBlob(blob, name) {
+  if (window.AndroidPanel) {
+    const b64 = await new Promise((ok, fail) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(',')[1] || ''); r.onerror = fail; r.readAsDataURL(blob); });
+    if (!AndroidPanel.save(name, blob.type || 'application/octet-stream', b64)) throw new Error('не удалось сохранить файл');
+    return;
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
 async function copyText(text) {
   try { if (navigator.clipboard && isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch {}
   const ta = document.createElement('textarea');
@@ -5531,8 +5541,7 @@ $('#bk-save').onclick = e => act(e.currentTarget, async () => {
   const r = await PanelContext.fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ui }) });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
   const name = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '')?.[1] || 'stantsiya-backup.tar.gz';
-  const a = document.createElement('a'); a.href = URL.createObjectURL(await r.blob()); a.download = name; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  await saveBlob(await r.blob(), name);
 }, 'Копия скачана');
 $('#bk-restore').onclick = () => $('#bk-file').click();
 $('#bk-file').onchange = async e => {
@@ -5731,8 +5740,7 @@ $('#ch-csv').onclick = () => {
   const rows = [['время', ...CHARTS.map(c => c.name + (c.unit ? ', ' + c.unit : '')), 'играла']];
   d.t.forEach((t, i) => rows.push([new Date(t * 1000).toLocaleString('ru-RU'), ...CHARTS.map(c => d[c.k][i] ?? ''), d.play[i] ?? '']));
   const blob = new Blob(['\ufeff' + rows.map(r => r.join(';')).join('\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `stantsiya-${hm(d.to).replace(':', '')}.csv`; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  saveBlob(blob, `stantsiya-${hm(d.to).replace(':', '')}.csv`).catch(e => toast(e.message, true));
 };
 
 // ---------- будильник ----------
@@ -6446,6 +6454,7 @@ const UPD_HOW = {
   zip: 'Панель скачает релиз с GitHub, заменит свои файлы и перезапустится. Вход в Яндекс, пароль, история и папка runtime сохранятся.',
   git: 'Панель установлена через git: выполнит git pull и перезапустится.',
   docker: 'Панель работает в Docker — образ обновляется снаружи командой ниже. Данные в томе /data сохранятся.',
+  android: 'Приложение для Android: скачайте новый APK по ссылке «Что нового» и установите поверх — данные сохранятся.',
 };
 async function loadPanelModel() {
   let p;
@@ -6487,7 +6496,7 @@ function renderPanelVersion() {
     $('#upd-latest').textContent = v.latest + (v.latest_date ? ` от ${date(v.latest_date)}` : '');
     $('#upd-how').textContent = v.multi ? 'Обновятся шлюз и все процессы колонок; данные сохранятся.' : (UPD_HOW[v.install] || '');
     $('#upd-notes').href = v.url || v.repo;
-    $('#upd-go').hidden = v.install === 'docker';
+    $('#upd-go').hidden = v.install === 'docker' || v.install === 'android';
   }
   $('#upd-cmd').hidden = !(v.update && v.install === 'docker');
   $('#upd-cmd').textContent = 'docker compose pull && docker compose up -d';
