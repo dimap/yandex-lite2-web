@@ -3902,17 +3902,30 @@ echo @@BLUEZ
         return True
 
     def _btout_resume(self):
-        # ждём, пока Алиса поднимется и Glagol снова на связи (до 90 с), и просим продолжить
-        time.sleep(8)
-        for _ in range(41):
+        """Продолжить музыку после перезапуска Алисы. Раньше «играть» иногда уходило в ещё живое старое соединение
+        Glagol и терялось: теперь ждём, пока оно оборвётся, и нового состояния от колонки, а затем проверяем, что
+        заиграло (до трёх попыток)."""
+        g, t0 = self.glagol, time.time()
+        while g.ws and time.time() - t0 < 30:          # старое соединение рвётся вместе с Quasar
+            time.sleep(0.5)
+        t1 = time.time()
+        while time.time() - t0 < 120:                   # новое соединение и свежее состояние после перезапуска
+            if g.ws and g.state and g.updated > t1:
+                break
+            time.sleep(1)
+        else:
+            return False
+        time.sleep(3)                                   # Алиса ещё дозагружается — даём ей пару секунд
+        for _ in range(3):
             try:
-                if self.glagol.ws and self.glagol.state:
-                    time.sleep(3)
-                    self.music_cmd({"command": "play"})
-                    return
+                self.music_cmd({"command": "play"})
             except Exception:
                 pass
-            time.sleep(2)
+            for _ in range(8):
+                time.sleep(1)
+                if (g.state or {}).get("playing"):
+                    return True
+        return False
 
     @staticmethod
     def _btout_info(text, devices, saved=""):
