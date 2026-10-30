@@ -1430,11 +1430,13 @@ class LedStream:
                 self.running = True
                 threading.Thread(target=self._run, daemon=True, name="led-stream").start()
         v = self.values
-        if not v or time.time() - self.at > 1.5:
-            return {"v": None}
-        r = v[len(CLOCK_LEDS):]
-        res = {"v": v[:len(CLOCK_LEDS)], "ring": [r[0:3], r[3:6], r[6:9]], "age": round(time.time() - self.at, 2)}
+        res = {"v": None}
+        if v and time.time() - self.at <= 1.5:
+            r = v[len(CLOCK_LEDS):]
+            res = {"v": v[:len(CLOCK_LEDS)], "ring": [r[0:3], r[3:6], r[6:9]], "age": round(time.time() - self.at, 2)}
         # Живой спектр от vizd — тем же потоком, без отдельных запросов на каждые 100 мс.
+        # Отдаём его и без свежих светодиодов: после перезапуска Quasar (например, при переходе
+        # на Bluetooth-колонку) они на несколько секунд пропадают, а спектр уже есть.
         if self.viz and time.time() - self.viz_at < 1.0:
             res["spectrum"] = {"bands": self.viz.get("bands") or [], "rms": self.viz.get("rms", 0), "t": self.viz.get("t", 0)}
         return res
