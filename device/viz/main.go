@@ -8,6 +8,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -34,6 +35,13 @@ const (
 	bandsCount  = 4
 	writeEvery  = 50 * time.Millisecond
 	statusLimit = 8 << 20
+	// Автоматическая громкость полос: опорный максимум в дБ, насколько он опускается за кадр и какой
+	// диапазон дБ считаем динамикой.
+	aFloor   = -60.0
+	refDecay = 0.35
+	refRange = 26.0
+	// Ниже этого уровня в полосе — не звук, а утечка окна: такую полосу не поднимаем AGC, а гасим.
+	gateDb = -55.0
 )
 
 // Полосы — поровну по логарифмической шкале 40 Гц … 16 кГц: визуализатору нужны четыре направления.
@@ -75,6 +83,7 @@ type analyzer struct {
 	cos, sin     []float64
 	rev          []int
 	env          [bandsCount]float64
+	ref          [bandsCount]float64 // медленный максимум полосы, дБ: по нему считаем динамику
 	binLo, binHi [bandsCount]int
 	binHz        float64
 }
@@ -89,6 +98,9 @@ func newAnalyzer(n int, rate float64) *analyzer {
 	for i := 0; i < n; i++ {
 		a.window[i] = 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/float64(n-1))
 		a.rev[i] = reverseBits(i, bits)
+	}
+	for b := 0; b < bandsCount; b++ {
+		a.ref[b] = aFloor
 	}
 	for i := 0; i < n/2; i++ {
 		a.cos[i] = math.Cos(-2 * math.Pi * float64(i) / float64(n))
@@ -171,13 +183,28 @@ func (a *analyzer) bands(samples []int16) (out [bandsCount]float64, rms, peak fl
 	peak /= 32768
 	a.fft()
 	for b := 0; b < bandsCount; b++ {
-		var mag float64
+		// Максимум по бинам, а не среднее: среднее по сотням бинов верхней полосы размывало узкий тон
+		// так, что он не проходил порог. Для визуализатора важна самая громкая составляющая полосы.
+		var amp float64
 		for k := a.binLo[b]; k < a.binHi[b]; k++ {
-			mag += 2 * math.Hypot(a.re[k], a.im[k]) / float64(a.n)
+			if m := 2 * math.Hypot(a.re[k], a.im[k]) / float64(a.n); m > amp {
+				amp = m
+			}
 		}
-		amp := mag / float64(a.binHi[b]-a.binLo[b])
-		db := 20 * math.Log10(amp+1e-6)
-		v := math.Max(0, math.Min(1, (db+60)/60))
+		// дБ относительно полной шкалы 32768: без этого полосы всегда были «громче нуля» и упирались в 1.
+		db := 20 * math.Log10(amp/32768+1e-9)
+		// Автоматическая громкость: захват кодека даёт ~13× усиления, поэтому абсолютные дБ почти всегда
+		// упирались бы в 1 и узор стоял бы на максимуме. Считаем относительно недавнего максимума полосы:
+		// недавний пик — 1, на 26 дБ тише — 0. Максимум поднимается сразу, опускается медленно (~7 дБ/с).
+		if db > a.ref[b] {
+			a.ref[b] = db
+		} else if a.ref[b] -= refDecay; a.ref[b] < aFloor {
+			a.ref[b] = aFloor
+		}
+		v := 0.0
+		if db > gateDb {
+			v = math.Max(0, math.Min(1, (db-(a.ref[b]-refRange))/refRange))
+		}
 		// быстрая атака, медленное затухание — как у обычных эквалайзеров
 		k := 0.55
 		if v < a.env[b] {
@@ -246,12 +273,50 @@ func run(ctx context.Context, device string) error {
 	return ctx.Err()
 }
 
+// runFile — отладочный режим: прогнать WAV (16 бит, стерео, 48 кГц) без колонки и напечатать полосы.
+func runFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	off := bytes.Index(data, []byte("data"))
+	if off < 0 || off+8 > len(data) {
+		return fmt.Errorf("в %s нет data-чанка", path)
+	}
+	a := newAnalyzer(fftSize, sampleRate)
+	history := make([]int16, fftSize)
+	hopBuf := make([]int16, 0, fftSize/2)
+	for i, hop := off+8, 0; i+4 <= len(data); i += 4 {
+		l := int32(int16(binary.LittleEndian.Uint16(data[i:])))
+		rr := int32(int16(binary.LittleEndian.Uint16(data[i+2:])))
+		hopBuf = append(hopBuf, int16((l+rr)/2))
+		if len(hopBuf) < fftSize/2 {
+			continue
+		}
+		copy(history, history[fftSize/2:])
+		copy(history[fftSize/2:], hopBuf)
+		hopBuf = hopBuf[:0]
+		bands, rms, peak := a.bands(history)
+		hop++
+		fmt.Printf("%4d  %5.2f %5.2f %5.2f %5.2f  rms %.3f peak %.3f\n",
+			hop, bands[0], bands[1], bands[2], bands[3], rms, peak)
+	}
+	return nil
+}
+
 func main() {
 	device := flag.String("device", "hw:0,0", "ALSA-устройство захвата (то, что играет усилитель)")
+	file := flag.String("file", "", "отладка: прогнать WAV (16 бит, стерео, 48 кГц) и напечатать полосы")
 	show := flag.Bool("version", false, "показать версию")
 	flag.Parse()
 	if *show {
 		fmt.Println(version)
+		return
+	}
+	if *file != "" {
+		if err := runFile(*file); err != nil {
+			log.Fatal(err)
+		}
 		return
 	}
 	runtime.GOMAXPROCS(1)

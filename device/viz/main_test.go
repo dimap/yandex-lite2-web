@@ -6,9 +6,13 @@ import (
 )
 
 func sine(freq float64, n int) []int16 {
+	return sineAmp(freq, 20000, n)
+}
+
+func sineAmp(freq, amp float64, n int) []int16 {
 	out := make([]int16, n)
 	for i := range out {
-		out[i] = int16(20000 * math.Sin(2*math.Pi*freq*float64(i)/sampleRate))
+		out[i] = int16(amp * math.Sin(2*math.Pi*freq*float64(i)/sampleRate))
 	}
 	return out
 }
@@ -83,6 +87,34 @@ func TestSilenceAndLevelsAreInRange(t *testing.T) {
 	if peak < 0.9 || peak > 1 {
 		t.Fatalf("пик полной шкалы = %v", peak)
 	}
+}
+
+func TestAgcLiftsQuietSignalAndShowsDrop(t *testing.T) {
+	// Тихая музыка не должна пропадать: AGC поднимает её к 1.
+	a := newAnalyzer(fftSize, sampleRate)
+	out, _, _ := settle(a, sineAmp(500, 300, fftSize))
+	best := bestBand(out)
+	if out[best] < 0.8 {
+		t.Fatalf("тихий тон не поднялся: %v", out)
+	}
+	// А после громкого тот же тон на 20 дБ тише — уже заметно ниже: в этом и смысл динамики.
+	a = newAnalyzer(fftSize, sampleRate)
+	settle(a, sineAmp(500, 20000, fftSize))
+	out, _, _ = settle(a, sineAmp(500, 2000, fftSize))
+	best = bestBand(out)
+	if out[best] > 0.6 || out[best] < 0.1 {
+		t.Fatalf("после громкого тихий тон: %v (полоса %d)", out, best)
+	}
+}
+
+func bestBand(out [bandsCount]float64) int {
+	best := 0
+	for i := range out {
+		if out[i] > out[best] {
+			best = i
+		}
+	}
+	return best
 }
 
 func TestFFTMatchesDirectSum(t *testing.T) {
