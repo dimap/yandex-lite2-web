@@ -5601,7 +5601,7 @@ class PanelUpdater:
 
 # Платформа в device-tree (compatible «yandex,plum», модель «Yandex Plum EVT2») → профиль колонки.
 # Имя хоста тут не годится: владелец мог его переименовать.
-PLATFORM_MODELS = {"plum": "lite2", "prune": "lite2", "pickle": "mini3pro", "bergamot": "mini3",
+PLATFORM_MODELS = {"plum": "lite2", "prune": "lite2nc", "pickle": "mini3pro", "bergamot": "mini3",
                    "yandexmidi": "station2", "station-midi": "station2", "station-mini2": "mini2",
                    "station-micro": "lite", "yandexmicro": "lite"}
 
@@ -5613,6 +5613,10 @@ def detect_model(adb):
     text = strip_ansi(out).lower()
     for platform, model in PLATFORM_MODELS.items():
         if re.search(rf"(^|[^a-z0-9]){platform}([^a-z0-9]|$)", text):
+            if model == 'mini2':
+                leds, _, _ = adb.shell('ls /sys/class/leds 2>/dev/null; true', check=False, timeout=15)
+                if 'white:clock' not in strip_ansi(leds):
+                    return 'mini2nc', platform
             return model, platform
     return None, None
 
