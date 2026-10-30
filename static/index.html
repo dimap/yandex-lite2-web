@@ -1452,7 +1452,7 @@
             <button class="btn sm" id="bt-pair-btn">Сделать видимой</button>
           </div>
           <div class="bt-list" id="bt-list"><div class="empty">Загрузка…</div></div>
-          <div class="vol-bt"><label for="vol-bt">Громкость</label><input type="range" id="vol-bt" min="0" max="255"><span id="vol-bt-v">—</span></div>
+          <div class="vol-bt"><label for="vol-bt" title="Громкость звука с телефона по Bluetooth">Громкость</label><input type="range" id="vol-bt" min="0" max="255"><span id="vol-bt-v">—</span></div>
           <div class="bt-pair bt-out" id="bt-out-row">
             <div class="info"><b id="bt-out-text">Звук — встроенный динамик</b><span class="meta" id="bt-out-hint">Можно играть через Bluetooth-колонку: Алиса слушает и отвечает, а звук — из неё</span></div>
             <div class="actions"><button class="btn sm" id="bt-out-other" hidden>Другая колонка</button>
@@ -2681,7 +2681,7 @@ async function refreshStatus() {
     if (!volDragging) {
       const [m, b] = [+s.vol_level || 0, +s.vol_bt || 0];
       showLevel(m);
-      if (!btVolOut()) { $('#vol-bt').max = 255; $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b); }
+      $('#vol-bt').max = 255; $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b);
     }
     $('#ffmpeg-hint').textContent = s.ffmpeg ? 'ffmpeg найден — подходят любые форматы.' : 'ffmpeg не найден — подходят только WAV.';
 
@@ -2718,11 +2718,9 @@ for (const [id, key] of [['#vol-master', 'level'], ['#vol-bt', 'bt']]) {
   el.addEventListener('input', () => {
     volDragging = true;
     if (key === 'level') showLevel(+el.value);
-    else $('#vol-bt-v').textContent = btVolOut() ? el.value + '%' : pct(el.value);
+    else $('#vol-bt-v').textContent = pct(el.value);
     clearTimeout(volTimer);
-    // звук идёт в Bluetooth-колонку — ползунок её громкости, иначе — громкости звука с телефона
-    volTimer = setTimeout(() => act(null, () => key === 'bt' && btVolOut() ? api('/api/btout/volume', { level: +el.value })
-      : api('/api/volume', { [key]: +el.value })), 150);
+    volTimer = setTimeout(() => act(null, () => api('/api/volume', { [key]: +el.value })), 150);
   });
   el.addEventListener('change', () => setTimeout(() => volDragging = false, 1500));
 }
@@ -3486,6 +3484,8 @@ function renderBt() {
   $('#bt-power').checked = d.powered;
   $('#bt-off-hint').hidden = d.powered;
   for (const el of [$('#bt-pair-row'), $('#bt-list'), card.querySelector('.vol-bt'), $('#bt-out-row')]) el.hidden = !d.powered;
+  // при выводе на Bluetooth-колонку ползунка громкости нет: остаются громкость Алисы и сама колонка
+  if (d.out?.on && d.out.state === 'bt') card.querySelector('.vol-bt').hidden = true;
   if (!d.powered) $('#bt-out-pick').hidden = true;
   $('#bt-badge').textContent = !d.powered ? 'выключен' : conn.length ? 'подключено' : 'включён';
   $('#bt-badge').className = 'badge' + (d.powered ? ' ok' : '');
@@ -3514,14 +3514,6 @@ $('#bt-power').onchange = e => {
     .then(() => { if (btData) $('#bt-power').checked = btData.powered; });
 };
 // ---- звук через Bluetooth-колонку ----
-// Пока звук идёт в Bluetooth-колонку, нижний ползунок виджета — её собственная громкость (bluealsa, в %)
-const btVolOut = () => btData?.out?.on && btData.out.state === 'bt' && btData.out.volume != null;
-function renderBtVol() {
-  const out = btVolOut();
-  $('.vol-bt label').textContent = out ? btData.out.name : 'Громкость';
-  $('.vol-bt label').title = out ? 'Громкость Bluetooth-колонки' : 'Громкость звука с телефона по Bluetooth';
-  if (out && !volDragging) { $('#vol-bt').max = 100; $('#vol-bt').value = btData.out.volume; $('#vol-bt-v').textContent = btData.out.volume + '%'; }
-}
 function renderBtOut() {
   const o = btData?.out || { on: false }, last = !o.on && o.last;
   const self = `из колонки «${esc($('#model-name').textContent.trim() || 'Станция')}»`;   // откуда звук на самом деле
@@ -3531,13 +3523,12 @@ function renderBtOut() {
     : o.state === 'bt' ? `Звук — через ${bt(o.name)}` : `Звук — ${self} · ждём ${bt(o.name)}`;
   $('#bt-out-hint').textContent = !o.on ? (last ? `Можно вернуть звук в «${last.name}» — она уже сопряжена. Алиса перезапустится, играющая музыка остановится`
       : 'Можно играть через Bluetooth-колонку: Алиса слушает и отвечает, а звук — из неё')
-    : o.state === 'bt' ? 'Алиса, музыка, её звуки и звуки панели — из Bluetooth-колонки. Громкость — как обычно, голосом или здесь'
+    : o.state === 'bt' ? 'Алиса, музыка, её звуки и звуки панели — из Bluetooth-колонки. Громкость — Алисой и на самой колонке'
     : 'Bluetooth-колонка не подключена, поэтому звук пока из самой колонки. Включите её — подключение и звук вернутся сами';
   $('#bt-out-btn').textContent = o.on ? (o.state === 'bt' ? 'Вернуть звук в колонку' : 'Больше не ждать') : last ? `Играть через «${last.name}»` : 'Выбрать колонку';
   $('#bt-out-btn').classList.toggle('primary', !o.on);
   $('#bt-out-other').hidden = !last;
   if (o.on) $('#bt-out-pick').hidden = true;
-  renderBtVol();
 }
 // «Выбрать колонку» / «Другая колонка»: ищем рядом и показываем список
 function btOutScan(b) {

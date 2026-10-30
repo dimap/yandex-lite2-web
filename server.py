@@ -352,6 +352,9 @@ fwd() {
   # громкость колонки — силами bluealsa: многие колонки не слушают её по AVRCP; после переподключения сбрасывается
   dbus-send --system --print-reply --dest=org.bluealsa /org/bluealsa/hci0/dev_$(echo "$M" | tr : _)/a2dpsrc/sink \
     org.freedesktop.DBus.Properties.Set string:org.bluealsa.PCM1 string:SoftVolume variant:boolean:true >/dev/null 2>&1
+  # громкость BT-колонки в bluealsa — всегда 100 %: остаются громкость Алисы и громкость на самой колонке
+  ctl=$(amixer -D bluealsa scontrols 2>/dev/null | sed -n "s/^Simple mixer control '\(.*A2DP\)',0$/\1/p" | head -n 1)
+  [ -n "$ctl" ] && amixer -D bluealsa sset "$ctl" 100% >/dev/null 2>&1
   # если живой спектр установлен — вставляем tap: он пересылает звук дальше и считает полосы
   tap=cat
   [ -x __VIZ__ ] && tap="__VIZ__ -tap"
@@ -4597,12 +4600,10 @@ echo @@BLUEZ
                                         f"echo @@OUT; cat {BTOUT_MAC} 2>/dev/null; echo; cat {BTOUT_STATE} 2>/dev/null; echo; "
                                         f"p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch; "
                                         # имя — последним: всё, что после @@NAME, считается именем
-                                        f"echo @@VOL; grep -q bt {BTOUT_STATE} 2>/dev/null && amixer -D bluealsa scontents 2>/dev/null | head -12; "
                                         f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; [ -f {BT_OFF} ] && echo @@KEEPOFF; echo @@NAME; cat {BTOUT_NAME} 2>/dev/null; true",
                                         check=False, timeout=20)[0])
         out, _, outinfo = out.partition("@@OUT")
-        outinfo, _, vol = outinfo.partition("@@VOL")
-        vol, _, last = vol.partition("@@LAST")
+        outinfo, _, last = outinfo.partition("@@LAST")
         last, _, saved = last.partition("@@NAME")
         keep_off = "@@KEEPOFF" in last
         last = last.replace("@@KEEPOFF", "")
@@ -4626,29 +4627,21 @@ echo @@BLUEZ
             "powered": bool(adapter.get("Powered")), "keep_off": keep_off, "discoverable": bool(adapter.get("Discoverable")),
             "pairable": bool(adapter.get("Pairable")), "alias": adapter.get("Alias") or adapter.get("Name"),
             "pair_until": pair_until if pair_until and pair_until > time.time() else None,
-            "devices": devices, "out": {**self._btout_info(outinfo, devices, self._btout_saved_name), **self._btout_last(devices),
-                                        **self._btout_vol(vol)},
+            "devices": devices, "out": {**self._btout_info(outinfo, devices, self._btout_saved_name), **self._btout_last(devices)},
         }
 
-    @staticmethod
-    def _btout_vol(text):
-        """Громкость самой Bluetooth-колонки — регулятор bluealsa «<имя> A2DP» (0–127, показываем в %)."""
-        m = re.search(r"Simple mixer control '([^']*A2DP)',0.*?\[(\d+)%\]", text, re.S)
-        return {"volume": int(m.group(2)), "volume_ctl": m.group(1)} if m else {}
-
-    def btout_volume(self, level):
-        level = max(0, min(100, int(level)))
+    def _btout_volume_max(self):
+        """Громкость Bluetooth-колонки в bluealsa всегда 100 % (0 дБ): иначе получается три регулятора.
+        Остаются громкость Алисы и громкость на самой колонке."""
         out, _, _ = self.adb.shell("amixer -D bluealsa scontrols 2>/dev/null; true", check=False)
         m = re.search(r"Simple mixer control '([^']*A2DP)',0", strip_ansi(out))
         if not m:
-            raise AdbError("Bluetooth-колонка не подключена")
+            return
         mac = strip_ansi(self.adb.shell(f"cat {BTOUT_MAC} 2>/dev/null; true", check=False)[0]).strip()
         soft = (f"dbus-send --system --print-reply --dest=org.bluealsa /org/bluealsa/hci0/dev_{mac.replace(':', '_')}/a2dpsrc/sink "
                 f"org.freedesktop.DBus.Properties.Set string:org.bluealsa.PCM1 string:SoftVolume variant:boolean:true >/dev/null 2>&1; "
                 if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac) else "")
-        # многие колонки не слушают громкость по AVRCP — тогда приглушает сам bluealsa (SoftVolume)
-        self.adb.shell(f"{soft}amixer -D bluealsa sset {shlex.quote(m.group(1))} {level}% >/dev/null", check=False)
-        return {"volume": level}
+        self.adb.shell(f"{soft}amixer -D bluealsa sset {shlex.quote(m.group(1))} 100% >/dev/null", check=False)
 
     def _btout_last(self, devices):
         mac = getattr(self, "_btout_last_mac", None)
@@ -4758,6 +4751,7 @@ echo @@BLUEZ
         restarted = self._btout_switch(mount=True)
         # сторож дальше следит за подключением (подмена уже стоит — он её не трогает, пока колонка на связи)
         self.adb.shell(f"start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}")
+        self._btout_volume_max()   # громкость BT-колонки в bluealsa — всегда 100 %
         return {**self.bt_state(), "restarted": restarted}
 
     def btout_off(self):
@@ -5594,7 +5588,6 @@ class Handler(BaseHTTPRequestHandler):
             "/api/btout/scan": lambda: p.btout_scan(d.get("seconds", 12)),
             "/api/btout/use": lambda: p.btout_use(d.get("mac")),
             "/api/btout/off": p.btout_off,
-            "/api/btout/volume": lambda: p.btout_volume(d.get("level", 50)),
             "/api/system": lambda: p.system(d["action"]),
             "/api/fs/write": lambda: p.fs_write(d["path"], d["text"]),
             "/api/fs/delete": lambda: p.fs_delete(d["path"]),
