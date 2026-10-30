@@ -41,6 +41,9 @@ const (
 	refDecay  = 0.45
 	refRange  = 30.0
 	silenceDb = -80.0
+	// Визуализатор включён в панели; звук сейчас идёт через Bluetooth-колонку (полосы пишет tap).
+	onFlag = "/tmp/webpanel_viz.on"
+	btFlag = "/tmp/webpanel_viz.bt"
 )
 
 // Полосы — поровну по логарифмической шкале 40 Гц … 16 кГц: визуализатору нужны четыре направления.
@@ -222,6 +225,46 @@ func (a *analyzer) bands(samples []int16) (out [bandsCount]float64, rms, peak fl
 	return out, rms, peak
 }
 
+// stream копит моно-отсчёты и раз в 50 мс пишет полосы. Один код и для захвата кодека, и для Bluetooth-тапа.
+type stream struct {
+	a         *analyzer
+	history   []int16
+	hopBuf    []int16
+	lastWrite time.Time
+}
+
+func newStream() *stream {
+	return &stream{a: newAnalyzer(fftSize, sampleRate), history: make([]int16, fftSize), hopBuf: make([]int16, 0, fftSize)}
+}
+
+// feed разбирает PCM (16 бит, стерео) и пишет статус.
+func (s *stream) feed(data []byte) {
+	for i := 0; i+4 <= len(data); i += 4 {
+		l := int32(int16(binary.LittleEndian.Uint16(data[i:])))
+		r := int32(int16(binary.LittleEndian.Uint16(data[i+2:])))
+		s.hopBuf = append(s.hopBuf, int16((l+r)/2))
+		if len(s.hopBuf) < fftSize {
+			continue
+		}
+		copy(s.history, s.hopBuf)
+		s.hopBuf = s.hopBuf[:0]
+		bands, rms, peak := s.a.bands(s.history)
+		if time.Since(s.lastWrite) < writeEvery {
+			continue
+		}
+		s.lastWrite = time.Now()
+		writeStatus(status{Pid: os.Getpid(), Version: version, At: s.lastWrite.UnixMilli(),
+			Bands: append([]float64(nil), bands[:]...), RMS: math.Round(rms*1000) / 1000,
+			Peak: math.Round(peak*1000) / 1000})
+	}
+}
+
+// btActive — полосы сейчас пишет tap из Bluetooth-переливания; кодеку писать не надо.
+func btActive() bool {
+	st, err := os.Stat(btFlag)
+	return err == nil && time.Since(st.ModTime()) < 3*time.Second
+}
+
 // run открывает захват и крутит анализ, пока не отменят контекст или не отвалится arecord.
 func run(ctx context.Context, device string) error {
 	cmd := exec.CommandContext(ctx, "arecord", "-q", "-D", device, "-f", "S16_LE", "-c", "2",
@@ -239,41 +282,56 @@ func run(ctx context.Context, device string) error {
 		cmd.Wait()
 	}()
 
-	a := newAnalyzer(fftSize, sampleRate)
-	history := make([]int16, fftSize)
-	hop := fftSize // без перекрытия: панель всё равно читает 10 раз в секунду, а FFT — вдвое дешевле
-	hopBuf := make([]int16, 0, hop)
+	s := newStream()
 	buf := make([]byte, 16384)
 	r := bufio.NewReaderSize(stdout, 1<<16)
-	lastWrite := time.Time{}
-	var st status
 	for ctx.Err() == nil {
 		n, readErr := r.Read(buf)
-		for i := 0; i+4 <= n; i += 4 {
-			l := int32(int16(binary.LittleEndian.Uint16(buf[i:])))
-			rr := int32(int16(binary.LittleEndian.Uint16(buf[i+2:])))
-			hopBuf = append(hopBuf, int16((l+rr)/2))
-			if len(hopBuf) < hop {
-				continue
-			}
-			copy(history, history[hop:])
-			copy(history[fftSize-hop:], hopBuf)
-			hopBuf = hopBuf[:0]
-			bands, rms, peak := a.bands(history)
-			if time.Since(lastWrite) < writeEvery {
-				continue
-			}
-			lastWrite = time.Now()
-			st = status{Pid: os.Getpid(), Version: version, At: lastWrite.UnixMilli(),
-				Bands: append([]float64(nil), bands[:]...), RMS: math.Round(rms*1000) / 1000,
-				Peak: math.Round(peak*1000) / 1000}
-			writeStatus(st)
+		// В режиме Bluetooth-колонки звук в кодек не идёт: полосы пишет tap из переливания.
+		if n > 0 && !btActive() {
+			s.feed(buf[:n])
 		}
 		if readErr != nil {
 			if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
 				return fmt.Errorf("arecord завершился")
 			}
 			return readErr
+		}
+	}
+	return ctx.Err()
+}
+
+// runTap — режим для переливания звука в Bluetooth-колонку: читает PCM из stdin, отдаёт его без
+// изменений в stdout и, если визуализатор включён, считает полосы из того же потока. Отдельного
+// клиента ALSA нет — второй слушатель петли не нужен, и щелчка тоже.
+func runTap(ctx context.Context) error {
+	s := newStream()
+	buf := make([]byte, 16384)
+	active, lastFlag := false, time.Time{}
+	defer os.Remove(btFlag)
+	for ctx.Err() == nil {
+		n, err := os.Stdin.Read(buf)
+		if n > 0 {
+			if _, werr := os.Stdout.Write(buf[:n]); werr != nil {
+				return werr
+			}
+			if _, statErr := os.Stat(onFlag); statErr == nil {
+				active = true
+				if time.Since(lastFlag) > 500*time.Millisecond {
+					os.WriteFile(btFlag, []byte("1"), 0600) // признаки жизни для кодека
+					lastFlag = time.Now()
+				}
+				s.feed(buf[:n])
+			} else if active {
+				active = false
+				os.Remove(btFlag)
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
 		}
 	}
 	return ctx.Err()
@@ -313,6 +371,7 @@ func runFile(path string) error {
 func main() {
 	device := flag.String("device", "hw:0,0", "ALSA-устройство захвата (то, что играет усилитель)")
 	file := flag.String("file", "", "отладка: прогнать WAV (16 бит, стерео, 48 кГц) и напечатать полосы")
+	tap := flag.Bool("tap", false, "пересылать PCM из stdin в stdout и считать спектр (Bluetooth-переливание)")
 	show := flag.Bool("version", false, "показать версию")
 	flag.Parse()
 	if *show {
@@ -329,9 +388,16 @@ func main() {
 	debug.SetGCPercent(50)
 	debug.SetMemoryLimit(statusLimit)
 	log.SetFlags(log.Ldate | log.Ltime)
-	log.Printf("vizd %s запущен, захват %s", version, *device)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
+	if *tap {
+		log.Printf("vizd %s: Bluetooth-переливание", version)
+		if err := runTap(ctx); err != nil {
+			log.Printf("tap: %v", err)
+		}
+		return
+	}
+	log.Printf("vizd %s запущен, захват %s", version, *device)
 	defer os.Remove(statusPath)
 	backoff := 2 * time.Second
 	for {

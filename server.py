@@ -291,6 +291,8 @@ VIZ_STATUS = "/tmp/webpanel_viz.json"
 VIZ_SD = "/tmp/webpanel_viz.sd"
 VIZ_RUN = f"exec {VIZD} >{VIZ_DIR}/viz.log 2>&1"
 VIZ_SRC = Path(__file__).resolve().parent / "device" / "viz"
+VIZ_ON = "/tmp/webpanel_viz.on"   # визуализатор включён в панели
+VIZ_BT = "/tmp/webpanel_viz.bt"   # идёт Bluetooth-переливание: полосы считает tap из того же потока
 # Агент панели (device/agent): команды, файлы и консоль по TLS с токеном — рядом с adb, а не вместо него.
 # adb ставит, обновляет и чинит агента; агент молчит — панель работает через adb, как раньше.
 AGENT_DIR = f"{WEB_DIR}/agent"
@@ -350,8 +352,11 @@ fwd() {
   # громкость колонки — силами bluealsa: многие колонки не слушают её по AVRCP; после переподключения сбрасывается
   dbus-send --system --print-reply --dest=org.bluealsa /org/bluealsa/hci0/dev_$(echo "$M" | tr : _)/a2dpsrc/sink \
     org.freedesktop.DBus.Properties.Set string:org.bluealsa.PCM1 string:SoftVolume variant:boolean:true >/dev/null 2>&1
+  # если живой спектр установлен — вставляем tap: он пересылает звук дальше и считает полосы
+  tap=cat
+  [ -x __VIZ__ ] && tap="__VIZ__ -tap"
   start-stop-daemon -S -b -m -p $F -x /bin/sh -- -c "arecord -q -D hw:Loopback,1,0 -f S16_LE -c 2 -r 48000 -t raw \
-    --buffer-time=100000 | aplay -q -D bluealsa:DEV=$M,PROFILE=a2dp -f S16_LE -c 2 -r 48000 -t raw --buffer-time=200000"
+    --buffer-time=100000 | $tap | aplay -q -D bluealsa:DEV=$M,PROFILE=a2dp -f S16_LE -c 2 -r 48000 -t raw --buffer-time=200000"
 }
 fwd_stop() {   # переливалка — sh с двумя детьми: гасим всю группу процессов
   p=$(cat $F 2>/dev/null) && g=$(awk '{print $5}' /proc/$p/stat 2>/dev/null) && [ "${g:-0}" -gt 1 ] && kill -- -$g 2>/dev/null
@@ -3065,12 +3070,21 @@ echo @@BLUEZ
     def viz_set(self, on):
         """Включить/выключить живой спектр. Включение при первом разе ставит программу на колонку."""
         if not on:
-            self.adb.shell(f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; rm -f {VIZ_SD} {VIZ_STATUS}; true", check=False)
+            self.adb.shell(f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; "
+                           f"rm -f {VIZ_SD} {VIZ_ON} {VIZ_STATUS} {VIZ_BT}; true", check=False)
             return self.viz_status()
         st = self.viz_status()
         if not st["installed"] or st.get("outdated"):
-            return self.viz_install()
-        return self.viz_start()
+            st = self.viz_install()
+        else:
+            st = self.viz_start()
+        # Флаг для tap: при выводе на Bluetooth-колонку полосы считает он, из того же потока.
+        # Если переливание уже идёт, перезапускаем его — иначе в конвейере не окажется tap.
+        self.adb.shell(
+            f"touch {VIZ_ON}; "
+            f"[ -f {BTOUT_MAC} ] && {{ p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
+            f"rm -f {BTOUT_FWD_SD}; }}; true", check=False)
+        return st
 
     def viz_install(self):
         arch, _, _ = self.adb.shell("uname -m", check=False)
@@ -3089,7 +3103,7 @@ echo @@BLUEZ
         for _ in range(12):
             time.sleep(0.3)
             st = self.viz_status()
-            if st["running"] and st["age"] is not None and st["age"] < 2:
+            if st["running"]:   # в Bluetooth-режиме полосы пишет tap, статус появится чуть позже
                 return st
         out, _, _ = self.adb.shell(f"tail -5 {VIZ_DIR}/viz.log", check=False)
         raise AdbError("визуализатор не запустился: " + strip_ansi(out).strip()[-300:])
@@ -4715,7 +4729,7 @@ echo @@BLUEZ
             "pcm.dmix_loop {\n  type dmix\n  ipc_key 1031\n  ipc_key_add_uid false\n  ipc_perm 0666\n"
             "  slave {\n    pcm \"hw:Loopback,0,0\"\n    channels 2\n    rate 48000\n    buffer_size 7680\n    period_size 960\n  }\n}\n")
         script = (BTOUT_WATCH.replace("__DIR__", BTOUT_DIR).replace("__STATE__", BTOUT_STATE).replace("__MARK__", BTOUT_MARK)
-                  .replace("__FWD__", BTOUT_FWD_SD))
+                  .replace("__FWD__", BTOUT_FWD_SD).replace("__VIZ__", VIZD))
         with tempfile.TemporaryDirectory() as td:
             write_unix(Path(td) / "conf", conf)
             write_unix(Path(td) / "sh", script)
