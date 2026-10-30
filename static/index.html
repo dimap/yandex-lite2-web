@@ -425,9 +425,14 @@
   .eq-band input[type=range] { width: 100%; margin: 0; }
   .eq-band .eq-gv { text-align: right; font-size: 12px; color: var(--muted); }
   .eq-custom .hint { margin: 2px 0 0; }
-  .ww-statusline { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
-  .ww-statusline .hint { margin: 0; }
-  .ww-statusline .pill.on { background: var(--accent-soft); border-color: transparent; color: var(--accent-ink); }
+  .ww-state-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ww-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .ww-dot.on { background: #1f9d55; }
+  .ww-dot.warn { background: var(--accent); }
+  .ww-dot.off { background: var(--muted); }
+  .ww-state { font-weight: 600; }
+  .ww-state-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .ww-step .meta.ok { color: #1f9d55; }
   .ww-auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-2); }
   .ww-auto span b { display: block; }
   .ww-auto span small { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }
@@ -2230,15 +2235,17 @@
   <main id="tab-wakeword" data-page hidden>
     <header class="page-head">
       <div><h1>Активация</h1><div class="sub">Свои слова для колонки. Запись и обучение идут на её микрофонах — говорите у колонки.</div></div>
-      <div class="actions">
-        <button class="btn" id="ww-refresh">Обновить</button>
-        <button class="btn primary" id="ww-start" hidden>Запустить</button>
-        <button class="btn" id="ww-stop" hidden>Остановить</button>
-      </div>
     </header>
     <section class="card">
       <div class="card-head"><h2>Состояние</h2></div>
-      <div class="ww-statusline"><span class="pill" id="ww-badge">—</span><span class="hint" id="ww-hint">Проверяю…</span></div>
+      <div class="ww-state-row">
+        <span class="ww-dot" id="ww-dot"></span><span class="ww-state" id="ww-state">Проверяю…</span>
+        <span class="ww-state-actions">
+          <button class="btn sm" id="ww-start" hidden>Запустить демон</button>
+          <button class="btn sm" id="ww-stop" hidden>Остановить демон</button>
+        </span>
+      </div>
+      <p class="hint" id="ww-hint">Проверяю…</p>
       <div class="ww-audio" id="ww-audio" hidden>
         <div class="ww-meter"><span id="ww-meter"></span></div>
         <span class="meta" id="ww-audio-text">—</span>
@@ -2266,7 +2273,8 @@
           <div class="ww-reading">Сегодня обещали тёплую погоду, поэтому мы решили погулять в парке. Вечером нужно купить хлеб, молоко и что-нибудь к чаю. Позвоню маме и спрошу, как у неё дела. Завтра рано вставать, так что лягу пораньше и почитаю книгу.</div>
           <button class="btn sm" id="ww-speech">Читать 20 секунд</button></div>
         <div class="ww-step"><div class="ww-step-head"><b>4. Обучение</b><span class="meta" id="ww-train-state"></span></div>
-          <p>2–3 минуты на колонке.</p><button class="btn sm primary" id="ww-train">Обучить</button>
+          <p>2–3 минуты на колонке. Сначала нужен фон и минимум 6 записей слова.</p>
+          <button class="btn sm primary" id="ww-train" disabled title="Сначала запишите фон и минимум 6 дублей слова">Обучить</button>
           <div class="ww-progress"><span id="ww-train-bar"></span></div></div>
       </div>
     </section>
@@ -7520,15 +7528,16 @@ function wwRender() {
   if (nav) nav.hidden = !(ww && ww.installed && ww.supported);
   if (!ww) return;
   const on = wwOn(), running = !!ww.running;
-  const badge = $('#ww-badge');
-  badge.textContent = !ww.installed ? 'не установлен' : !ww.supported ? 'не поддерживается' : running ? 'работает' : 'остановлен';
-  badge.classList.toggle('on', on && running);
+  const stateEl = $('#ww-state'), dot = $('#ww-dot');
+  stateEl.textContent = !ww.installed ? 'не установлен' : !ww.supported ? 'не поддерживается'
+    : running ? 'работает' : 'остановлен';
+  dot.className = 'ww-dot' + (on && running ? ' on' : on ? ' warn' : ' off');
   $('#ww-hint').textContent = !ww.installed
     ? 'Пакет tangenx/wakeword не установлен. Установите его в «Приложения» → YAM 2, затем вернитесь сюда.'
     : !ww.supported ? `Плагин не поддерживает эту модель (${ww.platform || '?'}).`
     : ww.error ? `Демон не отвечает: ${ww.error}`
     : running ? 'Демон работает. Запись и обучение идут с микрофонов колонки — говорите рядом с ней.'
-    : 'Демон установлен, но не запущен — нажмите «Запустить».';
+    : 'Демон установлен, но не запущен — нажмите «Запустить демон».';
   $('#ww-start').hidden = !on || running;
   $('#ww-stop').hidden = !on || !running;
   $('#ww-autostart-row').hidden = !on;
@@ -7579,11 +7588,21 @@ function wwRender() {
   $('#ww-enroll-card').hidden = !on || !e;
   if (e) {
     $('#ww-enroll-name').textContent = e.name || '';
-    if (wwBusy !== 'ambient') $('#ww-ambient-state').textContent = e.has_ambient ? 'фон записан' : '';
+    const ambEl = $('#ww-ambient-state');
+    if (wwBusy !== 'ambient') {
+      ambEl.textContent = e.has_ambient ? 'фон записан' : '';
+      ambEl.classList.toggle('ok', !!e.has_ambient);
+    }
     const takes = e.takes || [];
     $('#ww-takes-state').textContent = `${takes.length} из ${e.min_takes || 6}`;
     $('#ww-takes').innerHTML = takes.map((sec, i) => `<div class="ww-take"><span>${i + 1}: ${(+sec).toFixed(2)} с</span><span><button class="btn sm" data-ww-take-play="${i}">▶</button> <button class="btn sm danger" data-ww-take-del="${i}">×</button></span></div>`).join('');
-    if (wwBusy !== 'speech') $('#ww-speech-state').textContent = e.speech_secs ? `${(+e.speech_secs).toFixed(0)} с` : '';
+    const sp = +e.speech_secs || 0, spEl = $('#ww-speech-state');
+    if (wwBusy !== 'speech') {
+      spEl.textContent = sp ? `записано · ${sp.toFixed(0)} с` : '';
+      spEl.classList.toggle('ok', sp > 0);
+    }
+    $('#ww-train').disabled = !e.has_ambient || takes.length < (e.min_takes || 6)
+      || !!(ww.train && ww.train.active);
   }
   const tr = ww.train || {};
   $('#ww-train-state').textContent = tr.active ? `${tr.stage || 'обучение'} · ${Math.round((+tr.frac || 0) * 100)}%`
@@ -7613,7 +7632,6 @@ async function wwLoad() {
 }
 window.wwLoad = wwLoad;
 
-$('#ww-refresh').onclick = () => wwLoad();
 $('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start'); wwRender(); wwLoad(); }, 'Демон запущен');
 $('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop'); wwRender(); wwLoad(); }, 'Демон остановлен');
 $('#ww-autostart').onchange = e => {
