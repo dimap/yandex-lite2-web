@@ -211,10 +211,10 @@ func (a *analyzer) bands(samples []int16) (out [bandsCount]float64, rms, peak fl
 		if !silent {
 			v = math.Max(0, math.Min(1, (dbs[b]-(a.ref-refRange))/refRange))
 		}
-		// быстрая атака и достаточно быстрое затухание — иначе визуализатор «отстаёт» от музыки
-		k := 0.7
+		// быстрая атака и быстрое затухание — визуализатор должен успевать за музыкой
+		k := 0.8
 		if v < a.env[b] {
-			k = 0.3
+			k = 0.45
 		}
 		a.env[b] += (v - a.env[b]) * k
 		out[b] = math.Round(a.env[b]*1000) / 1000
@@ -241,7 +241,7 @@ func run(ctx context.Context, device string) error {
 
 	a := newAnalyzer(fftSize, sampleRate)
 	history := make([]int16, fftSize)
-	hop := fftSize   // без перекрытия: панель всё равно читает 10 раз в секунду, а FFT — вдвое дешевле
+	hop := fftSize // без перекрытия: панель всё равно читает 10 раз в секунду, а FFT — вдвое дешевле
 	hopBuf := make([]int16, 0, hop)
 	buf := make([]byte, 16384)
 	r := bufio.NewReaderSize(stdout, 1<<16)

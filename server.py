@@ -1347,17 +1347,20 @@ class LedStream:
     PIDFILE = "/tmp/webpanel_leds.pid"
 
     def _kill_device_loop(self):
-        # Цикл на колонке НЕ умирает вместе с adb shell — гасим его явно по PID-файлу.
-        self.adb.shell(f"[ -f {self.PIDFILE} ] && kill $(cat {self.PIDFILE}) 2>/dev/null; rm -f {self.PIDFILE}; true",
-                       check=False)
+        # Цикл на колонке НЕ умирает вместе с adb shell — гасим его явно. PID-файл у циклов один,
+        # и после перезапуска панели в нём уже новый PID, поэтому старые ищем по командной строке.
+        self.adb.shell(f"for p in $(ps | awk '/webpanel_leds\\.pid/ && !/awk/ {{print $1}}'); do kill $p 2>/dev/null; done; "
+                       f"rm -f {self.PIDFILE}; true", check=False)
 
     def _run(self):
         clock = " ".join(f"{LED_PREFIX}:white:clock{n}" for n in CLOCK_LEDS)
         ring = " ".join(f"plum:{x}" for x in self.RING)
         # Не дольше 60 с (600 × 0,1 с): даже если сервер упадёт, цикл на колонке закончится сам.
-        loop = (f"echo $$ > {self.PIDFILE}; cd {LEDS}; k=0; while [ $k -lt 600 ]; do k=$((k + 1)); o=; "
-                f"for n in {clock} {ring}; do read v < $n/brightness; o=\"$o $v\"; done; echo $o; "
-                f"[ -f {VIZ_STATUS} ] && {{ printf '@viz '; cat {VIZ_STATUS}; echo; }}; usleep 100000; done; "
+        # Спектр читаем чаще светодиодов (25 Гц против 12,5): столбики должны успевать за музыкой,
+        # а лишние чтения sysfs не нужны.
+        loop = (f"echo $$ > {self.PIDFILE}; cd {LEDS}; k=0; while [ $k -lt 1200 ]; do k=$((k + 1)); o=; "
+                f"if [ $((k % 2)) -eq 1 ]; then for n in {clock} {ring}; do read v < $n/brightness; o=\"$o $v\"; done; echo $o; fi; "
+                f"[ -s {VIZ_STATUS} ] && {{ read line < {VIZ_STATUS}; echo \"@viz $line\"; }}; usleep 40000; done; "
                 f"rm -f {self.PIDFILE}")
         want = len(CLOCK_LEDS) + len(self.RING)
         try:

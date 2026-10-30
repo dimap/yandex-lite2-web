@@ -3114,9 +3114,9 @@ async function liveLeds() {
     } catch {}
   }
   // Эквалайзер Quasar держит на часах ~15 с после старта трека, потом снова часы: пока он есть — 10 раз
-  // в секунду, без него — реже, только чтобы не пропустить следующий.
+  // в секунду, без него — реже, только чтобы не пропустить следующий. Живой спектр читаем 20 раз в секунду.
   const spectrumNow = window.__spectrum && performance.now() - window.__spectrum.t < 2500;
-  setTimeout(liveLeds, want ? (spectrumNow ? 100 : 700) : 500);
+  setTimeout(liveLeds, want ? (spectrumNow ? 50 : 700) : 500);
 }
 setTimeout(liveLeds, 1000);   // первый запуск — когда весь скрипт уже загружен
 function animateRing({ frames, loop }, seconds) {
@@ -4642,7 +4642,7 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
     const beat = Math.exp(-((t * 2) % 1) * 5);                 // запасной пульс 120 уд/мин
     // Настоящий спектр с колонки, если он свежий: сглаживаем полосы, пульс — от общей громкости.
     const sp = window.__spectrum, live = !!sp && now - sp.t < 700;
-    if (live) sp.bands.forEach((b, k) => { sb[k] += (b - sb[k]) * 0.5; }); else sb.forEach((_, k) => { sb[k] *= 0.9; });
+    if (live) sp.bands.forEach((b, k) => { sb[k] += (b - sb[k]) * 0.7; }); else sb.forEach((_, k) => { sb[k] *= 0.9; });
     // Без живого спектра, но пока играет, рисуем синтетические полосы — чтобы стили не пустовали.
     const bands = live ? sb : [0, 1, 2, 3].map(k => 0.22 + 0.55 * Math.max(0, Math.sin(t * (1.1 + k * .8) + k * 2.1)) * (0.45 + 0.55 * beat));
     const loud = (bands[0] + bands[1] + bands[2] + bands[3]) / 4;
@@ -4670,7 +4670,7 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
       if (barsH.length !== 4) barsH = [0, 0, 0, 0];
       for (let k = 0; k < 4; k++) {
         const target = playing ? 0.08 + 0.9 * bands[k] : 0;
-        barsH[k] += (target - barsH[k]) * (playing ? 0.4 : 0.12);
+        barsH[k] += (target - barsH[k]) * (playing ? 0.7 : 0.12);
       }
     }
     for (let y = rowH / 2; y < ch; y += rowH) {

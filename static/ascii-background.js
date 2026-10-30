@@ -31,7 +31,7 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
     const live = sample?.bands?.length === 4 && now - sample.t < 700;
     const beat = Math.exp(-((t * 2) % 1) * 5);
     // Живой спектр — быстро сглаживаем; без него, пока играет, — честная имитация по биту.
-    if (live) sample.bands.forEach((b, k) => { bands[k] += (b - bands[k]) * .5; });
+    if (live) sample.bands.forEach((b, k) => { bands[k] += (b - bands[k]) * .7; });
     else bands.forEach((_, k) => { bands[k] = active && !reduced.matches ? .15 + .85 * beat * (.55 + .45 * Math.sin(t * (1.3 + k * .7) + k * 2)) : 0; });
     const loud = (bands[0] + bands[1] + bands[2] + bands[3]) / 4;
     // Кольца — по всплескам низа (или по биту, если живого спектра нет), а не по таймеру.
@@ -53,7 +53,7 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
       if (barsH.length !== 4) barsH = [0, 0, 0, 0];
       for (let k = 0; k < 4; k++) {
         const target = active ? .08 + .9 * bands[k] : 0;
-        barsH[k] += (target - barsH[k]) * (active ? .4 : .12);
+        barsH[k] += (target - barsH[k]) * (active ? .7 : .12);
       }
     }
     ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = colorOf() || color;
