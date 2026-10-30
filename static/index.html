@@ -4613,6 +4613,8 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
   const RAMP = ' .·:-=+*%#@', FS = 13;
   let cw = 0, ch = 0, energy = 0, last = 0, color = '#E8590C';
   const sb = [0, 0, 0, 0];   // сглаженные полосы спектра
+  const rings = [];          // кольца, пущенные по пикам (а не по таймеру)
+  let lastRing = 0, bassAvg = 0;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const readColor = () => { color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || color; };
   readColor();
@@ -4644,6 +4646,16 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
     const loud = (bands[0] + bands[1] + bands[2] + bands[3]) / 4;
     const pulse = live ? 0.55 + 0.55 * loud : 0.55 + 0.45 * beat;
     const style = window.__vizStyle || 'rays';
+    // Кольца пускаем по пикам баса (или по биту, если живого спектра нет), а не по таймеру:
+    // так они совпадают с музыкой и читаются.
+    bassAvg += (bands[0] - bassAvg) * 0.06;
+    const onPeak = live ? bands[0] > bassAvg * 1.25 + 0.06 : beat > 0.85;
+    if (energy > 0.4 && onPeak && now - lastRing > (live ? 200 : 420)) {
+      rings.push({ t0: now, band: live ? bands[0] : 0.5 + 0.5 * beat });
+      lastRing = now;
+    }
+    if (rings.length > 8) rings.splice(0, rings.length - 8);
+    for (let i = rings.length - 1; i >= 0; i--) if (now - rings[i].t0 > 1800) rings.splice(i, 1);
     ctx.clearRect(0, 0, cw, ch);
     if (energy < 0.02 && idle < 0.02) return;
     ctx.font = `${FS}px 'JetBrains Mono', monospace`;
@@ -4655,25 +4667,32 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
       for (let x = colW / 2; x < cw; x += colW) {
         const dx = x - cx, dy = y - cy;
         const r = Math.hypot(dx, dy) / maxR, a = Math.atan2(dy, dx);
+        // Лучи: справа низкие, слева высокие, зеркально сверху и снизу.
         const u = Math.abs(a) / Math.PI * 3, k = Math.min(2, Math.floor(u)), f = u - k;
-        const band = bands[k] * (1 - f) + bands[k + 1] * f;   // полоса по направлению, зеркально
+        const band = bands[k] * (1 - f) + bands[k + 1] * f;
+        // Спектр по кругу: один сектор 90°, отражённый по обеим осям, — получается симметричный веер.
+        const qa = Math.min(Math.abs(a), Math.PI - Math.abs(a));
+        const uq = qa / (Math.PI / 2) * 3, kq = Math.min(2, Math.floor(uq)), fq = uq - kq;
+        const bandQuad = bands[kq] * (1 - fq) + bands[kq + 1] * fq;
         let v = 0;
         if (style === 'rings') {
-          // Кольца расходятся от модели к краю; яркость кольца — его полоса.
-          for (let i = 0; i < 4; i++) {
-            const frac = (t * 0.18 + i * 0.25) % 1;
-            const rad = 0.24 + 0.72 * frac, wide = 0.012 + 0.09 * bands[i] * (1 - frac * 0.5);
+          // Кольца расходятся от модели к краю; яркость — от полосы в момент пика.
+          for (const rg of rings) {
+            const age = (now - rg.t0) / 1000;
+            const rad = 0.24 + age * 0.55, wide = 0.012 + 0.05 * rg.band;
             const d = Math.abs(r - rad);
-            if (d < wide) v = Math.max(v, (1 - d / wide) * (0.3 + 0.7 * bands[i]) * (1 - frac * 0.35) * energy);
+            if (d < wide) v = Math.max(v, (1 - d / wide) * (1 - age / 1.8) * (0.45 + 0.55 * rg.band) * energy);
           }
         } else if (style === 'orbit') {
-          // Спектр по кругу: полосы — столбики наружу от модели, как эквалайзер вокруг неё.
-          const inner = 0.3, len = 0.1 + 0.5 * band;
+          // Столбики наружу от модели; один сектор 90° и его зеркала по горизонтали и вертикали.
+          const inner = 0.3, len = 0.1 + 0.5 * bandQuad;
           if (r > inner && r < inner + len) {
             const edge = Math.min(1, (r - inner) / 0.04 + 0.4) * Math.min(1, (inner + len - r) / 0.04 + 0.4);
-            v = (0.2 + 0.8 * band) * Math.min(1, edge) * energy;
-            if (r > inner + len - 0.07) v = Math.min(1, v + 0.3 * band * energy);   // яркий кончик
+            v = (0.2 + 0.8 * bandQuad) * Math.min(1, edge) * energy;
+            if (r > inner + len - 0.07) v = Math.min(1, v + 0.3 * bandQuad * energy);   // яркий кончик
           }
+          // тонкое основание, чтобы столбики читались как один веер
+          if (Math.abs(r - inner) < 0.012) v = Math.max(v, 0.12 * energy * (0.4 + 0.6 * bandQuad));
         } else {
           // Лучи из центра: дальность зависит от полосы в этом направлении.
           const reach = (0.5 + 0.45 * band * pulse) * energy;
