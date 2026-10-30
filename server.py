@@ -56,7 +56,6 @@ SOUNDS_DIR = f"{QUASAR}/sounds"
 PATTERNS = {"ring": f"{QUASAR}/ledpatterns/oknix", "clock": f"{QUASAR}/ledpatterns/clock"}
 LOGS_DIR = "/data/quasar/daemons_logs"
 LEDS = "/sys/class/leds"
-REMOTE_PLAY = "/tmp/webpanel_play.wav"
 
 # Дисплей часов: 4 позиции × сегменты A–H, затем дополнительные символы.
 # Порядок дополнительных байтов в кадре — по проверкам заставки на колонке: значок градуса, верхняя точка
@@ -65,6 +64,7 @@ CLOCK_EXTRAS = ["DEGREE", "DH", "DL", "DM"]
 CLOCK_LEDS = [f"{s}{p}" for p in range(4) for s in "ABCDEFGH"] + CLOCK_EXTRAS
 CLOCK_FRAME = 1 + len(CLOCK_LEDS) + 2  # флаг, яркости, длительность (мс, big-endian)
 WEB_DIR = "/data/quasar/webpanel"
+PLAY_LOG = "/tmp/webpanel_play.log"   # stderr aplay: по нему видно, почему звук не заиграл
 BOOT_TARGET = f"{QUASAR}/ledpatterns/clock/boot.binscled.zst"
 BOOT_CUSTOM = f"{WEB_DIR}/boot.binscled.zst"
 BOOT_ORIG = f"{WEB_DIR}/boot.orig.binscled.zst"
@@ -1893,9 +1893,23 @@ echo @@BLUEZ
         sd = f"/tmp/webpanel_{tag}.sd"
         self.adb.shell(f"rm -f {sd}; start-stop-daemon -S -b -m -p {sd} -x /bin/sh -- -c {shlex.quote(script)}")
 
-    def _play_remote_wav(self, path):
-        self.adb.shell("killall aplay 2>/dev/null; true")
-        self.detach("play", f"aplay -q {shlex.quote(path)}")
+    def _push_play_file(self, local):
+        # Уникальное имя: пока играет старый файл, новый ему не мешает; после проигрывания убираем.
+        remote = f"{WEB_DIR}/play-{os.getpid()}-{os.urandom(4).hex()}.wav"
+        self.adb.shell(f"mkdir -p {WEB_DIR}", check=False)
+        self.adb.push(local, remote)
+        return remote
+
+    def _play_remote_wav(self, path, cleanup=False):
+        self.adb.shell("killall aplay 2>/dev/null; true", check=False)
+        q = shlex.quote(path)
+        rm = f"; rm -f {q}" if cleanup else ""
+        self.detach("play", f"rm -f {PLAY_LOG}; aplay -q {q} >{PLAY_LOG} 2>&1{rm}")
+        # aplay в фоне: через секунду смотрим его stderr. Успешный -q ничего не пишет, ошибка видна.
+        time.sleep(1.0)
+        log = strip_ansi(self.adb.shell(f"tail -c 400 {PLAY_LOG} 2>/dev/null; true", check=False)[0]).strip()
+        if re.search(r"(?i)(error|cannot|failed|no such|unable|busy)", log):
+            raise AdbError("не удалось проиграть звук на колонке: " + log[-300:])
 
     def _transcode_and_play(self, src_bytes):
         if not self.ffmpeg:
@@ -1907,8 +1921,8 @@ echo @@BLUEZ
                                input=src_bytes, capture_output=True, timeout=300)
             if p.returncode != 0:
                 raise AdbError("ffmpeg: " + p.stderr.decode("utf-8", "replace").strip()[-400:])
-            self.adb.push(dst, REMOTE_PLAY)
-        self._play_remote_wav(REMOTE_PLAY)
+            remote = self._push_play_file(dst)
+        self._play_remote_wav(remote, cleanup=True)
 
     def _play_path(self, path):
         # Расширению верить нельзя: например, sounds/common/boot.wav — это MP3. aplay берём только для RIFF.
@@ -1995,8 +2009,8 @@ echo @@BLUEZ
         if data[:4] == b"RIFF":
             with tempfile.TemporaryDirectory() as td:
                 (Path(td) / "f.wav").write_bytes(data)
-                self.adb.push(Path(td) / "f.wav", REMOTE_PLAY)
-            self._play_remote_wav(REMOTE_PLAY)
+                remote = self._push_play_file(Path(td) / "f.wav")
+            self._play_remote_wav(remote, cleanup=True)
         else:
             self._transcode_and_play(data)
         return {"ok": True}
@@ -2006,8 +2020,8 @@ echo @@BLUEZ
             with tempfile.NamedTemporaryFile(suffix=".wav") as f:
                 f.write(body)
                 f.flush()
-                self.adb.push(f.name, REMOTE_PLAY)
-            self._play_remote_wav(REMOTE_PLAY)
+                remote = self._push_play_file(f.name)
+            self._play_remote_wav(remote, cleanup=True)
         else:
             self._transcode_and_play(body)
         return {"ok": True}
@@ -4409,9 +4423,20 @@ echo @@BLUEZ
             raise AdbError("адрес реестра не https")
         ts, data, src = getattr(self, "_yam2_cat", (0, None, None))
         if refresh or data is None or src != url or time.time() - ts > 600:
-            with urllib.request.urlopen(urllib.request.Request(url + "/index.json", headers={"User-Agent": "webpanel"}),
-                                        timeout=20) as r:
-                data = json.load(r)
+            last = None
+            for attempt in range(2):
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(url + "/index.json", headers={"User-Agent": "webpanel"}),
+                                                timeout=20) as r:
+                        data = json.load(r)
+                    break
+                except (urllib.error.URLError, OSError, ValueError) as e:
+                    last = getattr(e, "reason", e)
+                    if attempt == 0:
+                        time.sleep(0.5)
+            else:
+                raise AdbError("каталог YAM 2 недоступен из контейнера: " + str(last)
+                               + ". Проверьте доступ к " + url + " — в Docker/WSL2 часто мешает прокси или свои сертификаты")
             self._yam2_cat = (time.time(), data, url)
         plat = st["platform"]
         pkgs = [{k: p.get(k) for k in ("name", "summary", "latest", "homepage", "targets")}

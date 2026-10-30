@@ -1,9 +1,12 @@
 import json
+import ssl
 import subprocess
 import unittest
+import urllib.error
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
+import glagol
 import server
 
 
@@ -68,6 +71,18 @@ class GlagolIdentityTests(unittest.TestCase):
         panel = self.panel('{"common": {"deviceType": "yandexmicro"}}')
         panel._configure_glagol("")
         self.assertIsNone(panel.glagol.device_id)
+
+
+class GlagolTokenTests(unittest.TestCase):
+    def test_certificate_error_is_explained(self):
+        g = glagol.Glagol.__new__(glagol.Glagol)
+        g.device_id, g.platform = "id", "plum"
+        g.auth = SimpleNamespace(music_token="token")
+        err = urllib.error.URLError(ssl.SSLCertVerificationError("bad cert"))
+        with patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(glagol.AuthError) as cm:
+                g._conversation_token()
+        self.assertIn("сертификат", str(cm.exception))
 
 
 class AliceCommandLimitTests(unittest.TestCase):
