@@ -49,6 +49,9 @@ for(;;){
 }
 const visual=rendererProfile(profile,status);
 loading.remove();
+// «Лайт 2 без часов» — тот же корпус, что у Лайт 2, только без дисплея: рисуем модель Lite 2,
+// но прячем светящееся окно часов. Иначе model-studio не знает этот профиль и показывает Станцию 2.
+window.__modelNoClock=visual.clock===false;
 const gallery = document.getElementById("model-gallery");
 if (gallery) gallery.href = PanelContext.url("static/model-preview.html") + "?model=" + encodeURIComponent(visual.id);
 window.__deviceColor=status.color||window.__deviceColor;
@@ -80,7 +83,7 @@ if(visual.id==='lite'){
   document.querySelectorAll('[data-k="clock"]').forEach(hide);
 }
 try{
-  if(visual.id==='lite2')await import('./model-lite2.js');
+  if(visual.id==='lite2'||visual.id==='lite2nc')await import('./model-lite2.js');
   else{
     let studio;
     try{studio=await import('./model-studio.js');}

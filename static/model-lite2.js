@@ -117,6 +117,7 @@ const screen = new THREE.Mesh(
   new THREE.CylinderGeometry(DISPLAY.radius, DISPLAY.radius, height, 48, 1, true, -arc / 2, arc),
   new THREE.MeshBasicMaterial({ map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
 screen.position.y = DISPLAY.centerZ + LIFT;
+if (window.__modelNoClock) screen.visible = false;   // Lite 2 без часов: корпус тот же, дисплея нет
 group.add(screen);
 
 function drawDisplay(v) {

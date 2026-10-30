@@ -25,5 +25,9 @@ export function rendererProfile(profile,status={}){
   }
   id=id||profile.id;
   if(id==='mini2'&&profile.id==='mini2nc')id='mini2nc';
+  // Плата plum у Лайт 2 одна и та же с часами и без: если профиль уже определён как «без часов»
+  // (по светодиодам), не подменяем его на clock-версию из device-tree. Станция 2 в device-tree
+  // тоже встречается у таких плат — визуально это всё равно корпус Лайт 2.
+  if(profile.id==='lite2nc'&&(id==='lite2'||id==='station2'))id='lite2nc';
   return {...profile,id,name:MODEL_NAMES[id]||profile.name};
 }

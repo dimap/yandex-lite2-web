@@ -2414,6 +2414,7 @@ echo @@BLUEZ
             f"[ -f {ROOTKEEPER}.webpanel.bak ] || cp {ROOTKEEPER} {ROOTKEEPER}.webpanel.bak; "
             f"grep -q '{HOOK_MARK}' {ROOTKEEPER} || "
             f"sed -i '1a [ -x {BOOT_HOOK} ] && {BOOT_HOOK} {HOOK_MARK}' {ROOTKEEPER}; "
+            f"elif grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null; then :; "
             f"elif {initd_writable()}; then {initd_write()}; "
             + remount_branch +
             f"else exit 3; fi", check=False)
@@ -2440,7 +2441,7 @@ echo @@BLUEZ
         """Подключён ли хук, свежий ли он и нужен ли — для общей плашки «не переживёт перезагрузку»."""
         out, _, _ = self.adb.shell(
             f"{self._hook_users_script()}; {hook_active()} && echo hook; grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null && echo initd; "
-            f"{{ [ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null || {initd_writable()}; }} && echo possible; "
+            f"{{ [ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null || grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null || {initd_writable()}; }} && echo possible; "
             f"md5sum {BOOT_HOOK} 2>/dev/null; true", check=False)
         out = strip_ansi(out)
         flags = set(out.split())
