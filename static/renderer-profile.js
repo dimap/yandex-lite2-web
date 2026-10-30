@@ -7,7 +7,7 @@ export function rendererProfile(profile,status={}){
   let id;
   // Device-tree identity wins over a hostname that the owner may have renamed.
   // station-midi — это Станция 2 (yandexmidi), а не «Станция Миди»: та называется cucumber/cucumber-dvt2
-  // и пока не имеет своего визуального профиля (issue #7).
+  // и пока не имеет своего визуального профиля (issue #7). Станция Макс — yandexstation_2; её профиля нет.
   for(const [platform,model]of Object.entries({bergamot:'mini3',pickle:'mini3pro',plum:'lite2',prune:'lite2nc',yandexmidi:'station2','station-midi':'station2','station midi':'station2','station-mini2':'mini2'})){
     if(new RegExp('(^|[^a-z0-9])'+platform+'([^a-z0-9]|$)').test(hardware)){id=model;break;}
   }
