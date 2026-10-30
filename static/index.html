@@ -7488,7 +7488,7 @@ voiceInput = bindVoiceInput(document, { store, ready: () => !!(online && mu.info
 // ---------- слова активации: тонкий клиент к API демона tangenx/wakeword ----------
 let ww = null, wwTimer = 0, wwSig = '', wwBusy = '';
 const wwOn = () => !!(ww && ww.installed && ww.supported);
-const pct = x => Math.round(Math.max(0, Math.min(1, +x || 0)) * 100) + '%';
+const wwPct = x => Math.round(Math.max(0, Math.min(1, +x || 0)) * 100) + '%';
 
 async function wwApi(path, method = 'GET', body = null) {
   if (method === 'GET') {
@@ -7557,8 +7557,8 @@ function wwRender() {
       return `<div class="ww-word">
         <div class="ww-word-head"><b class="ww-word-name">${esc(w.name)}</b>
           <label class="ww-toggle" title="Включить или выключить слово"><input type="checkbox" class="switch" data-ww-enable="${id}" ${w.enabled ? 'checked' : ''} aria-label="Слово «${esc(w.name)}» включено"></label></div>
-        <div class="ww-conf" title="Уверенность сейчас; отметка — порог срабатывания"><span data-ww-meter="${id}" style="width:${pct(w.score)}"></span><b style="left:${thr}%"></b></div>
-        <div class="ww-word-meta"><span class="meta">${w.takes || 0} записей · узнаёт ${pct(w.recall)} · ложных ≈ ${(+w.false_per_h || 0).toFixed(1)}/ч${w.false_clips ? ` · отмечено: ${w.false_clips}` : ''} · сейчас <span data-ww-score="${id}">${pct(w.score)}</span></span></div>
+        <div class="ww-conf" title="Уверенность сейчас; отметка — порог срабатывания"><span data-ww-meter="${id}" style="width:${wwPct(w.score)}"></span><b style="left:${thr}%"></b></div>
+        <div class="ww-word-meta"><span class="meta">${w.takes || 0} записей · узнаёт ${wwPct(w.recall)} · ложных ≈ ${(+w.false_per_h || 0).toFixed(1)}/ч${w.false_clips ? ` · отмечено: ${w.false_clips}` : ''} · сейчас <span data-ww-score="${id}">${wwPct(w.score)}</span></span></div>
         ${(w.notes || []).length ? `<div class="meta">${w.notes.map(esc).join('<br>')}</div>` : ''}
         <div class="ww-word-foot">
           <label class="ww-sens"><span>реже</span><input type="range" min="-30" max="30" step="5" value="${Math.max(-30, Math.min(30, sens))}" data-ww-sens="${id}"><span>чаще</span></label>
@@ -7569,9 +7569,9 @@ function wwRender() {
     words.forEach(w => {
       const id = window.CSS && CSS.escape ? CSS.escape(w.id) : String(w.id).replace(/"/g, '\\"');
       const m = document.querySelector(`[data-ww-meter="${id}"]`);
-      if (m) m.style.width = pct(w.score);
+      if (m) m.style.width = wwPct(w.score);
       const s = document.querySelector(`[data-ww-score="${id}"]`);
-      if (s) s.textContent = pct(w.score);
+      if (s) s.textContent = wwPct(w.score);
     });
   }
 
