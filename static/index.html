@@ -7632,8 +7632,8 @@ async function wwLoad() {
 }
 window.wwLoad = wwLoad;
 
-$('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start'); wwRender(); wwLoad(); }, 'Демон запущен');
-$('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop'); wwRender(); wwLoad(); }, 'Демон остановлен');
+$('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start', {}); wwRender(); wwLoad(); }, 'Демон запущен');
+$('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop', {}); wwRender(); wwLoad(); }, 'Демон остановлен');
 $('#ww-autostart').onchange = e => {
   const on = e.target.checked;
   act(e.target, async () => { ww = await api('/api/wakeword/autostart', { on }); wwRender(); },

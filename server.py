@@ -3381,6 +3381,8 @@ echo @@BLUEZ
             except AdbError as e:
                 error = str(e)
         running = bool(state) or info["pid"]
+        if not running:
+            error = ""       # демон штатно остановлен — это не ошибка API
         audio = (state or {}).get("audio") or {}
         return {"installed": info["installed"], "version": info["version"], "running": running,
                 "supported": supported, "platform": platform, "audio": audio, "autostart": info["auto"],

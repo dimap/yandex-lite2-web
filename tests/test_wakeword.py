@@ -109,12 +109,19 @@ class Status(unittest.TestCase):
         self.assertEqual(st["version"], "0.2.2")
 
     def test_status_reports_api_error(self):
-        p = panel()
+        p = panel(shell=("0.2.2\n@bin\n@script\n@pid\n", "", 0))
         with patch.object(p, "_wakeword_api", side_effect=server.AdbError("timeout")):
             st = p.wakeword_status()
         self.assertTrue(st["installed"])
-        self.assertFalse(st["running"])
+        self.assertTrue(st["running"])
         self.assertIn("timeout", st["error"])
+
+    def test_stopped_daemon_is_not_an_api_error(self):
+        p = panel()
+        with patch.object(p, "_wakeword_api", side_effect=server.AdbError("closed")):
+            st = p.wakeword_status()
+        self.assertFalse(st["running"])
+        self.assertEqual(st["error"], "")
 
 
 class Autostart(unittest.TestCase):
