@@ -1244,9 +1244,9 @@
           <div class="set-ctl"><div class="tile-picks" id="set-tiles"></div></div></div>
         <label class="set-item"><div class="set-label"><b>Визуализатор за 3D-моделью</b><small>Спектр из символов за моделью, пока колонка играет музыку (нужен вход в Яндекс)</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz"></div></label>
-        <label class="set-item"><div class="set-label"><b>Вид визуализатора</b><small>Лучи из центра, кольца от модели или спектр по кругу — цвет берётся из акцента темы</small></div>
+        <label class="set-item"><div class="set-label"><b>Вид визуализатора</b><small>Лучи из центра, кольца от модели, спектр по кругу или классические полосы снизу — цвет берётся из акцента темы</small></div>
           <div class="set-ctl"><select class="field" id="set-viz-style" aria-label="Вид визуализатора">
-            <option value="rays">Лучи</option><option value="rings">Кольца</option><option value="orbit">Спектр по кругу</option>
+            <option value="rays">Лучи</option><option value="rings">Кольца</option><option value="orbit">Спектр по кругу</option><option value="bars">Полосы</option>
           </select></div></label>
         <label class="set-item"><div class="set-label"><b>Фон в покое</b><small>Пока музыка не играет, символы за моделью медленно переливаются</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz-idle"></div></label>
@@ -4615,6 +4615,7 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
   let cw = 0, ch = 0, energy = 0, last = 0, color = '#E8590C';
   const sb = [0, 0, 0, 0];   // сглаженные полосы спектра
   const rings = [];          // кольца, пущенные по пикам (а не по таймеру)
+  let barsH = [];            // высоты столбиков классического эквалайзера
   let lastRing = 0, bassAvg = 0;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const readColor = () => { color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || color; };
@@ -4664,6 +4665,16 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = color;
     const cx = cw / 2, cy = ch / 2, colW = FS * 0.62, rowH = FS * 1.1, maxR = Math.hypot(cx, cy), minHalf = Math.min(cw, ch) / 2, idleR = Math.min(cw, ch) * 0.75;
+    // «Полосы»: высота каждого столбика по ширине — из четырёх полос, сглаженно.
+    if (style === 'bars') {
+      const n = Math.max(1, Math.round(cw / colW));
+      if (barsH.length !== n) barsH = new Array(n).fill(0);
+      for (let i = 0; i < n; i++) {
+        const u = (i / Math.max(1, n - 1)) * 3, k2 = Math.min(2, Math.floor(u)), f2 = u - k2;
+        const target = playing ? 0.08 + 0.9 * (bands[k2] * (1 - f2) + bands[k2 + 1] * f2) : 0;
+        barsH[i] += (target - barsH[i]) * (playing ? 0.4 : 0.12);
+      }
+    }
     for (let y = rowH / 2; y < ch; y += rowH) {
       for (let x = colW / 2; x < cw; x += colW) {
         const dx = x - cx, dy = y - cy, dist = Math.hypot(dx, dy);
@@ -4688,16 +4699,23 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
             if (d < wide) v = Math.max(v, Math.pow(1 - d / wide, 0.7) * alpha * energy);
           }
         } else if (style === 'orbit') {
-          // Столбики наружу от модели; один сектор 90° и его зеркала по горизонтали и вертикали.
-          // Начинаем дальше от центра (0.70), а к концу столбик плавно гаснет, чтобы веер не
-          // выглядел заливкой на всю площадь.
-          const inner = 0.70, len = 0.08 + 0.28 * bandQuad;
+          // Столбики наружу от центра (сектор 90° и зеркала). Внутренний радиус маленький:
+          // начало прячется за корпусом, а внешний край уходит дальше и читается на просвет.
+          const inner = 0.35, len = 0.12 + 0.62 * bandQuad;
           if (rn > inner && rn < inner + len) {
             const t = (rn - inner) / len;
-            const endFade = Math.max(0, Math.min(1, (1.02 - rn) / 0.12));
-            v = (0.25 + 0.75 * bandQuad) * (1 - 0.45 * t) * endFade * energy;
+            const endFade = Math.max(0, Math.min(1, (1.08 - rn) / 0.12));
+            v = (0.25 + 0.75 * bandQuad) * (1 - 0.25 * t) * endFade * energy;
           }
           if (Math.abs(rn - inner) < 0.012) v = Math.max(v, 0.14 * energy * (0.4 + 0.6 * bandQuad));
+        } else if (style === 'bars') {
+          // Классический эквалайзер: столбики снизу вверх во всю ширину, высота — по полосам.
+          const h = barsH[Math.min(barsH.length - 1, Math.floor(x / colW))] || 0;
+          const t = (ch - y) / ch;                    // 0 сверху, 1 снизу
+          if (h > 0.01 && t > 1 - h) {
+            const k2 = (t - (1 - h)) / h;             // 0 у вершины, 1 у основания
+            v = 0.55 + 0.45 * (1 - k2);
+          }
         } else {
           // Лучи из центра: дальность зависит от полосы в этом направлении.
           const reach = (0.46 + 0.5 * band) * energy * (0.85 + 0.3 * loud);

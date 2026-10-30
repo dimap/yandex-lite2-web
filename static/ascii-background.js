@@ -8,6 +8,7 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const bands = [0, 0, 0, 0], ramp = ' .·:-=+*%#@';
   const rings = [];                    // кольца, пущенные по пикам (а не по таймеру)
+  let barsH = [];                      // высоты столбиков классического эквалайзера
   let lastRing = 0, bassAvg = 0;
   let width = 0, height = 0, last = -Infinity, visible = true, color = '#e8590c';
   canvas.style.pointerEvents = 'none'; canvas.style.zIndex = '0';
@@ -48,6 +49,15 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
     const fs = 13, col = fs * .62, row = fs * 1.1;
     const cx = width / 2, cy = height / 2, radius = Math.min(width, height) * .63 * size;
     const minHalf = Math.min(width, height) / 2;   // кольца и веер считаем по меньшей стороне
+    if (style === 'bars') {                        // высота столбика по ширине — из четырёх полос
+      const n = Math.max(1, Math.round(width / col));
+      if (barsH.length !== n) barsH = new Array(n).fill(0);
+      for (let i = 0; i < n; i++) {
+        const u = (i / Math.max(1, n - 1)) * 3, k2 = Math.min(2, Math.floor(u)), f2 = u - k2;
+        const target = active ? .08 + .9 * (bands[k2] * (1 - f2) + bands[k2 + 1] * f2) : 0;
+        barsH[i] += (target - barsH[i]) * (active ? .4 : .12);
+      }
+    }
     ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = colorOf() || color;
     for (let y = row / 2; y < height; y += row) for (let x = col / 2; x < width; x += col) {
       const dx = x - cx, dy = y - cy, dist = Math.hypot(dx, dy);
@@ -71,13 +81,21 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
           if (d < wide) v = Math.max(v, Math.pow(1 - d / wide, .7) * alpha);
         }
       } else if (style === 'orbit') {
-        const inner = .70, len = .08 + .28 * bandQuad;
+        // Маленький внутренний радиус (начало за обложкой), длинный внешний край и затухание к нему.
+        const inner = .35, len = .12 + .62 * bandQuad;
         if (rn > inner && rn < inner + len) {
           const t = (rn - inner) / len;
-          const endFade = Math.max(0, Math.min(1, (1.02 - rn) / .12));
-          v = (.25 + .75 * bandQuad) * (1 - .45 * t) * endFade;
+          const endFade = Math.max(0, Math.min(1, (1.08 - rn) / .12));
+          v = (.25 + .75 * bandQuad) * (1 - .25 * t) * endFade;
         }
         if (Math.abs(rn - inner) < .012) v = Math.max(v, .14 * (.4 + .6 * bandQuad));
+      } else if (style === 'bars') {
+        const h = barsH[Math.min(barsH.length - 1, Math.floor(x / col))] || 0;
+        const t = (height - y) / height;            // 0 сверху, 1 снизу
+        if (h > .01 && t > 1 - h) {
+          const k2 = (t - (1 - h)) / h;             // 0 у вершины, 1 у основания
+          v = .55 + .45 * (1 - k2);
+        }
       } else {
         const reach = wave + .08 + band * .45;
         v = Math.max(0, 1 - (r / reach) ** 2);
