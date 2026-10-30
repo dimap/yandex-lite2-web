@@ -19,6 +19,9 @@ PROFILES = {
     'lite': dict(name='Станция Лайт', platform='yandexmicro', led_prefix='micro', clock=False, boot=False, alarms=False,
                  light=True, tested=('alarm', 'sounds', 'say')),   # PR #6: хук, будильник, звуки; Issue #23: «Сказать»
     'lite2': dict(name='Станция Лайт 2', platform='plum', clock=True, boot=True, alarms=True, light=True, tested=TRIAL_FEATURES),
+    # Lite 2 без сегментного дисплея (например, Prune): кольцо и остальное как у Lite 2.
+    'lite2nc': dict(name='Станция Лайт 2 (без часов)', platform='plum', clock=False, boot=False, alarms=True,
+                    light=True, tested=()),
     'station2': dict(name='Станция 2', platform='yandexmidi', clock=False, boot=False, alarms=False, light=True, ledpanel=True),
     'mini3pro': dict(name='Станция Мини 3 Про', platform='pickle', clock=True, boot=False, alarms=False, light=True),
     # Common ADB features and a distinct 3D model; LED layout has not been verified on hardware.
@@ -27,6 +30,9 @@ PROFILES = {
     'mini2': dict(name='Станция Мини 2 с часами', platform='yandexmini_2', led_prefix='mini2', clock=True,
                   clock_max=170, bt_volume=False, boot=False, alarms=False, light=True,
                   tested=('say',)),   # «Сказать на колонке» — issue #16
+    # Та же плата без clock-сегментов: кольцо 6 RGB, без дисплея.
+    'mini2nc': dict(name='Станция Мини 2 (без часов)', platform='yandexmini_2', led_prefix='mini2', clock=False,
+                    clock_max=170, bt_volume=False, boot=False, alarms=False, light=True, tested=()),
 }
 
 # Мини 2: цифры 1–4 из сегментов A–G без точек H, двоеточие PLUS1/PLUS2, MINUS посередине, DEGREE.
@@ -135,6 +141,7 @@ def mini3pro_ring_script(rgb=None, leds='/sys/class/leds', state='/tmp/webpanel_
 
 
 def install(s, model='lite2', auto=False):
+    family = {'lite2nc': 'lite2', 'mini2nc': 'mini2'}.get(model, model)
     profile = dict(PROFILES[model], id=model, auto=auto)
     profile['tested'] = list(profile.get('tested', ()))   # подтверждено людьми — без предупреждения
     profile['ledpanel'] = bool(profile.get('ledpanel'))
@@ -145,7 +152,7 @@ def install(s, model='lite2', auto=False):
     original_get, original_post = s.Handler.do_GET, s.Handler.do_POST
 
     def do_get(self):
-        if model != 'lite2' and self.path.split('?')[0] == '/manifest.webmanifest':
+        if family != 'lite2' and self.path.split('?')[0] == '/manifest.webmanifest':
             if not self._guard('/manifest.webmanifest'):
                 manifest = json.loads((s.STATIC/'manifest.webmanifest').read_text(encoding='utf8'))
                 manifest.update(name='Моя станция', short_name='Моя станция',
@@ -166,8 +173,8 @@ def install(s, model='lite2', auto=False):
         path = self.path.split('?')[0]
         # Запуск и будильник на других моделях — на пробу; заставка часов рассчитана на дисплей Лайт 2
         disabled = (not profile['boot'] and path in ('/api/clock/boot', '/api/clock/boot/reset') or
-                    model != 'lite2' and path.startswith('/api/radio') and path != '/api/radio/alice' or
-                    model != 'lite2' and path in ('/api/footprint/reset', '/api/backup/restore'))
+                    family != 'lite2' and path.startswith('/api/radio') and path != '/api/radio/alice' or
+                    family != 'lite2' and path in ('/api/footprint/reset', '/api/backup/restore'))
         if disabled:
             if not self._guard(path):
                 self._send(400, {'error': 'Эта операция загрузки/восстановления не поддерживается профилем ' + model})
@@ -179,51 +186,86 @@ def install(s, model='lite2', auto=False):
         original_post(self)
 
     s.Handler.do_GET, s.Handler.do_POST = do_get, do_post
-    if model == 'lite2':
-        return  # No changes to the original Lite 2 hardware, boot hook, YAM or alarm code.
+
+    def unsupported(self=None, *args, **kwargs):
+        raise s.AdbError('Функция не проверена для профиля ' + model)
+
+    P = s.Panel
+    if family == 'lite2':
+        if model == 'lite2':
+            return  # No changes to the original Lite 2 hardware, boot hook, YAM or alarm code.
+        # Lite 2 без часов: кольцо и остальное как у Lite 2, но без segment-дисплея.
+        for method in ('clock', 'display_set', 'play_clock', 'clock_frames'):
+            setattr(P, method, unsupported)
+
+        def clock_state(self):
+            names = [f'plum:{color}:ring{i}' for i in (1, 2, 3) for color in ('red', 'green', 'blue')]
+            out, _, _ = self.adb.shell('cd /sys/class/leds; ' + '; '.join(f'cat {name}/brightness' for name in names))
+            values = [int(value) for value in out.split() if value.isdigit()]
+            if len(values) != len(names):
+                raise s.AdbError('Неполное состояние светодиодов')
+            ring = [values[i * 3:i * 3 + 3] for i in range(3)]
+            return {'v': [0] * 36, 'ring': ring, 'ring_all': ring}
+
+        P.clock_state = clock_state
+
+        class LedStream:
+            def __init__(self, adb):
+                self.adb, self.at, self.cached, self.lock = adb, 0, {'v': [0] * 36, 'ring': [[0, 0, 0]] * 3}, threading.Lock()
+
+            def get(self):
+                with self.lock:
+                    if time.monotonic() - self.at > .4:
+                        self.cached, self.at = clock_state(self), time.monotonic()
+                    return self.cached
+
+        s.LedStream = LedStream
+        return
     if model == 'mini2':
         s.CLOCK_PATH = MINI2_CLOCK_DIR
         s.decode_clock_pattern = lambda name, data: mini2_decode_clock_pattern(s, name, data)
         s.encode_clock_pattern = lambda frames: mini2_encode_clock_pattern(s, frames)
 
-    P = s.Panel
-    if model == 'mini2':
-        top = profile['clock_max']   # предел яркости дисплея часов (max_brightness)
-        original_clock, original_display_set, original_play_clock = P.clock, P.display_set, P.play_clock
+    if family == 'mini2':
         original_set_volume = P.set_volume
-
-        def clock(self, data):
-            data = dict(data)
-            if 'v' in data:
-                data['v'] = [max(0, min(top, int(value))) for value in data['v']]
-            if 'brightness' in data:
-                data['brightness'] = max(0, min(top, int(data['brightness'])))
-            return original_clock(self, data)
-
-        def display_set(self, data):
-            data = dict(data)
-            if 'v' in data:
-                data['v'] = [max(0, min(top, int(value))) for value in data['v']]
-            data['brightness'] = max(1, min(top, int(data.get('brightness', 160))))
-            return original_display_set(self, data)
-
-        def play_clock(self, frames, seconds):
-            frames = [{**frame, 'v': [max(0, min(top, int(value))) for value in frame['v']]}
-                      for frame in frames]
-            return original_play_clock(self, frames, seconds)
 
         def set_volume(self, data):
             if 'bt' in data:
                 raise s.AdbError('У Mini 2 нет отдельного Bluetooth-регулятора; используйте общую громкость')
             return original_set_volume(self, data)
 
-        P.clock, P.display_set, P.play_clock, P.set_volume = clock, display_set, play_clock, set_volume
+        P.set_volume = set_volume
+        if model == 'mini2':
+            top = profile['clock_max']   # предел яркости дисплея часов (max_brightness)
+            original_clock, original_display_set, original_play_clock = P.clock, P.display_set, P.play_clock
+
+            def clock(self, data):
+                data = dict(data)
+                if 'v' in data:
+                    data['v'] = [max(0, min(top, int(value))) for value in data['v']]
+                if 'brightness' in data:
+                    data['brightness'] = max(0, min(top, int(data['brightness'])))
+                return original_clock(self, data)
+
+            def display_set(self, data):
+                data = dict(data)
+                if 'v' in data:
+                    data['v'] = [max(0, min(top, int(value))) for value in data['v']]
+                data['brightness'] = max(1, min(top, int(data.get('brightness', 160))))
+                return original_display_set(self, data)
+
+            def play_clock(self, frames, seconds):
+                frames = [{**frame, 'v': [max(0, min(top, int(value))) for value in frame['v']]}
+                          for frame in frames]
+                return original_play_clock(self, frames, seconds)
+
+            P.clock, P.display_set, P.play_clock = clock, display_set, play_clock
     original_shell = s.Adb.shell
 
     def shell(self, command, timeout=15, check=True):
         # Older adbd can print a root-shell banner and lose the remote exit status.
         marker = '__PANEL_' + os.urandom(8).hex() + '__'
-        if model == 'mini2' and MINI2_CLOCK_DIR in command:
+        if family == 'mini2' and MINI2_CLOCK_DIR in command:
             # /tmp чистится при перезагрузке колонки — каталог сегментов создаём при первой нужде.
             command = mini2_clock_dir_script() + '\n' + command
         wrapped = (f"printf '{marker}\\n'; sh -c {shlex.quote(command)}; rc=$?; "
@@ -259,9 +301,6 @@ def install(s, model='lite2', auto=False):
         return self._version
     P.version = version
 
-    def unsupported(self=None, *args, **kwargs):
-        raise s.AdbError('Функция не проверена для профиля ' + model)
-
     if not profile['clock']:
         for method in ('clock', 'display_set', 'play_clock', 'clock_frames'):
             setattr(P, method, unsupported)
@@ -269,7 +308,7 @@ def install(s, model='lite2', auto=False):
     # вызывает штатный onboot.sh, иначе _ensure_hook сам откажет. На Мини 3 оборудование не сверено — не трогаем.
     if profile.get('experimental'):
         P._ensure_hook = unsupported
-    if model != 'lite':    # официальный установщик старого yam знал Лайт (yandexmicro) и ставил его туда же, что на Лайт 2
+    if family != 'lite':    # официальный установщик старого yam знал Лайт (yandexmicro) и ставил его туда же, что на Лайт 2
         for method in ('yam_install_daemon', 'yam_update_daemon', 'yam_autostart'):
             if hasattr(P, method):
                 setattr(P, method, unsupported)
@@ -292,24 +331,26 @@ def install(s, model='lite2', auto=False):
     # Existing community YAM installations on the new profiles use this layout; Mini 2 keeps the Lite 2 one.
     old = s.YAM_DIR
     for name, value in list(vars(s).items()):
-        if model not in ('mini2', 'lite') and name.startswith('YAM') and isinstance(value, str):
+        if family not in ('mini2', 'lite') and name.startswith('YAM') and isinstance(value, str):
             setattr(s, name, value.replace(old, '/data/local/yam'))
 
     def patterns(self):
-        if model not in ('mini3pro', 'mini2'):
+        if family not in ('mini3pro', 'mini2'):
             return {'ring': [], 'clock': []}
         out, _, _ = self.adb.shell(f'find {s.QUASAR}/ledpatterns/clock -maxdepth 1 -type f 2>/dev/null; true')
         result = {'ring': [], 'clock': [Path(line).name for line in out.splitlines()]}
-        if model == 'mini2':   # кольцо Мини 2 штатный led_util рисует сам
+        if family == 'mini2':   # кольцо Мини 2 штатный led_util рисует сам
             out, _, _ = self.adb.shell(f"find {s.PATTERNS['ring']} -maxdepth 1 -name '*.led' -type f 2>/dev/null; true")
             result['ring'] = sorted(Path(line).name for line in out.splitlines())
+            if model == 'mini2nc':
+                result['clock'] = []
         return result
     P.patterns = patterns
 
     original_play = P.play_pattern
 
     def play_pattern(self, kind, name, seconds):
-        if kind == 'ring' and model == 'mini2':
+        if kind == 'ring' and family == 'mini2':
             return original_play(self, kind, name, seconds)
         if kind != 'clock' or model not in ('mini3pro', 'mini2'):
             return unsupported()
@@ -318,22 +359,22 @@ def install(s, model='lite2', auto=False):
         return self.play_clock(s.decode_clock_pattern(name, self.adb.read_bytes(f'{s.QUASAR}/ledpatterns/clock/{name}')), seconds)
     P.play_pattern = play_pattern
 
-    if model == 'lite':
+    if family == 'lite':
         s.RING_LEDS = [f'micro:{c}:ring{i}' for i in (1, 2, 3) for c in ('red', 'green', 'blue')]
         s.RING_TRIGGER_CMD = ('for n in ' + ' '.join(s.RING_LEDS) + "; do grep -q '\\[led_ring_fb\\]' " + s.LEDS
                               + '/$n/trigger 2>/dev/null || echo led_ring_fb > ' + s.LEDS + '/$n/trigger 2>/dev/null; done; true')
 
     def leds(self):
-        if model == 'lite':
+        if family == 'lite':
             out, _, _ = self.adb.shell('cd /sys/class/leds; ' + '; '.join(f'cat {name}/brightness' for name in s.RING_LEDS))
             values = [int(value) for value in out.split() if value.isdigit()]
             if len(values) != len(s.RING_LEDS):
                 raise s.AdbError('Неполное состояние светодиодов')
             ring = [values[i * 3:i * 3 + 3] for i in range(3)]
             return {'v': [0] * 36, 'ring': ring, 'ring_all': ring}
-        if model == 'mini3':
+        if family == 'mini3':
             return {'v': [0] * 36, 'ring': [[0, 0, 0]] * 3}
-        if model == 'station2':
+        if family == 'station2':
             temporary = '/tmp/webpanel_fb_' + os.urandom(8).hex()
             try:
                 self.adb.shell(f'head -c 356 /dev/fb0 > {temporary}')
@@ -347,13 +388,18 @@ def install(s, model='lite2', auto=False):
             representative = [[round(sum(pixel[k] for pixel in pixels[a:b]) / (b-a)) for k in range(3)]
                               for a, b in ((0, 30), (30, 60), (60, 89))]
             return {'v': [0] * 36, 'ring': representative, 'ring_all': pixels}
-        if model == 'mini2':
-            names = [f'mini2:white:clock{MINI2_CLOCK[name]}' for name in s.CLOCK_LEDS if name in MINI2_CLOCK]
-            names += [f'mini2:{color}:ring{i}' for i in range(1, 7) for color in ('red', 'green', 'blue')]
+        if family == 'mini2':
+            ring_names = [f'mini2:{color}:ring{i}' for i in range(1, 7) for color in ('red', 'green', 'blue')]
+            names = ring_names
+            if model == 'mini2':
+                names = [f'mini2:white:clock{MINI2_CLOCK[name]}' for name in s.CLOCK_LEDS if name in MINI2_CLOCK] + ring_names
             out, _, _ = self.adb.shell('cd /sys/class/leds; ' + '; '.join(f'cat {name}/brightness' for name in names))
             values = [int(value) for value in out.split() if value.isdigit()]
             if len(values) != len(names):
                 raise s.AdbError('Неполное состояние светодиодов')
+            if model == 'mini2nc':
+                ring = [values[i * 3:i * 3 + 3] for i in range(6)]
+                return {'v': [0] * 36, 'ring': ring, 'ring_all': ring}
             clock = iter(values[:len(MINI2_CLOCK)])
             ring = [values[len(MINI2_CLOCK) + i * 3:len(MINI2_CLOCK) + i * 3 + 3] for i in range(6)]
             return {'v': [next(clock) if name in MINI2_CLOCK else 0 for name in s.CLOCK_LEDS], 'ring': ring, 'ring_all': ring}
@@ -381,11 +427,11 @@ def install(s, model='lite2', auto=False):
         if not profile['light']:
             return unsupported()
         rgb = [max(0, min(255, int(data.get(color, 0)))) for color in ('red', 'green', 'blue')]
-        if model == 'lite':
+        if family == 'lite':
             self.adb.shell(s.RING_TRIGGER_CMD + '; ' + s.ring_fb_cmd([rgb] * 3))
-        elif model == 'mini3pro':
+        elif family == 'mini3pro':
             self.adb.shell(mini3pro_ring_script(rgb))
-        elif model == 'mini2':
+        elif family == 'mini2':
             self.adb.shell(MINI2_STOP_RING + '\n' + mini2_ring_script(rgb))
         else:
             self.adb.shell('test "$(cat /sys/class/graphics/fb0/virtual_size)" = "89,1" && '
@@ -400,13 +446,13 @@ def install(s, model='lite2', auto=False):
     P.ring = ring
 
     def reset_ring(self):
-        if model == 'mini3':
+        if family == 'mini3':
             return {'ok': True}
-        if model == 'lite':
+        if family == 'lite':
             command = s.RING_TRIGGER_CMD + '; ' + s.ring_fb_cmd([(0, 0, 0)] * 3)
-        elif model == 'mini3pro':
+        elif family == 'mini3pro':
             command = mini3pro_ring_script()
-        elif model == 'mini2':
+        elif family == 'mini2':
             command = mini2_ring_script()
         else:
             command = 'if [ -s /tmp/webpanel_ring.before ]; then cat /tmp/webpanel_ring.before > /dev/fb0; rm -f /tmp/webpanel_ring.before; fi'
@@ -416,7 +462,7 @@ def install(s, model='lite2', auto=False):
     original_stop = P.stop_pattern
     def stop(self, kind=None):
         if kind in (None, 'ring'):
-            if model == 'mini2':
+            if family == 'mini2':
                 self.adb.shell(MINI2_STOP_RING)
             self.ring_reset()
         if kind in (None, 'clock') and profile['clock']:
@@ -424,7 +470,7 @@ def install(s, model='lite2', auto=False):
         return {'ok': True}
     P.stop_pattern = stop
 
-    if model in ("station2", "mini3pro"):
+    if family in ("station2", "mini3pro"):
         try:
             import managed_yam
         except ImportError:     # архив обновлён кодом 0.1.3, а он новые модули не копирует

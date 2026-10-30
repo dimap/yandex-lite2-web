@@ -89,6 +89,36 @@ class ProfileTests(unittest.TestCase):
                          ('lite', 'station-micro'))
         self.assertEqual(set(profiles.PROFILES['lite']['tested']), {'alarm', 'sounds', 'say'})   # остальное — на пробу
 
+    def test_model_detection_covers_prune_station_midi_and_no_clock_mini2(self):
+        s = fresh_server()
+        cases = (
+            ('yandex,prune-evt2 yandex,prune amlogic, axg Yandex Prune EVT2', (), ('lite2nc', 'prune')),
+            ('yandex,station-midi amlogic, axg Yandex Station Midi', (), ('station2', 'station-midi')),
+            ('yandex,station-mini2 amlogic, axg Yandex Station Mini 2',
+             ('mini2:red:ring1\nmini2:green:ring1\n',), ('mini2nc', 'station-mini2')),
+            ('yandex,station-mini2 amlogic, axg Yandex Station Mini 2',
+             ('mini2:white:clockA1\nmini2:red:ring1\n',), ('mini2', 'station-mini2')),
+        )
+        for identity, leds, expected in cases:
+            def shell(command, _text=identity, _leds=leds, **kwargs):
+                return ((_leds[0] if _leds and 'ls /sys/class/leds' in command else _text), '', 0)
+            self.assertEqual(s.detect_model(SimpleNamespace(shell=shell)), expected, identity)
+
+    def test_no_clock_profiles_keep_ring_and_reject_clock_writes(self):
+        for model, values, ring_count in (
+            ('lite2nc', '10 20 30 0 0 0 1 2 3\n', 3),
+            ('mini2nc', ' '.join(str(i) for i in range(18)) + '\n', 6),
+        ):
+            s = fresh_server()
+            profiles.install(s, model)
+            p = s.Panel(Mock())
+            p.adb.shell = lambda command, *a, **k: (values, '', 0)
+            with self.assertRaises(s.AdbError):
+                p.clock({'text': '12:34'})
+            state = p.clock_state()
+            self.assertEqual(state['v'], [0] * 36)
+            self.assertEqual(len(state['ring']), ring_count)
+
     def test_mini2_maps_lite2_clock_names_to_its_segments(self):
         s = fresh_server()
         profiles.install(s, 'mini2')
