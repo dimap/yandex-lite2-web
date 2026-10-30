@@ -1372,6 +1372,17 @@ class LedStream:
             self._kill_device_loop()   # хвосты прошлого запуска сервера
             while time.time() - self.wanted <= 3:
                 proc = self.adb.popen(loop, text=True)
+                stop = threading.Event()
+
+                def guard(proc=proc, stop=stop):
+                    # Если процесс на колонке убили снаружи (другая панель, перезагрузка), чтение
+                    # из потока агента может не вернуться. Не ждём вечно: гасим proc.
+                    while not stop.wait(0.5):
+                        if time.time() - self.wanted > 4:
+                            proc.kill()
+                            return
+
+                threading.Thread(target=guard, daemon=True, name="led-guard").start()
                 try:
                     for line in proc.stdout:
                         line = line.strip()
@@ -1389,6 +1400,7 @@ class LedStream:
                         if time.time() - self.wanted > 3:
                             break
                 finally:
+                    stop.set()
                     proc.kill()
                     proc.wait()
         except OSError:
