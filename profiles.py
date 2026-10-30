@@ -18,10 +18,11 @@ PROFILES = {
     # Лайт первого поколения (PR #6): дисплея нет, кольцо из трёх RGB-диодов micro:*:ring1–3 через /dev/fb0, как у Лайт 2.
     'lite': dict(name='Станция Лайт', platform='yandexmicro', led_prefix='micro', clock=False, boot=False, alarms=False,
                  light=True, tested=('alarm', 'sounds', 'say')),   # PR #6: хук, будильник, звуки; Issue #23: «Сказать»
-    'lite2': dict(name='Станция Лайт 2', platform='plum', clock=True, boot=True, alarms=True, light=True, tested=TRIAL_FEATURES),
+    'lite2': dict(name='Станция Лайт 2', platform='plum', clock=True, boot=True, alarms=True, light=True, privacy=True,
+                  tested=TRIAL_FEATURES),
     # Lite 2 без сегментного дисплея (например, Prune): кольцо и остальное как у Lite 2.
     'lite2nc': dict(name='Станция Лайт 2 (без часов)', platform='plum', clock=False, boot=False, alarms=True,
-                    light=True, tested=()),
+                    light=True, privacy=True, tested=()),
     'station2': dict(name='Станция 2', platform='yandexmidi', clock=False, boot=False, alarms=False, light=True, ledpanel=True),
     'mini3pro': dict(name='Станция Мини 3 Про', platform='pickle', clock=True, boot=False, alarms=False, light=True),
     # Common ADB features and a distinct 3D model; LED layout has not been verified on hardware.
@@ -191,6 +192,21 @@ def install(s, model='lite2', auto=False):
         raise s.AdbError('Функция не проверена для профиля ' + model)
 
     P = s.Panel
+    # Помощник проверен только на Лайт 2, а заставка часов — только там, где есть дисплей. Это общее для всех
+    # профилей: вариант «Лайт 2 без часов» уходит из своей ветки ниже, но эти два флага ему тоже нужны.
+    original_assistant_status = P.assistant_status
+    P.assistant_status = lambda self: {**original_assistant_status(self), 'experimental': 'assistant' not in profile['tested'],
+                                         'model_name': profile['name']}
+    original_boot_status = P.boot_status
+
+    def boot_status(self):
+        st = original_boot_status(self)
+        if not profile['boot']:   # без заставки часов: звук запуска и «когда показывать» остаются
+            st.update(supported=False, custom=False, mounted=False)
+            st.pop('default', None), st.pop('frames', None)
+        return st
+    P.boot_status = boot_status
+
     if family == 'lite2':
         if model == 'lite2':
             return  # No changes to the original Lite 2 hardware, boot hook, YAM or alarm code.
@@ -312,21 +328,9 @@ def install(s, model='lite2', auto=False):
         for method in ('yam_install_daemon', 'yam_update_daemon', 'yam_autostart'):
             if hasattr(P, method):
                 setattr(P, method, unsupported)
-    # Помощник проверен только на Лайт 2: здесь — на пробу, без хука автозапуска Лайт 2 (до перезагрузки колонки)
-    original_assistant_status = P.assistant_status
-    P.assistant_status = lambda self: {**original_assistant_status(self), 'experimental': 'assistant' not in profile['tested'],
-                                         'model_name': profile['name']}
+    # Звук через Bluetooth-колонку и «Свои станции» на этих профилях не проверены
     original_radio_status = P.radio_status
     P.radio_status = lambda self: {**original_radio_status(self), 'supported': False}
-    original_boot_status = P.boot_status
-
-    def boot_status(self):
-        st = original_boot_status(self)
-        if not profile['boot']:   # без заставки часов: звук запуска и «когда показывать» остаются
-            st.update(supported=False, custom=False, mounted=False)
-            st.pop('default', None), st.pop('frames', None)
-        return st
-    P.boot_status = boot_status
 
     # Existing community YAM installations on the new profiles use this layout; Mini 2 keeps the Lite 2 one.
     old = s.YAM_DIR

@@ -91,17 +91,19 @@ class ProfileTests(unittest.TestCase):
 
     def test_model_detection_covers_prune_station_midi_and_no_clock_mini2(self):
         s = fresh_server()
+        mini2 = 'yandex,station-mini2 amlogic, axg Yandex Station Mini 2'
         cases = (
-            ('yandex,prune-evt2 yandex,prune amlogic, axg Yandex Prune EVT2', (), ('lite2nc', 'prune')),
-            ('yandex,station-midi amlogic, axg Yandex Station Midi', (), ('station2', 'station-midi')),
-            ('yandex,station-mini2 amlogic, axg Yandex Station Mini 2',
-             ('mini2:red:ring1\nmini2:green:ring1\n',), ('mini2nc', 'station-mini2')),
-            ('yandex,station-mini2 amlogic, axg Yandex Station Mini 2',
-             ('mini2:white:clockA1\nmini2:red:ring1\n',), ('mini2', 'station-mini2')),
+            ('yandex,prune-evt2 yandex,prune amlogic, axg Yandex Prune EVT2', ('', 0), ('lite2nc', 'prune')),
+            ('yandex,station-midi amlogic, axg Yandex Station Midi', ('', 0), ('station2', 'station-midi')),
+            (mini2, ('mini2:red:ring1\nmini2:green:ring1\n', 0), ('mini2nc', 'station-mini2')),
+            (mini2, ('mini2:white:clockA1\nmini2:red:ring1\n', 0), ('mini2', 'station-mini2')),
+            (mini2, ('', 1), ('mini2', 'station-mini2')),   # ls не удался — не угадываем «без часов»
         )
-        for identity, leds, expected in cases:
-            def shell(command, _text=identity, _leds=leds, **kwargs):
-                return ((_leds[0] if _leds and 'ls /sys/class/leds' in command else _text), '', 0)
+        for identity, (leds, rc), expected in cases:
+            def shell(command, _text=identity, _leds=leds, _rc=rc, **kwargs):
+                if 'ls /sys/class/leds' in command:
+                    return _leds, '', _rc
+                return _text, '', 0
             self.assertEqual(s.detect_model(SimpleNamespace(shell=shell)), expected, identity)
 
     def test_no_clock_profiles_keep_ring_and_reject_clock_writes(self):
@@ -118,6 +120,19 @@ class ProfileTests(unittest.TestCase):
             state = p.clock_state()
             self.assertEqual(state['v'], [0] * 36)
             self.assertEqual(len(state['ring']), ring_count)
+            # Профиль «без часов» — новый и непроверенный: помощник и заставка должны это признавать,
+            # даже если профиль возвращается из своей ветки раньше общих правок.
+            p._assist_config = lambda: {}
+            p.adb.shell = lambda command, *a, **k: ('@status\n{}\n', '', 0)
+            self.assertTrue(p.assistant_status()['experimental'])
+            p.adb.shell = lambda command, *a, **k: ('target\n', '', 0)
+            p.adb.read_bytes = lambda path: s.zstd_compress(b'')
+            self.assertFalse(p.boot_status()['supported'])
+
+    def test_privacy_toggle_is_offered_where_the_boot_hook_works(self):
+        self.assertTrue(profiles.PROFILES['lite2'].get('privacy'))
+        self.assertTrue(profiles.PROFILES['lite2nc'].get('privacy'))
+        self.assertFalse(profiles.PROFILES['mini2'].get('privacy'))
 
     def test_mini2_maps_lite2_clock_names_to_its_segments(self):
         s = fresh_server()

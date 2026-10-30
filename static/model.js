@@ -65,7 +65,8 @@ const hide=element=>element?.setAttribute('data-profile-hidden','');
 if(!profile.clock)hide(document.querySelector('[data-widget="clock"]'));
 if(!profile.light)hide(document.querySelector('[data-widget="light"]'));
 if(profile.bt_volume===false)hide(document.querySelector('.vol-bt'));
-if(!profile.boot)hide(document.getElementById('privacy-row'));
+// Блокировка аналитики держится на хуке загрузки, а не на дисплее: «Лайт 2 без часов» тоже умеет.
+if(!profile.privacy)hide(document.getElementById('privacy-row'));
 if(profile.id!=='lite2'){
   hide(document.getElementById('pat-play'));
   document.querySelectorAll('[data-k="clock"]').forEach(e=>{if(!profile.clock)hide(e);});

@@ -5638,8 +5638,11 @@ def detect_model(adb):
     for platform, model in PLATFORM_MODELS.items():
         if re.search(rf"(^|[^a-z0-9]){platform}([^a-z0-9]|$)", text):
             if model == 'mini2':
-                leds, _, _ = adb.shell('ls /sys/class/leds 2>/dev/null; true', check=False, timeout=15)
-                if 'white:clock' not in strip_ansi(leds):
+                # Есть ли у этой Мини 2 сегментный дисплей: без него профиль mini2 зовёт несуществующие
+                # светодиоды часов. Не смогли посмотреть (adb моргнул) — не угадываем и остаёмся на mini2.
+                leds, _, rc = adb.shell('ls /sys/class/leds 2>/dev/null', check=False, timeout=15)
+                listing = strip_ansi(leds)
+                if rc == 0 and listing.strip() and 'white:clock' not in listing:
                     return 'mini2nc', platform
             return model, platform
     return None, None
