@@ -4710,7 +4710,7 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
           }
         } else {
           // Лучи из центра: дальность зависит от полосы в этом направлении.
-          const reach = (0.46 + 0.5 * band) * energy * (0.85 + 0.3 * loud);
+          const reach = (0.46 + 0.5 * band) * energy * (0.85 + 0.3 * loud) * 0.9;
           v = r < reach ? 1 - (r / reach) ** 2 : 0;
           v = Math.max(v, Math.max(0, Math.sin(r * 16 - t * 3.4)) ** 3 * 0.5 * energy * (1 - r));   // волны-кольца
         }
@@ -4720,7 +4720,7 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
           v = Math.max(v, Math.max(0, 1 - (Math.hypot(dx, dy) / idleR / wave) ** 2) * 0.45 * idle);
         }
         if (v < 0.08) continue;
-        ctx.globalAlpha = Math.min(0.8, v * 0.85);
+        ctx.globalAlpha = 0.7 * Math.min(0.8, v * 0.85);
         ctx.fillText(RAMP[Math.min(RAMP.length - 1, Math.floor(v * RAMP.length))], x, y);
       }
     }
