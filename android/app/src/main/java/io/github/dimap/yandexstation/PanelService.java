@@ -197,7 +197,7 @@ public class PanelService extends Service {
         int imm = Build.VERSION.SDK_INT >= 23 ? PendingIntent.FLAG_IMMUTABLE : 0;
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), imm);
         Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL) : new Notification.Builder(this);
-        return b.setSmallIcon(android.R.drawable.stat_sys_headset)
+        return b.setSmallIcon(R.drawable.ic_stat_station)
                 .setContentIntent(open)
                 .setOngoing(true)
                 .setShowWhen(false);

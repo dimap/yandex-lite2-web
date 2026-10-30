@@ -148,7 +148,8 @@ def install(s, model='lite2', auto=False):
         if model != 'lite2' and self.path.split('?')[0] == '/manifest.webmanifest':
             if not self._guard('/manifest.webmanifest'):
                 manifest = json.loads((s.STATIC/'manifest.webmanifest').read_text(encoding='utf8'))
-                manifest.update(name=profile['name'], short_name=profile['name'], description='Панель управления: '+profile['name'])
+                manifest.update(name='Моя станция', short_name='Моя станция',
+                                description='Панель управления: ' + profile['name'])
                 self._send(200, json.dumps(manifest,ensure_ascii=False).encode('utf8'), s.MIME['.webmanifest'])
             return
         if self.path.split('?')[0] == '/api/profile':

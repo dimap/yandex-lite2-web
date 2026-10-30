@@ -1,6 +1,6 @@
 {
-  "name": "yapanel",
-  "short_name": "yapanel",
+  "name": "Моя станция",
+  "short_name": "Моя станция",
   "description": "Неофициальная локальная панель для колонок с Алисой",
   "lang": "ru",
   "id": "./",
