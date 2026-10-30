@@ -2230,6 +2230,8 @@
         <span class="meta" id="ww-audio-text">—</span>
         <button class="btn sm" id="ww-listen">Проверить: «слушаю»</button>
       </div>
+      <label class="set-item" id="ww-autostart-row" hidden><div class="set-label"><b>Запускать при загрузке</b><small>Хук панели поднимет демон после перезагрузки; «Убрать всё» выключит</small></div>
+        <div class="set-ctl"><input type="checkbox" class="switch" id="ww-autostart"></div></label>
     </section>
     <section class="card" id="ww-words-card" hidden>
       <div class="card-head"><h2>Слова</h2><div class="actions"><button class="btn sm primary" id="ww-add">Добавить слово</button></div></div>
@@ -7511,6 +7513,8 @@ function wwRender() {
     : 'Демон установлен, но не запущен — нажмите «Запустить».';
   $('#ww-start').hidden = !on || running;
   $('#ww-stop').hidden = !on || !running;
+  $('#ww-autostart-row').hidden = !on;
+  $('#ww-autostart').checked = !!ww.autostart;
   $('#ww-words-card').hidden = !on || !running;
 
   const a = ww.audio || {};
@@ -7571,6 +7575,11 @@ window.wwLoad = wwLoad;
 $('#ww-refresh').onclick = () => wwLoad();
 $('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start'); wwRender(); }, 'Демон запущен');
 $('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop'); wwRender(); }, 'Демон остановлен');
+$('#ww-autostart').onchange = e => {
+  const on = e.target.checked;
+  act(e.target, async () => { ww = await api('/api/wakeword/autostart', { on }); wwRender(); },
+      on ? 'Автозапуск включён' : 'Автозапуск выключен');
+};
 $('#ww-listen').onclick = e => act(e.currentTarget, () => wwApi('/api/listen', 'POST'), 'Слушаю');
 $('#ww-add').onclick = () => {
   const name = prompt('Название слова активации');

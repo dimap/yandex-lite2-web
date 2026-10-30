@@ -42,6 +42,13 @@ class Installed(unittest.TestCase):
         p = panel(shell=("", "", 0))
         self.assertFalse(p._wakeword_installed()["installed"])
 
+    def test_autostart_marker(self):
+        p = panel(shell=("0.2.2\n@bin\n@script\n@auto\n", "", 0))
+        self.assertTrue(p._wakeword_installed()["auto"])
+        with patch.object(p, "_wakeword_api", return_value=("application/json", {"audio": {"ok": True}})):
+            st = p.wakeword_status()
+        self.assertTrue(st["autostart"])
+
     def test_supported_platforms(self):
         self.assertTrue(panel("plum")._wakeword_supported()[0])
         self.assertTrue(panel("yandexmidi")._wakeword_supported()[0])
@@ -108,6 +115,34 @@ class Status(unittest.TestCase):
         self.assertTrue(st["installed"])
         self.assertFalse(st["running"])
         self.assertIn("timeout", st["error"])
+
+
+class Autostart(unittest.TestCase):
+    def test_on_creates_marker_and_hook(self):
+        p = panel()
+        p._ensure_hook = Mock()
+        p.wakeword_status = Mock(return_value={"autostart": True})
+        self.assertEqual(p.wakeword_autostart(True), {"autostart": True})
+        p.adb.shell.assert_any_call(f"mkdir -p {server.WEB_DIR} && touch {server.WAKE_AUTOSTART}", check=False)
+        p._ensure_hook.assert_called_once()
+
+    def test_off_removes_marker_and_drops_hook(self):
+        p = panel()
+        p._drop_hook_if_unused = Mock()
+        p.wakeword_status = Mock(return_value={"autostart": False})
+        self.assertEqual(p.wakeword_autostart(False), {"autostart": False})
+        p.adb.shell.assert_any_call(f"rm -f {server.WAKE_AUTOSTART}", check=False)
+        p._drop_hook_if_unused.assert_called_once()
+
+    def test_requires_package(self):
+        p = panel(shell=("", "", 0))
+        with self.assertRaisesRegex(server.AdbError, "не установлен"):
+            p.wakeword_autostart(True)
+
+    def test_boot_hook_starts_daemon(self):
+        self.assertIn(f"sh {server.WAKE_SHARE}/S97wakeword start", server.BOOT_HOOK_SCRIPT)
+        self.assertIn(server.WAKE_AUTOSTART, server.BOOT_HOOK_SCRIPT)
+        self.assertIn(("слова активации", server.WAKE_AUTOSTART), server.Panel.HOOK_USERS)
 
 
 class StartStop(unittest.TestCase):

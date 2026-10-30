@@ -304,6 +304,7 @@ WAKE_BIN = "/data/yam/bin/wakeword"
 WAKE_DATA = "/data/wakeword"
 WAKE_PID = "/tmp/wakeword.pid"
 WAKE_LOG = "/tmp/wakeword.log"
+WAKE_AUTOSTART = f"{WEB_DIR}/wakeword.autostart"   # маркер: поднимать демон хуком панели после загрузки
 WAKE_PORT = 8780
 # targets из yam.yaml пакета: Макс (yandexstation_2), Стрит и Android-Станция не поддерживаются.
 WAKE_TARGETS = ("yandexmicro", "plum", "yandexmini", "yandexmini_2", "bergamot", "pickle",
@@ -508,6 +509,8 @@ BOOT_HOOK_SCRIPT = (
     f"[ -f {ALARM_CONF} ] && [ -f {ALARMD} ] && start-stop-daemon -S -b -m -p {ALARM_SD} -x /bin/sh -- {ALARMD}\n"
     f"[ -f {ASSIST_CONF} ] && [ -x {ASSISTD} ] && start-stop-daemon -S -b -m -p {ASSIST_SD} -x /bin/sh -- -c {shlex.quote(ASSIST_RUN)}\n"
     f"[ -f {BTOUT_MAC} ] && [ -f {BTOUT_SH} ] && start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}\n"
+    # свои слова активации: демон из yam-пакета, стартуем из /data (rootfs-init после OTA пропадает)
+    f"[ -f {WAKE_AUTOSTART} ] && [ -x {WAKE_SHARE}/S97wakeword ] && sh {WAKE_SHARE}/S97wakeword start >/dev/null 2>&1\n"
     f"{BT_OFF_BOOT}\n"
     f"[ -f {AGENT_TOKENS} ] && [ -x {AGENT_BIN} ] && start-stop-daemon -S -b -m -p {AGENT_SD} -x /bin/sh -- -c {shlex.quote(AGENT_RUN)}\n"
     # службы пакетов yam 2, отмеченные «при загрузке»
@@ -2456,7 +2459,8 @@ echo @@BLUEZ
     HOOK_USERS = (("заставка", BOOT_CUSTOM), ("звук запуска", SOUND_CUSTOM), ("заставка при каждой загрузке", BOOT_ALWAYS),
                   ("автозапуск yamd", YAM_AUTOSTART), ("будильник", ALARM_CONF), ("блокировка аналитики", HOSTS_CUSTOM),
                   ("ассистент", ASSIST_CONF), ("звук через Bluetooth-колонку", BTOUT_MAC),
-                  ("защищённое соединение (агент)", AGENT_TOKENS), ("Bluetooth выключен", BT_OFF))
+                  ("защищённое соединение (агент)", AGENT_TOKENS), ("Bluetooth выключен", BT_OFF),
+                  ("слова активации", WAKE_AUTOSTART))
 
     def _hook_users_script(self):
         """Печатает по строке на каждую функцию, которой нужен хук."""
@@ -3302,11 +3306,13 @@ echo @@BLUEZ
             f"v=$(ls -d {WAKE_PKG}/* 2>/dev/null | sort -V | tail -n 1); "
             f"[ -n \"$v\" ] && {{ [ -L \"$v\" ] && basename \"$(readlink -f \"$v\")\" || basename \"$v\"; }}; "
             f"[ -x {WAKE_BIN} ] && echo @bin; [ -f {WAKE_SHARE}/S97wakeword ] && echo @script; "
-            f"[ -f {WAKE_PID} ] && kill -0 $(cat {WAKE_PID}) 2>/dev/null && echo @pid; true", check=False)
+            f"[ -f {WAKE_PID} ] && kill -0 $(cat {WAKE_PID}) 2>/dev/null && echo @pid; "
+            f"[ -f {WAKE_AUTOSTART} ] && echo @auto; true", check=False)
         lines = [l.strip() for l in strip_ansi(out).splitlines() if l.strip()]
         version = next((l for l in lines if not l.startswith("@")), None)
         return {"installed": bool(version or "@bin" in lines or "@script" in lines),
-                "version": version, "bin": "@bin" in lines, "script": "@script" in lines, "pid": "@pid" in lines}
+                "version": version, "bin": "@bin" in lines, "script": "@script" in lines,
+                "pid": "@pid" in lines, "auto": "@auto" in lines}
 
     def _wakeword_supported(self):
         gl = getattr(self, "glagol", None)
@@ -3370,7 +3376,7 @@ echo @@BLUEZ
         running = bool(state) or info["pid"]
         audio = (state or {}).get("audio") or {}
         return {"installed": info["installed"], "version": info["version"], "running": running,
-                "supported": supported, "platform": platform, "audio": audio,
+                "supported": supported, "platform": platform, "audio": audio, "autostart": info["auto"],
                 "words": (state or {}).get("words") or [], "hits": (state or {}).get("hits") or [],
                 "enroll": (state or {}).get("enroll"), "train": (state or {}).get("train") or {"active": False},
                 "station": (state or {}).get("station", ""), "error": error, "port": WAKE_PORT}
@@ -3395,6 +3401,18 @@ echo @@BLUEZ
         if rc != 0:
             raise AdbError(strip_ansi(out or err).strip()[-400:] or "не удалось остановить демон слов активации")
         self._ww_port = None
+        return self.wakeword_status()
+
+    def wakeword_autostart(self, on):
+        """Включить/выключить запуск демона хуком панели после перезагрузки."""
+        if on and not self._wakeword_installed()["installed"]:
+            raise AdbError("пакет tangenx/wakeword не установлен")
+        if on:
+            self.adb.shell(f"mkdir -p {WEB_DIR} && touch {WAKE_AUTOSTART}", check=False)
+            self._ensure_hook()
+        else:
+            self.adb.shell(f"rm -f {WAKE_AUTOSTART}", check=False)
+            self._drop_hook_if_unused()
         return self.wakeword_status()
 
     def wakeword_proxy(self, method, path, body=None, timeout=90):
@@ -3425,9 +3443,9 @@ echo @@BLUEZ
             f"find {OVR_DIR}/ledpatterns -type f 2>/dev/null | wc -l",
             f"find {MY_ANIM_DIR} -type f 2>/dev/null | wc -l",
             f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC), q(AGENT_BIN), q(BT_OFF),
-            q(VIZD), f"[ -d {VIZ_DIR} ] && du -sk {VIZ_DIR} | cut -f1 || echo 0"])
+            q(VIZD), f"[ -d {VIZ_DIR} ] && du -sk {VIZ_DIR} | cut -f1 || echo 0", q(WAKE_AUTOSTART)])
         v = self.adb.shell(cmd, check=False)[0].split()
-        v = (v + ["0"] * 30)[:30]
+        v = (v + ["0"] * 31)[:31]
         b = [x == "1" for x in v]
         n = lambda x: int(x) if x.isdigit() else 0
         items = [
@@ -3448,6 +3466,8 @@ echo @@BLUEZ
             {"key": "assistant", "name": "Голосовой помощник", "on": b[17], "size_kb": n(v[18])},
             {"key": "viz", "name": "Живой спектр с колонки", "on": b[28], "size_kb": n(v[29]),
              "detail": "экспериментально: захват звука усилителя, не микрофона"},
+            {"key": "wakeword", "name": "Слова активации (автозапуск)", "on": b[30],
+             "detail": "демон tangenx/wakeword, стартует хуком панели"},
             {"key": "alarm", "name": "Будильник и сценарии", "on": b[6],
              "detail": f"будильников: {n(v[7].split('/')[0])}, сценариев: {n((v[7].split('/') + ['0'])[1])}", "size_kb": n(v[13])},
             {"key": "backup", "name": "Копии оригиналов", "on": b[8] or b[9] or b[10],
@@ -3471,6 +3491,7 @@ echo @@BLUEZ
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; start-stop-daemon -K -p {ASSIST_SD} 2>/dev/null; "
             f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; "
+            f"[ -x {WAKE_SHARE}/S97wakeword ] && sh {WAKE_SHARE}/S97wakeword stop >/dev/null 2>&1; "
             f"p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
             f"{LED_STOP_SH}; "   # LED-панель Станции 2: фоновый led-play
             f"grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
@@ -5897,6 +5918,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/mute": lambda: p.set_mute(bool(d.get("on"))),
             "/api/wakeword/start": p.wakeword_start,
             "/api/wakeword/stop": p.wakeword_stop,
+            "/api/wakeword/autostart": lambda: p.wakeword_autostart(bool(d.get("on"))),
             "/api/play": lambda: p.play_system(d["name"]),
             "/api/sounds/reset": lambda: p.sound_reset(d["name"]),
             "/api/sounds/play-original": lambda: p.sound_play_original(d["name"]),
