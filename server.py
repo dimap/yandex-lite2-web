@@ -4230,6 +4230,7 @@ echo @@BLUEZ
     # ---------- yam 2: пакетный менеджер на колонке ----------
     # Платформа yam по device-tree — те же правила, что в install.sh yam (getprop есть не на всех колонках).
     # Порядок важен: у Лайт и Мини в compatible есть amlogic,axg, у Лайт 2 — тоже, поэтому axg — последним.
+    # yandex,station-midi — это Станция 2 (yandexmidi); cucumber — Станция Миди (cucumber), не наоборот.
     YAM2_PLATFORMS = ((r"station-mini2", "yandexmini_2"), (r"cucumber", "cucumber"), (r"yandex,station-midi", "yandexmidi"),
                       (r"prune", "plum"),
                       (r"orion", "orion"), (r"pickle", "pickle"), (r"station-mini3|bergamot", "bergamot"),
@@ -5967,6 +5968,8 @@ class PanelUpdater:
 
 # Платформа в device-tree (compatible «yandex,plum», модель «Yandex Plum EVT2») → профиль колонки.
 # Имя хоста тут не годится: владелец мог его переименовать.
+# station-midi — это Станция 2 (yandexmidi), а не «Станция Миди»: та называется cucumber/cucumber-dvt2
+# и профиля пока не имеет (issue #7).
 PLATFORM_MODELS = {"plum": "lite2", "prune": "lite2nc", "pickle": "mini3pro", "bergamot": "mini3",
                    "yandexmidi": "station2", "station-midi": "station2", "station-mini2": "mini2",
                    "station-micro": "lite", "yandexmicro": "lite"}

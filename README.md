@@ -319,8 +319,9 @@ Prune без clock-сегментов получает `lite2nc` (кольцо 3
 **Станция Мини 2 без часов** (`yandex,station-mini2` без `mini2:white:clock*`) — профиль `mini2nc`:
 кольцо 6 RGB, дисплей скрыт. Вариант с часами остаётся на `mini2`.
 
-**Станция Миди** (`yandex,station-midi`, платформа Glagol `yandexmidi`) — профиль `station2`: у неё та же
-LED-панель из 89 диодов через framebuffer. Вариант Миди с платформой `cucumber` этим профилем не покрыт.
+**Станция 2** (`yandex,station-midi`, платформа Glagol `yandexmidi`) — профиль `station2`: у неё та же
+LED-панель из 89 диодов через framebuffer. Не путать со **Станцией Миди**: она в device-tree называется
+`cucumber`/`cucumber-dvt2` (платформа `cucumber`), и этим профилем пока не покрыта — issue #7.
 
 **Станция Лайт первого поколения** (`yandex,station-micro`, платформа Glagol `yandexmicro`) — профиль `lite`
 (из PR #6). Дисплея нет, часы скрыты. Подсветка — кольцо из трёх RGB-светодиодов `micro:*:ring1–3` через `/dev/fb0`,
