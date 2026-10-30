@@ -1770,6 +1770,8 @@ class Panel:
         self.adb = adb
         self._version = None
         self.ffmpeg = shutil.which("ffmpeg")
+        self._ww_info = None       # кэш «пакет установлен»: вкладка опрашивает статус часто
+        self._ww_info_at = 0.0
 
     def _configure_glagol(self, device_id):
         # Glagol использует тип устройства из прошивки, а не профиль LED/часов панели.
@@ -3300,8 +3302,11 @@ echo @@BLUEZ
         raise AdbError("визуализатор не запустился: " + strip_ansi(out).strip()[-300:])
 
     # ---------- свои слова активации ----------
-    def _wakeword_installed(self):
-        """Версия установленного yam-пакета и признаки файлов; без API."""
+    def _wakeword_installed(self, force=False):
+        """Версия установленного yam-пакета и признаки файлов; без API. Кэш — для частого опроса вкладки."""
+        now = time.time()
+        if not force and getattr(self, "_ww_info", None) and now - getattr(self, "_ww_info_at", 0.0) < 15:
+            return dict(self._ww_info)
         out, _, _ = self.adb.shell(
             f"v=$(ls -d {WAKE_PKG}/* 2>/dev/null | sort -V | tail -n 1); "
             f"[ -n \"$v\" ] && {{ [ -L \"$v\" ] && basename \"$(readlink -f \"$v\")\" || basename \"$v\"; }}; "
@@ -3310,9 +3315,11 @@ echo @@BLUEZ
             f"[ -f {WAKE_AUTOSTART} ] && echo @auto; true", check=False)
         lines = [l.strip() for l in strip_ansi(out).splitlines() if l.strip()]
         version = next((l for l in lines if not l.startswith("@")), None)
-        return {"installed": bool(version or "@bin" in lines or "@script" in lines),
+        info = {"installed": bool(version or "@bin" in lines or "@script" in lines),
                 "version": version, "bin": "@bin" in lines, "script": "@script" in lines,
                 "pid": "@pid" in lines, "auto": "@auto" in lines}
+        self._ww_info, self._ww_info_at = dict(info), now
+        return info
 
     def _wakeword_supported(self):
         gl = getattr(self, "glagol", None)
@@ -3382,13 +3389,14 @@ echo @@BLUEZ
                 "station": (state or {}).get("station", ""), "error": error, "port": WAKE_PORT}
 
     def wakeword_start(self):
-        info = self._wakeword_installed()
+        info = self._wakeword_installed(force=True)
         if not info["installed"]:
             raise AdbError("пакет tangenx/wakeword не установлен")
         script = f"{WAKE_SHARE}/S97wakeword"
         out, err, rc = self.adb.shell(f"sh {script} start 2>&1", check=False, timeout=30)
         if rc != 0:
             raise AdbError(strip_ansi(out or err).strip()[-400:] or "не удалось запустить демон слов активации")
+        self._ww_info = None
         for _ in range(20):
             time.sleep(0.3)
             st = self.wakeword_status()
@@ -3401,11 +3409,12 @@ echo @@BLUEZ
         if rc != 0:
             raise AdbError(strip_ansi(out or err).strip()[-400:] or "не удалось остановить демон слов активации")
         self._ww_port = None
+        self._ww_info = None
         return self.wakeword_status()
 
     def wakeword_autostart(self, on):
         """Включить/выключить запуск демона хуком панели после перезагрузки."""
-        if on and not self._wakeword_installed()["installed"]:
+        if on and not self._wakeword_installed(force=True)["installed"]:
             raise AdbError("пакет tangenx/wakeword не установлен")
         if on:
             self.adb.shell(f"mkdir -p {WEB_DIR} && touch {WAKE_AUTOSTART}", check=False)
@@ -3413,6 +3422,7 @@ echo @@BLUEZ
         else:
             self.adb.shell(f"rm -f {WAKE_AUTOSTART}", check=False)
             self._drop_hook_if_unused()
+        self._ww_info = None
         return self.wakeword_status()
 
     def wakeword_proxy(self, method, path, body=None, timeout=90):

@@ -425,16 +425,31 @@
   .eq-band input[type=range] { width: 100%; margin: 0; }
   .eq-band .eq-gv { text-align: right; font-size: 12px; color: var(--muted); }
   .eq-custom .hint { margin: 2px 0 0; }
-  .ww-audio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .ww-statusline { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+  .ww-statusline .hint { margin: 0; }
+  .ww-statusline .pill.on { background: var(--accent-soft); border-color: transparent; color: var(--accent-ink); }
+  .ww-auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-2); }
+  .ww-auto span b { display: block; }
+  .ww-auto span small { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }
+  .ww-audio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
   .ww-meter { flex: 1; min-width: 140px; height: 8px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
   .ww-meter span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
-  .ww-list { display: grid; gap: 10px; }
-  .ww-word { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line-2); border-radius: 14px; }
-  .ww-word-main { flex: 1 1 220px; min-width: 0; }
-  .ww-word-main b { display: block; }
-  .ww-word-main .meta { display: block; margin-top: 2px; }
-  .ww-sens { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
-  .ww-sens input { width: 110px; }
+  .ww-list { display: grid; gap: 12px; }
+  .ww-word { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line-2); border-radius: 14px; }
+  .ww-word-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .ww-word-name { font-size: 15px; }
+  .ww-toggle { display: inline-flex; align-items: center; cursor: pointer; }
+  .ww-conf { position: relative; height: 8px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+  .ww-conf span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .ww-conf b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-2); opacity: .6; }
+  .ww-word-meta .meta { display: block; }
+  .ww-word-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+  .ww-word-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ww-sens { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .ww-sens input { width: 120px; accent-color: var(--accent); }
+  .ww-take-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+  .ww-say { font-size: 26px; font-weight: 700; color: var(--accent); min-height: 34px; line-height: 1.1; }
+  .ww-reading { margin: 8px 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); color: var(--text-2); font-size: 14.5px; line-height: 1.45; }
   .ww-steps { display: grid; gap: 12px; }
   .ww-step { padding: 12px; border: 1px solid var(--line-2); border-radius: 14px; }
   .ww-step-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -443,7 +458,6 @@
   .ww-take, .ww-hit { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
   .ww-progress { height: 8px; margin-top: 8px; background: var(--line-2); border-radius: 99px; overflow: hidden; }
   .ww-progress span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
-  .ww-word input[type=range] { accent-color: var(--accent); }
   .bt-pair .info { flex: 1; min-width: 0; }
   .bt-pair .info b { display: block; }
   .bt-left { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -1186,8 +1200,8 @@
       <a href="#led" data-tab="led" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-palette"/></svg>LED-панель</a>
       <a href="#alarm" data-tab="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#scenes" data-tab="scenes"><svg width="20" height="20" aria-hidden="true"><use href="#i-flow"/></svg>Сценарии</a>
+      <a href="#wakeword" data-tab="wakeword" id="nav-wakeword" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-wave"/></svg>Активация</a>
       <a href="#assistant" data-tab="assistant"><svg width="20" height="20" aria-hidden="true"><use href="#i-mic"/></svg>Ассистент</a>
-      <a href="#wakeword" data-tab="wakeword" id="nav-wakeword" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-wave"/></svg>Слова активации</a>
       <a href="#boot" data-tab="boot"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Анимации</a>
       <a href="#apps" data-tab="apps"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Приложения</a>
       <a href="#files" data-tab="files"><svg width="20" height="20" aria-hidden="true"><use href="#i-folder"/></svg>Файлы</a>
@@ -2215,7 +2229,7 @@
 
   <main id="tab-wakeword" data-page hidden>
     <header class="page-head">
-      <div><h1>Слова активации</h1><div class="sub">Свои слова для колонки. Запись и обучение идут на её микрофонах — говорите у колонки.</div></div>
+      <div><h1>Активация</h1><div class="sub">Свои слова для колонки. Запись и обучение идут на её микрофонах — говорите у колонки.</div></div>
       <div class="actions">
         <button class="btn" id="ww-refresh">Обновить</button>
         <button class="btn primary" id="ww-start" hidden>Запустить</button>
@@ -2223,15 +2237,15 @@
       </div>
     </header>
     <section class="card">
-      <div class="card-head"><h2>Состояние</h2><div class="actions"><span class="pill" id="ww-badge">—</span></div></div>
-      <p class="hint" id="ww-hint">Проверяю…</p>
+      <div class="card-head"><h2>Состояние</h2></div>
+      <div class="ww-statusline"><span class="pill" id="ww-badge">—</span><span class="hint" id="ww-hint">Проверяю…</span></div>
       <div class="ww-audio" id="ww-audio" hidden>
         <div class="ww-meter"><span id="ww-meter"></span></div>
         <span class="meta" id="ww-audio-text">—</span>
         <button class="btn sm" id="ww-listen">Проверить: «слушаю»</button>
       </div>
-      <label class="set-item" id="ww-autostart-row" hidden><div class="set-label"><b>Запускать при загрузке</b><small>Хук панели поднимет демон после перезагрузки; «Убрать всё» выключит</small></div>
-        <div class="set-ctl"><input type="checkbox" class="switch" id="ww-autostart"></div></label>
+      <label class="ww-auto" id="ww-autostart-row" hidden><span><b>Запускать при загрузке</b><small>Хук панели поднимет демон после перезагрузки; «Убрать всё» выключит</small></span>
+        <input type="checkbox" class="switch" id="ww-autostart"></label>
     </section>
     <section class="card" id="ww-words-card" hidden>
       <div class="card-head"><h2>Слова</h2><div class="actions"><button class="btn sm primary" id="ww-add">Добавить слово</button></div></div>
@@ -2245,9 +2259,12 @@
           <p>8 секунд обычной тишины комнаты — не говорите.</p><button class="btn sm" id="ww-ambient">Записать фон</button></div>
         <div class="ww-step"><div class="ww-step-head"><b>2. Слово</b><span class="meta" id="ww-takes-state"></span></div>
           <p>Скажите слово у колонки. Нужно минимум 6 записей, лучше 10–15.</p>
-          <button class="btn sm" id="ww-take">Записать</button><div id="ww-takes" class="ww-takes"></div></div>
+          <div class="ww-take-line"><button class="btn sm" id="ww-take">Записать</button><div class="ww-say" id="ww-say" aria-live="polite"></div></div>
+          <div id="ww-takes" class="ww-takes"></div></div>
         <div class="ww-step"><div class="ww-step-head"><b>3. Обычная речь (по желанию)</b><span class="meta" id="ww-speech-state"></span></div>
-          <p>20 секунд обычной речи — чтобы слово не путалось с ней.</p><button class="btn sm" id="ww-speech">Записать речь</button></div>
+          <p>20 секунд прочитайте вслух текст ниже — чтобы слово не путалось с вашей речью.</p>
+          <div class="ww-reading">Сегодня обещали тёплую погоду, поэтому мы решили погулять в парке. Вечером нужно купить хлеб, молоко и что-нибудь к чаю. Позвоню маме и спрошу, как у неё дела. Завтра рано вставать, так что лягу пораньше и почитаю книгу.</div>
+          <button class="btn sm" id="ww-speech">Читать 20 секунд</button></div>
         <div class="ww-step"><div class="ww-step-head"><b>4. Обучение</b><span class="meta" id="ww-train-state"></span></div>
           <p>2–3 минуты на колонке.</p><button class="btn sm primary" id="ww-train">Обучить</button>
           <div class="ww-progress"><span id="ww-train-bar"></span></div></div>
@@ -7469,8 +7486,9 @@ voiceInput = bindVoiceInput(document, { store, ready: () => !!(online && mu.info
 </script>
 <script>
 // ---------- слова активации: тонкий клиент к API демона tangenx/wakeword ----------
-let ww = null, wwTimer = 0;
+let ww = null, wwTimer = 0, wwSig = '', wwBusy = '';
 const wwOn = () => !!(ww && ww.installed && ww.supported);
+const pct = x => Math.round(Math.max(0, Math.min(1, +x || 0)) * 100) + '%';
 
 async function wwApi(path, method = 'GET', body = null) {
   if (method === 'GET') {
@@ -7527,26 +7545,45 @@ function wwRender() {
     : `микрофон ${a.channel || 'vqe_0'} · уровень ${db.toFixed(0)} дБ`;
 
   const words = ww.words || [];
-  $('#ww-words').innerHTML = words.length ? words.map(w => {
-    const id = esc(w.id), sens = Math.round((+w.sensitivity || 0) * 100);
-    return `<div class="ww-word">
-      <div class="ww-word-main"><b>${esc(w.name)}</b><span class="meta">${w.takes || 0} записей · порог ${(+w.threshold || 0).toFixed(2)} · ложных ${(+w.false_per_h || 0).toFixed(1)}/ч · сейчас ${Math.round((+w.score || 0) * 100)}%</span></div>
-      <label class="meta"><input type="checkbox" class="switch" data-ww-enable="${id}" ${w.enabled ? 'checked' : ''}> вкл</label>
-      <label class="ww-sens">чувствительность <input type="range" min="-30" max="30" step="1" value="${Math.max(-30, Math.min(30, sens))}" data-ww-sens="${id}"></label>
-      <button class="btn sm" data-ww-retrain="${id}">Переобучить</button>
-      <button class="btn sm danger" data-ww-del="${id}">Удалить</button>
-    </div>`;
-  }).join('') : '<p class="hint">Слов пока нет. Нажмите «Добавить слово».</p>';
+  const sig = JSON.stringify(words.map(w => [w.id, w.name, w.enabled, w.sensitivity, w.takes,
+    w.threshold, w.recall, w.false_per_h, w.false_clips]));
+  const dragging = document.activeElement && document.activeElement.closest('#ww-words')
+    && document.activeElement.type === 'range';
+  if (sig !== wwSig && !dragging) {
+    wwSig = sig;
+    $('#ww-words').innerHTML = words.length ? words.map(w => {
+      const id = esc(w.id), sens = Math.round((+w.sensitivity || 0) * 100);
+      const thr = Math.round(Math.min(0.99, Math.max(0.05, (+w.threshold || 0) - (+w.sensitivity || 0))) * 100);
+      return `<div class="ww-word">
+        <div class="ww-word-head"><b class="ww-word-name">${esc(w.name)}</b>
+          <label class="ww-toggle" title="Включить или выключить слово"><input type="checkbox" class="switch" data-ww-enable="${id}" ${w.enabled ? 'checked' : ''} aria-label="Слово «${esc(w.name)}» включено"></label></div>
+        <div class="ww-conf" title="Уверенность сейчас; отметка — порог срабатывания"><span data-ww-meter="${id}" style="width:${pct(w.score)}"></span><b style="left:${thr}%"></b></div>
+        <div class="ww-word-meta"><span class="meta">${w.takes || 0} записей · узнаёт ${pct(w.recall)} · ложных ≈ ${(+w.false_per_h || 0).toFixed(1)}/ч${w.false_clips ? ` · отмечено: ${w.false_clips}` : ''} · сейчас <span data-ww-score="${id}">${pct(w.score)}</span></span></div>
+        ${(w.notes || []).length ? `<div class="meta">${w.notes.map(esc).join('<br>')}</div>` : ''}
+        <div class="ww-word-foot">
+          <label class="ww-sens"><span>реже</span><input type="range" min="-30" max="30" step="5" value="${Math.max(-30, Math.min(30, sens))}" data-ww-sens="${id}"><span>чаще</span></label>
+          <div class="ww-word-actions"><button class="btn sm" data-ww-retrain="${id}">Переобучить</button><button class="btn sm danger" data-ww-del="${id}">Удалить</button></div>
+        </div></div>`;
+    }).join('') : '<p class="hint">Слов пока нет. Нажмите «Добавить слово».</p>';
+  } else {
+    words.forEach(w => {
+      const id = window.CSS && CSS.escape ? CSS.escape(w.id) : String(w.id).replace(/"/g, '\\"');
+      const m = document.querySelector(`[data-ww-meter="${id}"]`);
+      if (m) m.style.width = pct(w.score);
+      const s = document.querySelector(`[data-ww-score="${id}"]`);
+      if (s) s.textContent = pct(w.score);
+    });
+  }
 
   const e = ww.enroll;
   $('#ww-enroll-card').hidden = !on || !e;
   if (e) {
     $('#ww-enroll-name').textContent = e.name || '';
-    $('#ww-ambient-state').textContent = e.has_ambient ? 'фон записан' : '';
+    if (wwBusy !== 'ambient') $('#ww-ambient-state').textContent = e.has_ambient ? 'фон записан' : '';
     const takes = e.takes || [];
     $('#ww-takes-state').textContent = `${takes.length} из ${e.min_takes || 6}`;
     $('#ww-takes').innerHTML = takes.map((sec, i) => `<div class="ww-take"><span>${i + 1}: ${(+sec).toFixed(2)} с</span><span><button class="btn sm" data-ww-take-play="${i}">▶</button> <button class="btn sm danger" data-ww-take-del="${i}">×</button></span></div>`).join('');
-    $('#ww-speech-state').textContent = e.speech_secs ? `${(+e.speech_secs).toFixed(0)} с` : '';
+    if (wwBusy !== 'speech') $('#ww-speech-state').textContent = e.speech_secs ? `${(+e.speech_secs).toFixed(0)} с` : '';
   }
   const tr = ww.train || {};
   $('#ww-train-state').textContent = tr.active ? `${tr.stage || 'обучение'} · ${Math.round((+tr.frac || 0) * 100)}%`
@@ -7565,10 +7602,7 @@ async function wwLoad() {
   try { ww = await api('/api/wakeword/status'); }
   catch (e) { ww = { installed: false, supported: false, error: e.message }; }
   wwRender();
-  if (wwOn() && ww.running && !$('#tab-wakeword').hidden) {
-    const busy = !!ww.enroll || !!(ww.train && ww.train.active);
-    wwTimer = setTimeout(wwLoad, busy ? 700 : 3000);
-  }
+  if (wwOn() && ww.running && !$('#tab-wakeword').hidden) wwTimer = setTimeout(wwLoad, 300);
 }
 window.wwLoad = wwLoad;
 
@@ -7586,9 +7620,40 @@ $('#ww-add').onclick = () => {
   if (!name || !name.trim()) return;
   act(null, async () => { await wwApi('/api/enroll/start', 'POST', { name: name.trim() }); await wwLoad(); }, 'Записываем «' + name.trim() + '»');
 };
-$('#ww-ambient').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/ambient', 'POST'); await wwLoad(); }, 'Фон записан');
-$('#ww-take').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/take', 'POST'); await wwLoad(); }, 'Запись готова');
-$('#ww-speech').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/speech?secs=20', 'POST'); await wwLoad(); }, 'Речь записана');
+$('#ww-ambient').onclick = e => {
+  const btn = e.currentTarget; if (btn.disabled) return;
+  btn.disabled = true; wwBusy = 'ambient';
+  $('#ww-ambient-state').textContent = 'тихо… 8 секунд';
+  (async () => {
+    try { await wwApi('/api/enroll/ambient', 'POST'); toast('Фон записан'); }
+    catch (err) { toast(err.message, true); }
+    finally { wwBusy = ''; btn.disabled = false; await wwLoad(); }
+  })();
+};
+$('#ww-take').onclick = e => {
+  const btn = e.currentTarget; if (btn.disabled) return;
+  btn.disabled = true; wwBusy = 'take';
+  (async () => {
+    try {
+      for (const n of ['3', '2', '1']) { $('#ww-say').textContent = n + '…'; await new Promise(r => setTimeout(r, 500)); }
+      $('#ww-say').textContent = 'Говорите!';
+      const r = await wwApi('/api/enroll/take', 'POST');
+      if (r.ok) toast(`Запись: ${(+r.duration || 0).toFixed(2)} с`);
+      else toast(r.message || 'Не получилось', true);
+    } catch (err) { toast(err.message, true); }
+    finally { $('#ww-say').textContent = ''; wwBusy = ''; btn.disabled = false; await wwLoad(); }
+  })();
+};
+$('#ww-speech').onclick = e => {
+  const btn = e.currentTarget; if (btn.disabled) return;
+  btn.disabled = true; wwBusy = 'speech';
+  $('#ww-speech-state').textContent = 'читайте вслух… 20 секунд';
+  (async () => {
+    try { await wwApi('/api/enroll/speech?secs=20', 'POST'); toast('Речь записана'); }
+    catch (err) { toast(err.message, true); }
+    finally { wwBusy = ''; btn.disabled = false; await wwLoad(); }
+  })();
+};
 $('#ww-train').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/train', 'POST'); await wwLoad(); }, 'Обучение запущено');
 $('#ww-cancel').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/cancel', 'POST'); await wwLoad(); }, 'Отменено');
 
