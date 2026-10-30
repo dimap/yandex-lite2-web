@@ -7,10 +7,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -29,8 +31,8 @@ const (
 	historyMax = 20
 )
 
-// Ключ в тексте ошибки чужого API: в 401 провайдеры возвращают начало ключа — вслух его не читаем.
-var keyLike = regexp.MustCompile(`(sk-|Bearer\s+)[A-Za-z0-9_\-]{8,}`)
+// Код ответа API из текста ошибки post(): «API ответил 401: …».
+var httpStatus = regexp.MustCompile(`API ответил (\d{3})`)
 
 type entry struct {
 	At       int64  `json:"at"`
@@ -249,15 +251,50 @@ func (d *Daemon) notifyError(ctx context.Context, c Config, err error) {
 	}
 }
 
-// voiceError — текст ошибки, который не стыдно произнести: без ключей (провайдеры любят вернуть
-// начало ключа в тексте 401), в одну строку и с ограничением длины.
+// Общая фраза на случай, который не объяснить одной причиной.
+const genericError = "Ошибка ассистента. Пожалуйста, проверьте веб-панель управления для подробностей."
+
+// voiceError — что сказать голосом вместо текста ошибки: провайдеры отвечают по-английски, а голосовые
+// модели английский не читают; по «API ответил 401» всё равно ничего не понять. Частые причины называем
+// по-русски и по делу, остальное — общая фраза: подробности остаются в панели (и в журнале).
 func voiceError(err error) string {
-	msg := keyLike.ReplaceAllString(err.Error(), "ключ")
-	msg = strings.Join(strings.Fields(msg), " ")
-	if r := []rune(msg); len(r) > 200 {
-		msg = string(r[:200]) + "…"
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "модель вернула пустой ответ"):
+		return "Модель вернула пустой ответ. Попробуйте спросить ещё раз."
+	case strings.Contains(msg, "не задан адрес API"):
+		return "Не задан адрес API ассистента. Укажите его в веб-панели."
+	case strings.Contains(msg, "не задана модель"):
+		return "Не выбрана модель ассистента. Укажите её в веб-панели."
+	case strings.Contains(msg, "неверный адрес прокси"):
+		return "Неверный адрес прокси. Проверьте его в веб-панели."
+	case strings.Contains(msg, "непонятный ответ API"):
+		return "Ассистент вернул непонятный ответ. Подробности — в веб-панели."
+	case errors.Is(err, context.DeadlineExceeded):
+		return "Ассистент не ответил вовремя. Попробуйте ещё раз."
 	}
-	return "Ошибка ассистента: " + msg
+	var uerr *url.Error
+	if errors.As(err, &uerr) {
+		if uerr.Timeout() {
+			return "Ассистент не ответил вовремя. Попробуйте ещё раз."
+		}
+		return "Нет связи с сервером ассистента. Проверьте интернет и адрес API в веб-панели."
+	}
+	if m := httpStatus.FindStringSubmatch(msg); m != nil {
+		switch code := m[1]; {
+		case code == "401" || code == "403":
+			return "Ключ API не подошёл. Проверьте ключ в веб-панели."
+		case code == "404":
+			return "Адрес API или модель не найдены. Проверьте настройки в веб-панели."
+		case code == "408" || code == "429":
+			return "Сервер ассистента просит подождать: слишком много запросов. Попробуйте позже."
+		case strings.HasPrefix(code, "5"):
+			return "Сервер ассистента ответил ошибкой. Попробуйте позже."
+		default:
+			return "Ассистент отклонил запрос. Подробности — в веб-панели."
+		}
+	}
+	return genericError
 }
 
 func (d *Daemon) inMode() bool {

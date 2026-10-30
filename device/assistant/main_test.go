@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -13,17 +14,40 @@ import (
 )
 
 func TestVoiceError(t *testing.T) {
-	// В 401 провайдер возвращает начало ключа: вслух его не читаем. Переводы строк — в одну.
-	got := voiceError(errors.New("API ответил 401: Incorrect API key provided: sk-AbC123456789. Подробности:\nсм. https://example.com"))
-	if !strings.HasPrefix(got, "Ошибка ассистента: ") || strings.Contains(got, "sk-AbC123456789") ||
-		strings.Contains(got, "\n") || !strings.Contains(got, "ключ") {
-		t.Fatalf("%q", got)
+	// Английский текст провайдера не читаем: по частым причинам — понятная фраза, для остального — про панель.
+	cases := []struct {
+		err  error
+		want string
+	}{
+		{errors.New("модель вернула пустой ответ"), "Модель вернула пустой ответ. Попробуйте спросить ещё раз."},
+		{errors.New("не задан адрес API"), "Не задан адрес API ассистента. Укажите его в веб-панели."},
+		{errors.New("не задана модель"), "Не выбрана модель ассистента. Укажите её в веб-панели."},
+		{errors.New("неверный адрес прокси"), "Неверный адрес прокси. Проверьте его в веб-панели."},
+		{errors.New("API ответил 401: Incorrect API key provided: sk-AbC123456789"), "Ключ API не подошёл. Проверьте ключ в веб-панели."},
+		{errors.New("API ответил 403: Forbidden"), "Ключ API не подошёл. Проверьте ключ в веб-панели."},
+		{errors.New("API ответил 404: model not found"), "Адрес API или модель не найдены. Проверьте настройки в веб-панели."},
+		{errors.New("API ответил 429: rate limit"), "Сервер ассистента просит подождать: слишком много запросов. Попробуйте позже."},
+		{errors.New("API ответил 503: upstream error"), "Сервер ассистента ответил ошибкой. Попробуйте позже."},
+		{errors.New("API ответил 418: teapot"), "Ассистент отклонил запрос. Подробности — в веб-панели."},
+		{errors.New("непонятный ответ API"), "Ассистент вернул непонятный ответ. Подробности — в веб-панели."},
+		{&url.Error{Op: "Post", URL: "https://api.example.com", Err: errors.New("dial tcp: no route to host")},
+			"Нет связи с сервером ассистента. Проверьте интернет и адрес API в веб-панели."},
+		{&url.Error{Op: "Post", URL: "https://api.example.com", Err: timeoutErr{}},
+			"Ассистент не ответил вовремя. Попробуйте ещё раз."},
+		{errors.New("что-то совсем странное"), genericError},
 	}
-	long := voiceError(errors.New(strings.Repeat("очень длинная ошибка ", 40)))
-	if r := []rune(long); len(r) > len([]rune("Ошибка ассистента: "))+201 {
-		t.Fatalf("не обрезана: %d символов", len(r))
+	for _, c := range cases {
+		if got := voiceError(c.err); got != c.want {
+			t.Errorf("%v → %q, want %q", c.err, got, c.want)
+		}
 	}
 }
+
+type timeoutErr struct{}
+
+func (timeoutErr) Error() string   { return "i/o timeout" }
+func (timeoutErr) Timeout() bool   { return true }
+func (timeoutErr) Temporary() bool { return true }
 
 func TestChatRejectsEmptyAnswer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
