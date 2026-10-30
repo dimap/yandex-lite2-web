@@ -418,7 +418,13 @@
   .bt-eq { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-2); }
   .bt-eq-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .bt-eq-head select { width: auto; min-width: 170px; }
-  .bt-eq canvas { display: block; width: 100%; height: 72px; margin-top: 8px; }
+  .bt-eq canvas { display: block; width: 100%; height: 96px; margin-top: 8px; }
+  .eq-custom { display: grid; gap: 7px; margin-top: 10px; }
+  .eq-band { display: grid; grid-template-columns: 76px 18px 1fr 52px; align-items: center; gap: 8px; }
+  .eq-band input[type=number] { width: 76px; }
+  .eq-band input[type=range] { width: 100%; margin: 0; }
+  .eq-band .eq-gv { text-align: right; font-size: 12px; color: var(--muted); }
+  .eq-custom .hint { margin: 2px 0 0; }
   .bt-pair .info { flex: 1; min-width: 0; }
   .bt-pair .info b { display: block; }
   .bt-left { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -1470,7 +1476,8 @@
           </div>
           <div class="bt-eq" id="bt-eq-row" hidden>
             <div class="bt-eq-head"><b>Эквалайзер</b><select class="field" id="bt-eq" aria-label="Пресет эквалайзера"></select></div>
-            <canvas id="bt-eq-curve" width="360" height="72" aria-label="АЧХ эквалайзера"></canvas>
+            <canvas id="bt-eq-curve" width="360" height="96" aria-label="АЧХ эквалайзера"></canvas>
+            <div class="eq-custom" id="bt-eq-custom" hidden></div>
           </div>
         </section>
 
@@ -3573,9 +3580,58 @@ function renderBtOut() {
   if (!eqRow.hidden && !btEq) loadBtEq();
 }
 // ---- эквалайзер Bluetooth-выхода ----
-const EQ_NAMES = { flat: 'Без изменений', rock: 'Рок', electronic: 'Электроника', vocal: 'Вокал / подкаст', night: 'Ночной' };
+const EQ_NAMES = { flat: 'Без изменений', rock: 'Рок', electronic: 'Электроника', vocal: 'Вокал / подкаст', night: 'Ночной', custom: 'Свой' };
+const EQ_DEFAULT = [60, 230, 910, 3600, 14000];
+const fmtDb = g => (g > 0 ? '+' : '') + g + ' дБ';
 async function loadBtEq() {
   try { btEq = await api('/api/btout/eq'); renderBtEq(); } catch { btEq = null; }
+}
+function buildEqCustom() {
+  const box = $('#bt-eq-custom');
+  if (!box || box.children.length) return;
+  box.innerHTML = EQ_DEFAULT.map((f, i) => `<div class="eq-band">
+      <input type="number" class="field eq-f" min="20" max="20000" step="10" value="${f}" aria-label="Частота ${i + 1}, Гц">
+      <span class="meta">Гц</span>
+      <input type="range" class="eq-g" min="-12" max="12" step="1" value="0" aria-label="Усиление ${i + 1}, дБ">
+      <span class="mono eq-gv">0 дБ</span></div>`).join('')
+    + '<p class="hint">Сильное усиление может перегрузить звук — убавьте громкость.</p>';
+  box.addEventListener('input', e => {
+    const band = e.target.closest('.eq-band');
+    if (!band) return;
+    band.querySelector('.eq-gv').textContent = fmtDb(+band.querySelector('.eq-g').value);
+    scheduleEqCustom();
+  });
+  box.addEventListener('change', e => {
+    if (e.target.matches('.eq-f')) { clampEqFreq(e.target); scheduleEqCustom(); }
+  });
+}
+function clampEqFreq(inp) {
+  inp.value = Math.max(20, Math.min(20000, Math.round(+inp.value) || 60));
+}
+function eqCustomBands() {
+  return $$('#bt-eq-custom .eq-band').map(b => ({
+    f: Math.max(20, Math.min(20000, Math.round(+b.querySelector('.eq-f').value) || 60)),
+    g: Math.max(-12, Math.min(12, Math.round(+b.querySelector('.eq-g').value) || 0)) }));
+}
+function fillEqCustom(bands) {
+  buildEqCustom();
+  const rows = $$('#bt-eq-custom .eq-band');
+  (bands || []).slice(0, rows.length).forEach((b, i) => {
+    const g = Math.round(b.g);
+    rows[i].querySelector('.eq-f').value = Math.round(b.f);
+    rows[i].querySelector('.eq-g').value = g;
+    rows[i].querySelector('.eq-gv').textContent = fmtDb(g);
+  });
+}
+let btEqTimer = 0;
+function scheduleEqCustom() {
+  clearTimeout(btEqTimer);
+  btEqTimer = setTimeout(async () => {
+    try {
+      btEq = await api('/api/btout/eq', { preset: 'custom', bands: eqCustomBands() });
+      drawEqCurve();
+    } catch { /* оставляем прошлую кривую */ }
+  }, 250);
 }
 function renderBtEq() {
   if (!btEq) return;
@@ -3584,27 +3640,48 @@ function renderBtEq() {
   if (sel.options.length !== names.length)
     sel.innerHTML = names.map(v => `<option value="${v}">${EQ_NAMES[v] || v}</option>`).join('');
   sel.value = btEq.preset;
+  $('#bt-eq-custom').hidden = btEq.preset !== 'custom';
+  if (btEq.preset === 'custom') fillEqCustom(btEq.custom);
+  drawEqCurve();
+}
+function drawEqCurve() {
   const cv = $('#bt-eq-curve');
-  if (!cv) return;
+  if (!cv || !btEq) return;
   const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  const padL = 28, padR = 6, padT = 6, padB = 15;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
   ctx.clearRect(0, 0, w, h);
   const css = getComputedStyle(document.documentElement);
   const grid = css.getPropertyValue('--line-2').trim() || '#ddd';
+  const muted = css.getPropertyValue('--muted').trim() || '#888';
   const accent = css.getPropertyValue('--accent').trim() || '#e8590c';
-  const X = f => Math.log10(f / 20) / Math.log10(1000) * w;
-  const Y = d => h / 2 - d / 15 * (h / 2);
-  ctx.strokeStyle = grid; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
-  for (const f of [100, 1000, 10000]) { ctx.beginPath(); ctx.moveTo(X(f), 0); ctx.lineTo(X(f), h); ctx.stroke(); }
+  const X = f => padL + Math.log10(f / 20) / Math.log10(1000) * plotW;
+  const Y = d => padT + (1 - (d + 15) / 30) * plotH;
+  const marks = [[20, '20'], [50, '50'], [100, '100'], [200, '200'], [500, '500'], [1000, '1k'],
+                 [2000, '2k'], [5000, '5k'], [10000, '10k'], [20000, '20k']];
+  ctx.lineWidth = 1; ctx.strokeStyle = grid;
+  marks.forEach(([f]) => { ctx.beginPath(); ctx.moveTo(X(f), padT); ctx.lineTo(X(f), padT + plotH); ctx.stroke(); });
+  ctx.beginPath(); ctx.moveTo(padL, Y(0)); ctx.lineTo(w - padR, Y(0)); ctx.stroke();
+  ctx.fillStyle = muted; ctx.font = '9px ui-monospace, monospace'; ctx.textBaseline = 'top';
+  marks.forEach(([f, label]) => {
+    const x = X(f);
+    ctx.textAlign = x < padL + 10 ? 'left' : x > w - padR - 10 ? 'right' : 'center';
+    ctx.fillText(label, x, padT + plotH + 3);
+  });
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (const d of [12, 0, -12]) ctx.fillText((d > 0 ? '+' : '') + d, padL - 4, Y(d));
   ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.beginPath();
   (btEq.freqs || []).forEach((f, i) => { const x = X(f), y = Y(btEq.db[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
   ctx.stroke();
 }
 $('#bt-eq').onchange = e => {
   const preset = e.target.value, name = EQ_NAMES[preset] || preset;
+  $('#bt-eq-custom').hidden = preset !== 'custom';
+  if (preset === 'custom') fillEqCustom(btEq?.custom);
   act(e.target, async () => {
-    btEq = await api('/api/btout/eq', { preset });
-    renderBtEq();
+    btEq = await api('/api/btout/eq', { preset, bands: preset === 'custom' ? eqCustomBands() : undefined });
+    if (btEq.preset === 'custom') fillEqCustom(btEq.custom);
+    drawEqCurve();
   }, 'Эквалайзер: ' + name);
 };
 // «Выбрать колонку» / «Другая колонка»: ищем рядом и показываем список

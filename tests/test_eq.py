@@ -14,7 +14,7 @@ class Eq(unittest.TestCase):
                     self.assertTrue(math.isfinite(v))
             freqs, db = server.eq_curve(name)
             self.assertEqual(len(freqs), len(db))
-            self.assertEqual(len(freqs), 64)
+            self.assertEqual(len(freqs), 96)
 
     def test_flat_curve_is_zero(self):
         _, db = server.eq_curve("flat")
@@ -26,6 +26,28 @@ class Eq(unittest.TestCase):
         self.assertGreater(at(60), 1.5)
         self.assertLess(at(800), -0.5)
         self.assertGreater(at(12000), 0.5)
+
+    def test_custom_bands(self):
+        p = server.Panel(Mock())
+        p.adb.push = lambda *a, **kw: None
+        p.adb.shell = lambda *a, **kw: ("", "", 0)
+        saved = {}
+        bands = [{"f": 80, "g": 6}, {"f": 250, "g": -3}, {"f": 1000, "g": 0},
+                 {"f": 4000, "g": 3}, {"f": 12000, "g": 2}]
+        with patch("server.load_settings", return_value={}), \
+             patch("server.save_settings", side_effect=lambda d: saved.update(d)):
+            r = p.btout_eq("custom", bands)
+        self.assertEqual(r["preset"], "custom")
+        self.assertEqual(saved["eq_custom"][0], {"f": 80.0, "g": 6.0})
+        self.assertEqual(len(r["custom"]), 5)
+        self.assertTrue(any(abs(x) > 1 for x in r["db"]))
+
+    def test_custom_rejects_bad_values(self):
+        p = server.Panel(Mock())
+        with self.assertRaises(server.AdbError):
+            p.btout_eq("custom", [{"f": 5, "g": 0}])
+        with self.assertRaises(server.AdbError):
+            p.btout_eq("custom", [{"f": 100, "g": 40}])
 
     def test_btout_eq_writes_filters_and_saves(self):
         p = server.Panel(Mock())

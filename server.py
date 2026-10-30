@@ -301,11 +301,38 @@ VIZ_BT = "/tmp/webpanel_viz.bt"   # идёт Bluetooth-переливание: �
 EQ_FILE = f"{VIZ_DIR}/eq.json"
 EQ_PRESETS = {
     "flat": (),
-    "rock": (("lowshelf", 100, 3.0), ("peaking", 800, -2.0, 1.0), ("highshelf", 8000, 2.0)),
-    "electronic": (("lowshelf", 70, 4.0), ("peaking", 2500, 2.0, 1.0), ("highshelf", 10000, 2.0)),
-    "vocal": (("peaking", 2500, 3.0, 1.0), ("lowshelf", 120, -2.0), ("highshelf", 6000, 1.0)),
-    "night": (("lowshelf", 80, 3.0), ("highshelf", 6000, -3.0)),
+    "rock": (("lowshelf", 100, 5.0), ("peaking", 800, -3.0, 1.0), ("highshelf", 8000, 3.0)),
+    "electronic": (("lowshelf", 70, 6.0), ("peaking", 2500, 3.0, 1.0), ("highshelf", 10000, 3.0)),
+    "vocal": (("peaking", 2500, 4.0, 1.0), ("lowshelf", 120, -3.0), ("highshelf", 6000, 2.0)),
+    "night": (("lowshelf", 80, 5.0), ("highshelf", 6000, -4.0)),
 }
+EQ_CUSTOM_DEFAULT = ({"f": 60, "g": 0}, {"f": 230, "g": 0}, {"f": 910, "g": 0},
+                     {"f": 3600, "g": 0}, {"f": 14000, "g": 0})
+EQ_GAIN_MAX = 12.0
+
+
+def eq_custom_bands(raw):
+    """Пять полос своего эквалайзера: частота 20–20000 Гц и усиление −12…+12 дБ."""
+    bands = []
+    for b in list(raw or [])[:len(EQ_CUSTOM_DEFAULT)]:
+        try:
+            f, g = float(b.get("f")), float(b.get("g"))
+        except (TypeError, ValueError, AttributeError):
+            raise AdbError("плохие настройки эквалайзера")
+        if not 20 <= f <= 20000:
+            raise AdbError("частота вне 20–20000 Гц")
+        if not -EQ_GAIN_MAX <= g <= EQ_GAIN_MAX:
+            raise AdbError(f"усиление вне −{EQ_GAIN_MAX:.0f}…+{EQ_GAIN_MAX:.0f} дБ")
+        bands.append({"f": round(f, 1), "g": round(g, 1)})
+    bands += [dict(b) for b in EQ_CUSTOM_DEFAULT[len(bands):]]
+    return bands
+
+
+def eq_filters(preset, custom=None):
+    """Полосы (тип, частота, усиление, добротность) для пресета или своего набора."""
+    if preset != "custom":
+        return list(EQ_PRESETS[preset])
+    return [("peaking", b["f"], b["g"], 1.0) for b in (custom or EQ_CUSTOM_DEFAULT) if b["g"]]
 
 
 def eq_coeffs(band, fs=48000):
@@ -339,9 +366,9 @@ def eq_coeffs(band, fs=48000):
     return (b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0)
 
 
-def eq_curve(preset, points=64, fs=48000):
-    """АЧХ пресета для графика: логарифмическая сетка 20 Гц … 20 кГц и дБ."""
-    coeffs = [eq_coeffs(b, fs) for b in EQ_PRESETS[preset]]
+def eq_curve(preset, custom=None, points=96, fs=48000):
+    """АЧХ для графика: логарифмическая сетка 20 Гц … 20 кГц и дБ."""
+    coeffs = [eq_coeffs(b, fs) for b in eq_filters(preset, custom)]
     freqs = [20 * (20000 / 20) ** (i / (points - 1)) for i in range(points)]
     db = []
     for f in freqs:
@@ -4759,25 +4786,32 @@ echo @@BLUEZ
 
     def btout_eq_status(self):
         """Текущий пресет эквалайзера и его АЧХ для графика (без записи на колонку)."""
-        preset = load_settings().get("eq_preset") or "flat"
-        if preset not in EQ_PRESETS:
+        s = load_settings()
+        preset = s.get("eq_preset") or "flat"
+        if preset not in EQ_PRESETS and preset != "custom":
             preset = "flat"
-        freqs, db = eq_curve(preset)
-        return {"preset": preset, "presets": list(EQ_PRESETS),
+        custom = s.get("eq_custom") or [dict(b) for b in EQ_CUSTOM_DEFAULT]
+        freqs, db = eq_curve(preset, custom)
+        return {"preset": preset, "presets": [*EQ_PRESETS, "custom"], "custom": custom,
                 "freqs": [round(f, 1) for f in freqs], "db": db}
 
-    def btout_eq(self, preset=None):
+    def btout_eq(self, preset=None, custom=None):
         """Выбрать пресет (None — применить сохранённый) и положить коэффициенты для tap на колонке."""
         s = load_settings()
         if preset is None:
             preset = s.get("eq_preset") or "flat"
         preset = str(preset)
-        if preset not in EQ_PRESETS:
+        if preset not in EQ_PRESETS and preset != "custom":
             raise AdbError("неизвестный пресет эквалайзера")
+        if preset == "custom":
+            custom = eq_custom_bands(custom if custom is not None else s.get("eq_custom"))
+            s["eq_custom"] = custom
+        else:
+            custom = s.get("eq_custom") or [dict(b) for b in EQ_CUSTOM_DEFAULT]
         s["eq_preset"] = preset
         save_settings(s)
-        filters = [eq_coeffs(b) for b in EQ_PRESETS[preset]]
-        payload = {"enabled": preset != "flat",
+        filters = [eq_coeffs(b) for b in eq_filters(preset, custom)]
+        payload = {"enabled": bool(filters),
                    "filters": [dict(zip(("b0", "b1", "b2", "a1", "a2"), c)) for c in filters]}
         with tempfile.TemporaryDirectory() as td:
             f = Path(td) / "eq.json"
@@ -5741,7 +5775,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/btout/scan": lambda: p.btout_scan(d.get("seconds", 12)),
             "/api/btout/use": lambda: p.btout_use(d.get("mac")),
             "/api/btout/off": p.btout_off,
-            "/api/btout/eq": lambda: p.btout_eq(d.get("preset")),
+            "/api/btout/eq": lambda: p.btout_eq(d.get("preset"), d.get("bands")),
             "/api/system": lambda: p.system(d["action"]),
             "/api/fs/write": lambda: p.fs_write(d["path"], d["text"]),
             "/api/fs/delete": lambda: p.fs_delete(d["path"]),
