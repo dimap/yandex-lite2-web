@@ -49,13 +49,11 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
     const fs = 13, col = fs * .62, row = fs * 1.1;
     const cx = width / 2, cy = height / 2, radius = Math.min(width, height) * .63 * size;
     const minHalf = Math.min(width, height) / 2;   // кольца и веер считаем по меньшей стороне
-    if (style === 'bars') {                        // высота столбика по ширине — из четырёх полос
-      const n = Math.max(1, Math.round(width / col));
-      if (barsH.length !== n) barsH = new Array(n).fill(0);
-      for (let i = 0; i < n; i++) {
-        const u = (i / Math.max(1, n - 1)) * 3, k2 = Math.min(2, Math.floor(u)), f2 = u - k2;
-        const target = active ? .08 + .9 * (bands[k2] * (1 - f2) + bands[k2 + 1] * f2) : 0;
-        barsH[i] += (target - barsH[i]) * (active ? .4 : .12);
+    if (style === 'bars') {                        // четыре прямоугольных столбика, по полосе на каждый
+      if (barsH.length !== 4) barsH = [0, 0, 0, 0];
+      for (let k = 0; k < 4; k++) {
+        const target = active ? .08 + .9 * bands[k] : 0;
+        barsH[k] += (target - barsH[k]) * (active ? .4 : .12);
       }
     }
     ctx.font = `${fs}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = colorOf() || color;
@@ -90,11 +88,14 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
         }
         if (Math.abs(rn - inner) < .012) v = Math.max(v, .14 * (.4 + .6 * bandQuad));
       } else if (style === 'bars') {
-        const h = barsH[Math.min(barsH.length - 1, Math.floor(x / col))] || 0;
-        const t = (height - y) / height;            // 0 сверху, 1 снизу
-        if (h > .01 && t > 1 - h) {
-          const k2 = (t - (1 - h)) / h;             // 0 у вершины, 1 у основания
-          v = .55 + .45 * (1 - k2);
+        const slot = (x / width) * 4, bi = Math.min(3, Math.floor(slot)), within = slot - bi;
+        if (within > .08 && within < .92) {
+          const h = barsH[bi] || 0;
+          const t = y / height;                     // 0 сверху, 1 снизу
+          if (h > .01 && t > 1 - h) {
+            const k2 = (t - (1 - h)) / h;           // 0 у вершины, 1 у основания
+            v = .62 + .38 * (1 - k2);
+          }
         }
       } else {
         const reach = wave + .08 + band * .45;

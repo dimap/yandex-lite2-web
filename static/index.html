@@ -4665,14 +4665,12 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
     ctx.textBaseline = 'middle';
     ctx.fillStyle = color;
     const cx = cw / 2, cy = ch / 2, colW = FS * 0.62, rowH = FS * 1.1, maxR = Math.hypot(cx, cy), minHalf = Math.min(cw, ch) / 2, idleR = Math.min(cw, ch) * 0.75;
-    // «Полосы»: высота каждого столбика по ширине — из четырёх полос, сглаженно.
+    // «Полосы»: четыре прямоугольных столбика снизу вверх — по одному на полосу (полос у нас 4).
     if (style === 'bars') {
-      const n = Math.max(1, Math.round(cw / colW));
-      if (barsH.length !== n) barsH = new Array(n).fill(0);
-      for (let i = 0; i < n; i++) {
-        const u = (i / Math.max(1, n - 1)) * 3, k2 = Math.min(2, Math.floor(u)), f2 = u - k2;
-        const target = playing ? 0.08 + 0.9 * (bands[k2] * (1 - f2) + bands[k2 + 1] * f2) : 0;
-        barsH[i] += (target - barsH[i]) * (playing ? 0.4 : 0.12);
+      if (barsH.length !== 4) barsH = [0, 0, 0, 0];
+      for (let k = 0; k < 4; k++) {
+        const target = playing ? 0.08 + 0.9 * bands[k] : 0;
+        barsH[k] += (target - barsH[k]) * (playing ? 0.4 : 0.12);
       }
     }
     for (let y = rowH / 2; y < ch; y += rowH) {
@@ -4709,12 +4707,15 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
           }
           if (Math.abs(rn - inner) < 0.012) v = Math.max(v, 0.14 * energy * (0.4 + 0.6 * bandQuad));
         } else if (style === 'bars') {
-          // Классический эквалайзер: столбики снизу вверх во всю ширину, высота — по полосам.
-          const h = barsH[Math.min(barsH.length - 1, Math.floor(x / colW))] || 0;
-          const t = (ch - y) / ch;                    // 0 сверху, 1 снизу
-          if (h > 0.01 && t > 1 - h) {
-            const k2 = (t - (1 - h)) / h;             // 0 у вершины, 1 у основания
-            v = 0.55 + 0.45 * (1 - k2);
+          // Четыре прямоугольных столбика снизу вверх, по полосе на каждый, с промежутками.
+          const slot = (x / cw) * 4, bi = Math.min(3, Math.floor(slot)), within = slot - bi;
+          if (within > 0.08 && within < 0.92) {
+            const h = barsH[bi] || 0;
+            const t = y / ch;                         // 0 сверху, 1 снизу
+            if (h > 0.01 && t > 1 - h) {
+              const k2 = (t - (1 - h)) / h;           // 0 у вершины, 1 у основания
+              v = 0.62 + 0.38 * (1 - k2);
+            }
           }
         } else {
           // Лучи из центра: дальность зависит от полосы в этом направлении.
