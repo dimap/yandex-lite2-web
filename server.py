@@ -295,6 +295,20 @@ VIZ_SRC = Path(__file__).resolve().parent / "device" / "viz"
 VIZ_ON = "/tmp/webpanel_viz.on"   # визуализатор включён в панели
 VIZ_BT = "/tmp/webpanel_viz.bt"   # идёт Bluetooth-переливание: полосы считает tap из того же потока
 
+# ---------- свои слова активации (yam-пакет tangenx/wakeword) ----------
+# Демон живёт на колонке и отдаёт маленький JSON API на 8780. Панель не копирует его код:
+# только читает состояние и шлёт команды (запись идёт микрофонами колонки), а API проксирует.
+WAKE_PKG = "/data/yam/pkgs/tangenx/wakeword"
+WAKE_SHARE = "/data/yam/share/tangenx.wakeword"
+WAKE_BIN = "/data/yam/bin/wakeword"
+WAKE_DATA = "/data/wakeword"
+WAKE_PID = "/tmp/wakeword.pid"
+WAKE_LOG = "/tmp/wakeword.log"
+WAKE_PORT = 8780
+# targets из yam.yaml пакета: Макс (yandexstation_2), Стрит и Android-Станция не поддерживаются.
+WAKE_TARGETS = ("yandexmicro", "plum", "yandexmini", "yandexmini_2", "bergamot", "pickle",
+                "cucumber", "yandexmidi", "yandexstation", "orion")
+
 # ---------- эквалайзер для Bluetooth-выхода ----------
 # Пресеты в виде полос (тип, частота, усиление дБ, добротность): tap на колонке получает готовые
 # коэффициенты биквадов и применяет их к потоку, который идёт в Bluetooth-колонку.
@@ -3281,6 +3295,116 @@ echo @@BLUEZ
         out, _, _ = self.adb.shell(f"tail -5 {VIZ_DIR}/viz.log", check=False)
         raise AdbError("визуализатор не запустился: " + strip_ansi(out).strip()[-300:])
 
+    # ---------- свои слова активации ----------
+    def _wakeword_installed(self):
+        """Версия установленного yam-пакета и признаки файлов; без API."""
+        out, _, _ = self.adb.shell(
+            f"v=$(ls -d {WAKE_PKG}/* 2>/dev/null | sort -V | tail -n 1); "
+            f"[ -n \"$v\" ] && {{ [ -L \"$v\" ] && basename \"$(readlink -f \"$v\")\" || basename \"$v\"; }}; "
+            f"[ -x {WAKE_BIN} ] && echo @bin; [ -f {WAKE_SHARE}/S97wakeword ] && echo @script; "
+            f"[ -f {WAKE_PID} ] && kill -0 $(cat {WAKE_PID}) 2>/dev/null && echo @pid; true", check=False)
+        lines = [l.strip() for l in strip_ansi(out).splitlines() if l.strip()]
+        version = next((l for l in lines if not l.startswith("@")), None)
+        return {"installed": bool(version or "@bin" in lines or "@script" in lines),
+                "version": version, "bin": "@bin" in lines, "script": "@script" in lines, "pid": "@pid" in lines}
+
+    def _wakeword_supported(self):
+        gl = getattr(self, "glagol", None)
+        platform = (gl.platform if gl else None) or GLAGOL_PLATFORM
+        return platform in WAKE_TARGETS, platform
+
+    def _wakeword_base(self):
+        """База HTTP API демона: adb forward на свободный порт, иначе прямой IP колонки."""
+        if not getattr(self, "_ww_port", None):
+            try:
+                self._ww_port = self.adb.forward(WAKE_PORT)
+            except (AdbError, OSError, subprocess.TimeoutExpired):
+                self._ww_port = None
+        if getattr(self, "_ww_port", None):
+            return f"http://127.0.0.1:{self._ww_port}"
+        gl = getattr(self, "glagol", None)
+        ip = (gl.host if gl else None) or ""
+        if not ip and self.adb.serial and ":" in self.adb.serial:
+            ip = self.adb.serial.split(":", 1)[0]
+        if not ip:
+            raise AdbError("нет связи с колонкой для API слов активации")
+        return f"http://{ip}:{WAKE_PORT}"
+
+    def _wakeword_api(self, path, method="GET", body=None, timeout=60):
+        """Запрос к API демона; возвращает (content-type, dict/bytes)."""
+        if not str(path).startswith("/api/") or ".." in path:
+            raise AdbError("плохой путь API слов активации")
+        base = self._wakeword_base()
+        data = json.dumps(body).encode() if body is not None else None
+        headers = {"Content-Type": "application/json"} if data else {}
+        req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw, ctype = r.read(), r.headers.get("Content-Type", "application/json")
+        except urllib.error.HTTPError as e:
+            raw = e.read()
+            try:
+                msg = (json.loads(raw) or {}).get("error") or ""
+            except ValueError:
+                msg = raw.decode("utf-8", "replace")[:300]
+            raise AdbError(msg.strip() or f"API слов активации: HTTP {e.code}") from None
+        except (urllib.error.URLError, OSError) as e:
+            self._ww_port = None      # возможно, adb forward отвалился — в следующий раз создадим заново
+            raise AdbError(f"API слов активации недоступен: {e}") from None
+        if ctype.startswith("application/json"):
+            try:
+                return ctype, json.loads(raw or b"{}")
+            except ValueError:
+                raise AdbError("API слов активации вернул не JSON") from None
+        return ctype, raw
+
+    def wakeword_status(self):
+        info = self._wakeword_installed()
+        supported, platform = self._wakeword_supported()
+        state, error = None, ""
+        if info["installed"]:
+            try:
+                _, state = self._wakeword_api("/api/state", timeout=5)
+            except AdbError as e:
+                error = str(e)
+        running = bool(state) or info["pid"]
+        audio = (state or {}).get("audio") or {}
+        return {"installed": info["installed"], "version": info["version"], "running": running,
+                "supported": supported, "platform": platform, "audio": audio,
+                "words": (state or {}).get("words") or [], "hits": (state or {}).get("hits") or [],
+                "enroll": (state or {}).get("enroll"), "train": (state or {}).get("train") or {"active": False},
+                "station": (state or {}).get("station", ""), "error": error, "port": WAKE_PORT}
+
+    def wakeword_start(self):
+        info = self._wakeword_installed()
+        if not info["installed"]:
+            raise AdbError("пакет tangenx/wakeword не установлен")
+        script = f"{WAKE_SHARE}/S97wakeword"
+        out, err, rc = self.adb.shell(f"sh {script} start 2>&1", check=False, timeout=30)
+        if rc != 0:
+            raise AdbError(strip_ansi(out or err).strip()[-400:] or "не удалось запустить демон слов активации")
+        for _ in range(20):
+            time.sleep(0.3)
+            st = self.wakeword_status()
+            if st["running"]:
+                return st
+        raise AdbError("демон слов активации не запустился")
+
+    def wakeword_stop(self):
+        out, err, rc = self.adb.shell(f"sh {WAKE_SHARE}/S97wakeword stop 2>&1", check=False, timeout=20)
+        if rc != 0:
+            raise AdbError(strip_ansi(out or err).strip()[-400:] or "не удалось остановить демон слов активации")
+        self._ww_port = None
+        return self.wakeword_status()
+
+    def wakeword_proxy(self, method, path, body=None, timeout=90):
+        """Прокси к API демона для вкладки: JSON и WAV отдаются как есть."""
+        method = str(method or "GET").upper()
+        if method not in ("GET", "POST", "DELETE"):
+            raise AdbError("метод не поддерживается")
+        ctype, data = self._wakeword_api(path, method, body, timeout=timeout)
+        return data, ctype
+
     def footprint(self):
         """Всё постоянное, что панель ставит на колонку. Временное (/tmp) исчезает само после перезагрузки."""
         q = lambda path: f"[ -e {path} ] && echo 1 || echo 0"
@@ -5539,6 +5663,16 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             pass
 
+    def _wakeword_proxy(self, method, path, body=None):
+        """Прокси API слов активации: JSON и WAV отдаются как есть (WAV — с его Content-Type)."""
+        try:
+            data, ctype = self.panel.wakeword_proxy(method, path, body)
+        except (AdbError, subprocess.TimeoutExpired) as e:
+            return self._send(400, {"error": str(e)})
+        if isinstance(data, (dict, list)):
+            return self._send(200, data)
+        return self._send(200, data, ctype or "application/octet-stream")
+
     def _download(self, path):
         try:
             name, local, td = self.panel.fs_download(path)
@@ -5617,9 +5751,12 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if u.path == "/api/term":
             return self._terminal(q)
+        if u.path == "/api/wakeword/proxy":
+            return self._wakeword_proxy("GET", q.get("path", ""))
         p = self.panel
         routes = {
             "/api/status": p.status,
+            "/api/wakeword/status": p.wakeword_status,
             "/api/mute": lambda: {"muted": bool(load_settings().get("mute_before")), "volume": p._volume_level()},
             "/api/sounds": p.sounds,
             "/api/sounds/custom": p.sounds_custom,
@@ -5752,9 +5889,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._handle(lambda: p.fs_upload(directory, name, body))
         d = self._json()
         self._jdata = d if isinstance(d, dict) else {}
+        if u.path == "/api/wakeword/proxy":
+            return self._wakeword_proxy(str(self._jdata.get("method", "POST")).upper(),
+                                        str(self._jdata.get("path", "")), self._jdata.get("body"))
         routes = {
             "/api/volume": lambda: p.set_volume(d),
             "/api/mute": lambda: p.set_mute(bool(d.get("on"))),
+            "/api/wakeword/start": p.wakeword_start,
+            "/api/wakeword/stop": p.wakeword_stop,
             "/api/play": lambda: p.play_system(d["name"]),
             "/api/sounds/reset": lambda: p.sound_reset(d["name"]),
             "/api/sounds/play-original": lambda: p.sound_play_original(d["name"]),

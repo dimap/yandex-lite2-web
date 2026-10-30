@@ -425,6 +425,25 @@
   .eq-band input[type=range] { width: 100%; margin: 0; }
   .eq-band .eq-gv { text-align: right; font-size: 12px; color: var(--muted); }
   .eq-custom .hint { margin: 2px 0 0; }
+  .ww-audio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .ww-meter { flex: 1; min-width: 140px; height: 8px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+  .ww-meter span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .ww-list { display: grid; gap: 10px; }
+  .ww-word { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--line-2); border-radius: 14px; }
+  .ww-word-main { flex: 1 1 220px; min-width: 0; }
+  .ww-word-main b { display: block; }
+  .ww-word-main .meta { display: block; margin-top: 2px; }
+  .ww-sens { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .ww-sens input { width: 110px; }
+  .ww-steps { display: grid; gap: 12px; }
+  .ww-step { padding: 12px; border: 1px solid var(--line-2); border-radius: 14px; }
+  .ww-step-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .ww-step p { margin: 6px 0 8px; color: var(--muted); font-size: 13px; }
+  .ww-takes, .ww-hits { display: grid; gap: 6px; margin-top: 8px; }
+  .ww-take, .ww-hit { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+  .ww-progress { height: 8px; margin-top: 8px; background: var(--line-2); border-radius: 99px; overflow: hidden; }
+  .ww-progress span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  .ww-word input[type=range] { accent-color: var(--accent); }
   .bt-pair .info { flex: 1; min-width: 0; }
   .bt-pair .info b { display: block; }
   .bt-left { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -1113,6 +1132,7 @@
     <symbol id="i-log" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></g></symbol>
     <symbol id="i-term" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 17l6-5-6-5M12 19h8"/></symbol>
     <symbol id="i-mic" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></g></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h2M7 8v8M11 4v16M15 7v10M19 10v4"/></g></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8l9-5"/><circle cx="15" cy="14" r="2.5"/><path d="M6 12h3M6 16h3"/></g></symbol>
     <symbol id="i-music" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></g></symbol>
@@ -1167,6 +1187,7 @@
       <a href="#alarm" data-tab="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#scenes" data-tab="scenes"><svg width="20" height="20" aria-hidden="true"><use href="#i-flow"/></svg>Сценарии</a>
       <a href="#assistant" data-tab="assistant"><svg width="20" height="20" aria-hidden="true"><use href="#i-mic"/></svg>Ассистент</a>
+      <a href="#wakeword" data-tab="wakeword" id="nav-wakeword" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-wave"/></svg>Слова активации</a>
       <a href="#boot" data-tab="boot"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Анимации</a>
       <a href="#apps" data-tab="apps"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Приложения</a>
       <a href="#files" data-tab="files"><svg width="20" height="20" aria-hidden="true"><use href="#i-folder"/></svg>Файлы</a>
@@ -2190,6 +2211,50 @@
         </div>
       </section>
     </div>
+  </main>
+
+  <main id="tab-wakeword" data-page hidden>
+    <header class="page-head">
+      <div><h1>Слова активации</h1><div class="sub">Свои слова для колонки. Запись и обучение идут на её микрофонах — говорите у колонки.</div></div>
+      <div class="actions">
+        <button class="btn" id="ww-refresh">Обновить</button>
+        <button class="btn primary" id="ww-start" hidden>Запустить</button>
+        <button class="btn" id="ww-stop" hidden>Остановить</button>
+      </div>
+    </header>
+    <section class="card">
+      <div class="card-head"><h2>Состояние</h2><div class="actions"><span class="pill" id="ww-badge">—</span></div></div>
+      <p class="hint" id="ww-hint">Проверяю…</p>
+      <div class="ww-audio" id="ww-audio" hidden>
+        <div class="ww-meter"><span id="ww-meter"></span></div>
+        <span class="meta" id="ww-audio-text">—</span>
+        <button class="btn sm" id="ww-listen">Проверить: «слушаю»</button>
+      </div>
+    </section>
+    <section class="card" id="ww-words-card" hidden>
+      <div class="card-head"><h2>Слова</h2><div class="actions"><button class="btn sm primary" id="ww-add">Добавить слово</button></div></div>
+      <div id="ww-words" class="ww-list"></div>
+    </section>
+    <section class="card" id="ww-enroll-card" hidden>
+      <div class="card-head"><h2>Новое слово: <span id="ww-enroll-name"></span></h2><div class="actions"><button class="btn sm" id="ww-cancel">Отмена</button></div></div>
+      <p class="hint">Запись идёт с микрофонов колонки. Говорите рядом с ней.</p>
+      <div class="ww-steps">
+        <div class="ww-step"><div class="ww-step-head"><b>1. Фон</b><span class="meta" id="ww-ambient-state"></span></div>
+          <p>8 секунд обычной тишины комнаты — не говорите.</p><button class="btn sm" id="ww-ambient">Записать фон</button></div>
+        <div class="ww-step"><div class="ww-step-head"><b>2. Слово</b><span class="meta" id="ww-takes-state"></span></div>
+          <p>Скажите слово у колонки. Нужно минимум 6 записей, лучше 10–15.</p>
+          <button class="btn sm" id="ww-take">Записать</button><div id="ww-takes" class="ww-takes"></div></div>
+        <div class="ww-step"><div class="ww-step-head"><b>3. Обычная речь (по желанию)</b><span class="meta" id="ww-speech-state"></span></div>
+          <p>20 секунд обычной речи — чтобы слово не путалось с ней.</p><button class="btn sm" id="ww-speech">Записать речь</button></div>
+        <div class="ww-step"><div class="ww-step-head"><b>4. Обучение</b><span class="meta" id="ww-train-state"></span></div>
+          <p>2–3 минуты на колонке.</p><button class="btn sm primary" id="ww-train">Обучить</button>
+          <div class="ww-progress"><span id="ww-train-bar"></span></div></div>
+      </div>
+    </section>
+    <section class="card" id="ww-hits-card" hidden>
+      <div class="card-head"><h2>Последние срабатывания</h2></div>
+      <div id="ww-hits" class="ww-hits"></div>
+    </section>
   </main>
 
   <main id="tab-radio" data-page hidden>
@@ -3952,7 +4017,7 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(PanelContext.storageKey(k), v); } catch {} },
 };
 // 'radio' временно убрана из списка вкладок вместе с пунктом меню; код вкладки остаётся
-const TABS = ['overview', 'player', 'led', 'alarm', 'scenes', 'assistant', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
+const TABS = ['overview', 'player', 'led', 'alarm', 'scenes', 'assistant', 'wakeword', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
 let bootLoaded = false;
 let logsLoaded = false;
 let shownTab = null;
@@ -4018,6 +4083,7 @@ function showTab() {
   }
   if (tab === 'console') setTimeout(() => { termConnect(); try { termFit?.fit(); } catch {} term?.focus(); }, 0);
   if (tab === 'boot' && !bootLoaded) { bootLoaded = true; loadBoot(); }
+  if (tab === 'wakeword' && window.wwLoad) window.wwLoad();
   loadHook();
   if (tab === 'apps') { loadYam2(); loadYam(); }
   if (tab === 'alarm') loadAlarms();
@@ -7398,6 +7464,151 @@ voiceInput = bindVoiceInput(document, { store, ready: () => !!(online && mu.info
 
   redraw();
 })();
+</script>
+<script>
+// ---------- слова активации: тонкий клиент к API демона tangenx/wakeword ----------
+let ww = null, wwTimer = 0;
+const wwOn = () => !!(ww && ww.installed && ww.supported);
+
+async function wwApi(path, method = 'GET', body = null) {
+  if (method === 'GET') {
+    const r = await PanelContext.fetch('/api/wakeword/proxy?path=' + encodeURIComponent(path));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    return d;
+  }
+  const r = await PanelContext.fetch('/api/wakeword/proxy', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, method, body }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+
+async function wwPlay(path) {
+  const r = await PanelContext.fetch('/api/wakeword/proxy?path=' + encodeURIComponent(path));
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  const url = URL.createObjectURL(await r.blob());
+  const a = new Audio(url);
+  a.onended = () => URL.revokeObjectURL(url);
+  await a.play();
+}
+
+function wwRender() {
+  const nav = $('#nav-wakeword');
+  if (nav) nav.hidden = !(ww && ww.installed && ww.supported);
+  if (!ww) return;
+  const on = wwOn(), running = !!ww.running;
+  const badge = $('#ww-badge');
+  badge.textContent = !ww.installed ? 'не установлен' : !ww.supported ? 'не поддерживается' : running ? 'работает' : 'остановлен';
+  badge.classList.toggle('on', on && running);
+  $('#ww-hint').textContent = !ww.installed
+    ? 'Пакет tangenx/wakeword не установлен. Установите его в «Приложения» → YAM 2, затем вернитесь сюда.'
+    : !ww.supported ? `Плагин не поддерживает эту модель (${ww.platform || '?'}).`
+    : ww.error ? `Демон не отвечает: ${ww.error}`
+    : running ? 'Демон работает. Запись и обучение идут с микрофонов колонки — говорите рядом с ней.'
+    : 'Демон установлен, но не запущен — нажмите «Запустить».';
+  $('#ww-start').hidden = !on || running;
+  $('#ww-stop').hidden = !on || !running;
+  $('#ww-words-card').hidden = !on || !running;
+
+  const a = ww.audio || {};
+  $('#ww-audio').hidden = !on || !running;
+  const db = Number.isFinite(+a.level) ? +a.level : -60;
+  const lvl = Math.max(0, Math.min(1, (db + 60) / 60));
+  $('#ww-meter').style.width = Math.round(lvl * 100) + '%';
+  $('#ww-audio-text').textContent = !a.ok
+    ? (a.error || 'нет аудио с микрофона — проверьте, что микрофон колонки включён')
+    : `микрофон ${a.channel || 'vqe_0'} · уровень ${db.toFixed(0)} дБ`;
+
+  const words = ww.words || [];
+  $('#ww-words').innerHTML = words.length ? words.map(w => {
+    const id = esc(w.id), sens = Math.round((+w.sensitivity || 0) * 100);
+    return `<div class="ww-word">
+      <div class="ww-word-main"><b>${esc(w.name)}</b><span class="meta">${w.takes || 0} записей · порог ${(+w.threshold || 0).toFixed(2)} · ложных ${(+w.false_per_h || 0).toFixed(1)}/ч · сейчас ${Math.round((+w.score || 0) * 100)}%</span></div>
+      <label class="meta"><input type="checkbox" class="switch" data-ww-enable="${id}" ${w.enabled ? 'checked' : ''}> вкл</label>
+      <label class="ww-sens">чувствительность <input type="range" min="-30" max="30" step="1" value="${Math.max(-30, Math.min(30, sens))}" data-ww-sens="${id}"></label>
+      <button class="btn sm" data-ww-retrain="${id}">Переобучить</button>
+      <button class="btn sm danger" data-ww-del="${id}">Удалить</button>
+    </div>`;
+  }).join('') : '<p class="hint">Слов пока нет. Нажмите «Добавить слово».</p>';
+
+  const e = ww.enroll;
+  $('#ww-enroll-card').hidden = !on || !e;
+  if (e) {
+    $('#ww-enroll-name').textContent = e.name || '';
+    $('#ww-ambient-state').textContent = e.has_ambient ? 'фон записан' : '';
+    const takes = e.takes || [];
+    $('#ww-takes-state').textContent = `${takes.length} из ${e.min_takes || 6}`;
+    $('#ww-takes').innerHTML = takes.map((sec, i) => `<div class="ww-take"><span>${i + 1}: ${(+sec).toFixed(2)} с</span><span><button class="btn sm" data-ww-take-play="${i}">▶</button> <button class="btn sm danger" data-ww-take-del="${i}">×</button></span></div>`).join('');
+    $('#ww-speech-state').textContent = e.speech_secs ? `${(+e.speech_secs).toFixed(0)} с` : '';
+  }
+  const tr = ww.train || {};
+  $('#ww-train-state').textContent = tr.active ? `${tr.stage || 'обучение'} · ${Math.round((+tr.frac || 0) * 100)}%`
+    : tr.error ? tr.error : tr.done ? 'готово' : '';
+  $('#ww-train-bar').style.width = tr.active ? Math.round((+tr.frac || 0) * 100) + '%' : '0';
+
+  const hits = ww.hits || [];
+  $('#ww-hits-card').hidden = !on || !running || !hits.length;
+  $('#ww-hits').innerHTML = hits.slice(0, 12).map(h => `<div class="ww-hit">
+    <span>${esc(h.name || h.word)} · ${Math.round((+h.score || 0) * 100)}% · ${new Date(h.at).toLocaleTimeString()}</span>
+    <span><button class="btn sm" data-ww-hit-play="${h.id}">▶</button> <button class="btn sm" data-ww-hit-false="${h.id}">Ложное</button></span></div>`).join('');
+}
+
+async function wwLoad() {
+  clearTimeout(wwTimer);
+  try { ww = await api('/api/wakeword/status'); }
+  catch (e) { ww = { installed: false, supported: false, error: e.message }; }
+  wwRender();
+  if (wwOn() && ww.running && !$('#tab-wakeword').hidden) {
+    const busy = !!ww.enroll || !!(ww.train && ww.train.active);
+    wwTimer = setTimeout(wwLoad, busy ? 700 : 3000);
+  }
+}
+window.wwLoad = wwLoad;
+
+$('#ww-refresh').onclick = () => wwLoad();
+$('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start'); wwRender(); }, 'Демон запущен');
+$('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop'); wwRender(); }, 'Демон остановлен');
+$('#ww-listen').onclick = e => act(e.currentTarget, () => wwApi('/api/listen', 'POST'), 'Слушаю');
+$('#ww-add').onclick = () => {
+  const name = prompt('Название слова активации');
+  if (!name || !name.trim()) return;
+  act(null, async () => { await wwApi('/api/enroll/start', 'POST', { name: name.trim() }); await wwLoad(); }, 'Записываем «' + name.trim() + '»');
+};
+$('#ww-ambient').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/ambient', 'POST'); await wwLoad(); }, 'Фон записан');
+$('#ww-take').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/take', 'POST'); await wwLoad(); }, 'Запись готова');
+$('#ww-speech').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/speech?secs=20', 'POST'); await wwLoad(); }, 'Речь записана');
+$('#ww-train').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/train', 'POST'); await wwLoad(); }, 'Обучение запущено');
+$('#ww-cancel').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/cancel', 'POST'); await wwLoad(); }, 'Отменено');
+
+$('#ww-words').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.wwEnable) {
+    act(null, async () => { await wwApi('/api/words/' + encodeURIComponent(t.dataset.wwEnable), 'POST', { enabled: t.checked }); await wwLoad(); });
+  } else if (t.dataset.wwSens) {
+    act(null, async () => { await wwApi('/api/words/' + encodeURIComponent(t.dataset.wwSens), 'POST', { sensitivity: (+t.value) / 100 }); await wwLoad(); });
+  }
+});
+$('#ww-words').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.wwRetrain) act(b, async () => { await wwApi('/api/words/' + encodeURIComponent(b.dataset.wwRetrain) + '/retrain', 'POST'); await wwLoad(); }, 'Переобучаю…');
+  if (b.dataset.wwDel && confirm('Удалить слово со всеми записями?'))
+    act(b, async () => { await wwApi('/api/words/' + encodeURIComponent(b.dataset.wwDel), 'DELETE'); await wwLoad(); }, 'Слово удалено');
+});
+$('#ww-takes').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.wwTakePlay) act(b, () => wwPlay('/api/enroll/take/' + b.dataset.wwTakePlay));
+  if (b.dataset.wwTakeDel) act(b, async () => { await wwApi('/api/enroll/take/' + b.dataset.wwTakeDel, 'DELETE'); await wwLoad(); });
+});
+$('#ww-hits').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.wwHitPlay) act(b, () => wwPlay('/api/hits/' + b.dataset.wwHitPlay));
+  if (b.dataset.wwHitFalse) act(b, async () => { await wwApi('/api/hits/' + b.dataset.wwHitFalse + '/false', 'POST'); await wwLoad(); }, 'Запомнил как ложное');
+});
+
+wwLoad();
 </script>
 <script src="static/vendor/qrcode.js"></script>
 <script src="static/vendor/xterm/xterm.js"></script>
