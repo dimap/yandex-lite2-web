@@ -1244,6 +1244,10 @@
           <div class="set-ctl"><div class="tile-picks" id="set-tiles"></div></div></div>
         <label class="set-item"><div class="set-label"><b>Визуализатор за 3D-моделью</b><small>Спектр из символов за моделью, пока колонка играет музыку (нужен вход в Яндекс)</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz"></div></label>
+        <label class="set-item"><div class="set-label"><b>Вид визуализатора</b><small>Лучи из центра, кольца от модели или спектр по кругу — цвет берётся из акцента темы</small></div>
+          <div class="set-ctl"><select class="field" id="set-viz-style" aria-label="Вид визуализатора">
+            <option value="rays">Лучи</option><option value="rings">Кольца</option><option value="orbit">Спектр по кругу</option>
+          </select></div></label>
         <label class="set-item"><div class="set-label"><b>Фон в покое</b><small>Пока музыка не играет, символы за моделью медленно переливаются</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz-idle"></div></label>
         <label class="set-item" id="viz-row"><div class="set-label"><b>Живой спектр с колонки</b><small>Экспериментально: визуализатор показывает настоящий звук, который играет усилитель колонки, а не имитацию.
@@ -4635,8 +4639,11 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
     // Настоящий спектр с колонки, если он свежий: сглаживаем полосы, пульс — от общей громкости.
     const sp = window.__spectrum, live = !!sp && now - sp.t < 700;
     if (live) sp.bands.forEach((b, k) => { sb[k] += (b - sb[k]) * 0.35; }); else sb.forEach((_, k) => { sb[k] *= 0.9; });
-    const loud = (sb[0] + sb[1] + sb[2] + sb[3]) / 4;
-    const pulse = live ? 0.45 + 0.75 * loud : 0.55 + 0.45 * beat;
+    // Без живого спектра, но пока играет, рисуем синтетические полосы — чтобы стили не пустовали.
+    const bands = live ? sb : [0, 1, 2, 3].map(k => 0.22 + 0.55 * Math.max(0, Math.sin(t * (1.1 + k * .8) + k * 2.1)) * (0.45 + 0.55 * beat));
+    const loud = (bands[0] + bands[1] + bands[2] + bands[3]) / 4;
+    const pulse = live ? 0.55 + 0.55 * loud : 0.55 + 0.45 * beat;
+    const style = window.__vizStyle || 'rays';
     ctx.clearRect(0, 0, cw, ch);
     if (energy < 0.02 && idle < 0.02) return;
     ctx.font = `${FS}px 'JetBrains Mono', monospace`;
@@ -4648,17 +4655,31 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
       for (let x = colW / 2; x < cw; x += colW) {
         const dx = x - cx, dy = y - cy;
         const r = Math.hypot(dx, dy) / maxR, a = Math.atan2(dy, dx);
-        // дальность луча в этом направлении: по спектру (4 полосы по кругу, зеркально сверху и снизу —
-        // справа низкие частоты, слева высокие) или, без него, несколько «частот» по углу
-        let amp;
-        if (live) {
-          const u = Math.abs(a) / Math.PI * 3, k = Math.min(2, Math.floor(u)), f = u - k;
-          amp = 0.2 + 0.95 * (sb[k] * (1 - f) + sb[k + 1] * f) + 0.06 * Math.sin(a * 9 + t * 2);
-        } else amp = 0.4 + 0.22 * Math.sin(a * 3 + t * 1.3) + 0.18 * Math.sin(a * 7 - t * 2.1) + 0.12 * Math.sin(a * 13 + t * 3.7);
-        // Лучи идут прямо из центра и редеют к концу.
-        const reach = (0.42 + 0.5 * amp * pulse) * energy;
-        let v = r < reach ? 1 - (r / reach) ** 2 : 0;
-        v = Math.max(v, Math.max(0, Math.sin(r * 16 - t * 3.4)) ** 3 * 0.5 * energy * (1 - r));   // волны-кольца
+        const u = Math.abs(a) / Math.PI * 3, k = Math.min(2, Math.floor(u)), f = u - k;
+        const band = bands[k] * (1 - f) + bands[k + 1] * f;   // полоса по направлению, зеркально
+        let v = 0;
+        if (style === 'rings') {
+          // Кольца расходятся от модели к краю; яркость кольца — его полоса.
+          for (let i = 0; i < 4; i++) {
+            const frac = (t * 0.18 + i * 0.25) % 1;
+            const rad = 0.24 + 0.72 * frac, wide = 0.012 + 0.09 * bands[i] * (1 - frac * 0.5);
+            const d = Math.abs(r - rad);
+            if (d < wide) v = Math.max(v, (1 - d / wide) * (0.3 + 0.7 * bands[i]) * (1 - frac * 0.35) * energy);
+          }
+        } else if (style === 'orbit') {
+          // Спектр по кругу: полосы — столбики наружу от модели, как эквалайзер вокруг неё.
+          const inner = 0.3, len = 0.1 + 0.5 * band;
+          if (r > inner && r < inner + len) {
+            const edge = Math.min(1, (r - inner) / 0.04 + 0.4) * Math.min(1, (inner + len - r) / 0.04 + 0.4);
+            v = (0.2 + 0.8 * band) * Math.min(1, edge) * energy;
+            if (r > inner + len - 0.07) v = Math.min(1, v + 0.3 * band * energy);   // яркий кончик
+          }
+        } else {
+          // Лучи из центра: дальность зависит от полосы в этом направлении.
+          const reach = (0.5 + 0.45 * band * pulse) * energy;
+          v = r < reach ? 1 - (r / reach) ** 2 : 0;
+          v = Math.max(v, Math.max(0, Math.sin(r * 16 - t * 3.4)) ** 3 * 0.5 * energy * (1 - r));   // волны-кольца
+        }
         if (idle) {
           const wave = 0.78 + 0.12 * Math.sin(a * 3 + ti * 0.8) + 0.07 * Math.sin(a * 7 - ti);
           // сплошное пятно из центра; крупнее модели, чтобы край выходил из-за корпуса
@@ -5310,12 +5331,14 @@ function applyUI() {
                         ['--accent-soft', accent && `color-mix(in srgb, ${accent} 15%, var(--card))`]])
     v ? root.style.setProperty(k, v) : root.style.removeProperty(k);
   window.__vizOff = store.get('ui.viz') === '0';
+  window.__vizStyle = store.get('ui.vizStyle') || 'rays';
   $$('#set-theme button').forEach(b => b.classList.toggle('active', b.dataset.v === theme));
   const glow = store.get('ui.glow') || 'cursor';
   if (glow === 'off') delete root.dataset.glow; else root.dataset.glow = glow;
   $$('#set-glow button').forEach(b => b.classList.toggle('active', b.dataset.v === glow));
   $$('#set-accent .sw').forEach(b => b.classList.toggle('sel', b.dataset.v === accent));
   $('#set-viz').checked = !window.__vizOff;
+  $('#set-viz-style').value = window.__vizStyle;
   window.__vizIdleOff = store.get('ui.vizIdle') === '0';
   $('#set-viz-idle').checked = !window.__vizIdleOff;
   privateOff = store.get('ui.private') === '0';
@@ -5347,6 +5370,7 @@ document.addEventListener('pointermove', e => {
 }, { passive: true });
 $$('#set-accent .sw').forEach(b => b.onclick = () => { store.set('ui.accent', b.dataset.v); applyUI(); });
 $('#set-viz').onchange = e => { store.set('ui.viz', e.target.checked ? '1' : '0'); applyUI(); };
+$('#set-viz-style').onchange = e => { store.set('ui.vizStyle', e.target.value); applyUI(); };
 $('#set-viz-idle').onchange = e => { store.set('ui.vizIdle', e.target.checked ? '1' : '0'); applyUI(); };
 // Живой спектр с колонки: программа читает захват её усилителя, панель получает полосы потоком светодиодов.
 let vizLive = null;

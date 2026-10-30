@@ -35,13 +35,12 @@ const (
 	bandsCount  = 4
 	writeEvery  = 50 * time.Millisecond
 	statusLimit = 8 << 20
-	// Автоматическая громкость полос: опорный максимум в дБ, насколько он опускается за кадр и какой
-	// диапазон дБ считаем динамикой.
-	aFloor   = -60.0
-	refDecay = 0.35
-	refRange = 26.0
-	// Ниже этого уровня в полосе — не звук, а утечка окна: такую полосу не поднимаем AGC, а гасим.
-	gateDb = -55.0
+	// Автоматическая громкость: опорный уровень (дБ) по самой громкой полосе, насколько он опускается
+	// за кадр, какой диапазон дБ считаем динамикой и ниже какого уровня — цифровая тишина.
+	aFloor    = -85.0
+	refDecay  = 0.45
+	refRange  = 30.0
+	silenceDb = -80.0
 )
 
 // Полосы — поровну по логарифмической шкале 40 Гц … 16 кГц: визуализатору нужны четыре направления.
@@ -83,7 +82,7 @@ type analyzer struct {
 	cos, sin     []float64
 	rev          []int
 	env          [bandsCount]float64
-	ref          [bandsCount]float64 // медленный максимум полосы, дБ: по нему считаем динамику
+	ref          float64 // медленный опорный уровень (дБ) по самой громкой полосе: по нему считаем динамику
 	binLo, binHi [bandsCount]int
 	binHz        float64
 }
@@ -99,9 +98,7 @@ func newAnalyzer(n int, rate float64) *analyzer {
 		a.window[i] = 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/float64(n-1))
 		a.rev[i] = reverseBits(i, bits)
 	}
-	for b := 0; b < bandsCount; b++ {
-		a.ref[b] = aFloor
-	}
+	a.ref = aFloor
 	for i := 0; i < n/2; i++ {
 		a.cos[i] = math.Cos(-2 * math.Pi * float64(i) / float64(n))
 		a.sin[i] = math.Sin(-2 * math.Pi * float64(i) / float64(n))
@@ -182,6 +179,10 @@ func (a *analyzer) bands(samples []int16) (out [bandsCount]float64, rms, peak fl
 	rms = math.Sqrt(sum/float64(len(samples))) / 32768
 	peak /= 32768
 	a.fft()
+	// Сначала все полосы в дБ: общий опорный уровень считаем по самой громкой из них, чтобы тихая
+	// громкость колонки не влияла — иначе при тихом прослушивании сигнал пропадал.
+	var dbs [bandsCount]float64
+	maxDb := -200.0
 	for b := 0; b < bandsCount; b++ {
 		// Максимум по бинам, а не среднее: среднее по сотням бинов верхней полосы размывало узкий тон
 		// так, что он не проходил порог. Для визуализатора важна самая громкая составляющая полосы.
@@ -192,18 +193,23 @@ func (a *analyzer) bands(samples []int16) (out [bandsCount]float64, rms, peak fl
 			}
 		}
 		// дБ относительно полной шкалы 32768: без этого полосы всегда были «громче нуля» и упирались в 1.
-		db := 20 * math.Log10(amp/32768+1e-9)
-		// Автоматическая громкость: захват кодека даёт ~13× усиления, поэтому абсолютные дБ почти всегда
-		// упирались бы в 1 и узор стоял бы на максимуме. Считаем относительно недавнего максимума полосы:
-		// недавний пик — 1, на 26 дБ тише — 0. Максимум поднимается сразу, опускается медленно (~7 дБ/с).
-		if db > a.ref[b] {
-			a.ref[b] = db
-		} else if a.ref[b] -= refDecay; a.ref[b] < aFloor {
-			a.ref[b] = aFloor
+		dbs[b] = 20 * math.Log10(amp/32768+1e-9)
+		if dbs[b] > maxDb {
+			maxDb = dbs[b]
 		}
+	}
+	// Опорный уровень: поднимается сразу, опускается медленно (~9 дБ/с). Ниже него — тишина, выше —
+	// динамика refRange дБ. Абсолютный порог только для настоящей цифровой тишины (−1 LSB ≈ −90 дБ).
+	if maxDb > a.ref {
+		a.ref = maxDb
+	} else if a.ref -= refDecay; a.ref < aFloor {
+		a.ref = aFloor
+	}
+	silent := maxDb < silenceDb
+	for b := 0; b < bandsCount; b++ {
 		v := 0.0
-		if db > gateDb {
-			v = math.Max(0, math.Min(1, (db-(a.ref[b]-refRange))/refRange))
+		if !silent {
+			v = math.Max(0, math.Min(1, (dbs[b]-(a.ref-refRange))/refRange))
 		}
 		// быстрая атака, медленное затухание — как у обычных эквалайзеров
 		k := 0.55

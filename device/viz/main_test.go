@@ -90,12 +90,17 @@ func TestSilenceAndLevelsAreInRange(t *testing.T) {
 }
 
 func TestAgcLiftsQuietSignalAndShowsDrop(t *testing.T) {
-	// Тихая музыка не должна пропадать: AGC поднимает её к 1.
+	// Тихая музыка не должна пропадать: опорный уровень общий, поэтому громкость прослушивания не важна.
 	a := newAnalyzer(fftSize, sampleRate)
 	out, _, _ := settle(a, sineAmp(500, 300, fftSize))
 	best := bestBand(out)
 	if out[best] < 0.8 {
 		t.Fatalf("тихий тон не поднялся: %v", out)
+	}
+	// Совсем тихо (−70 дБ от полной шкалы) — тоже видно.
+	out, _, _ = settle(newAnalyzer(fftSize, sampleRate), sineAmp(500, 10, fftSize))
+	if out[bestBand(out)] < 0.8 {
+		t.Fatalf("очень тихий тон не поднялся: %v", out)
 	}
 	// А после громкого тот же тон на 20 дБ тише — уже заметно ниже: в этом и смысл динамики.
 	a = newAnalyzer(fftSize, sampleRate)
@@ -104,6 +109,17 @@ func TestAgcLiftsQuietSignalAndShowsDrop(t *testing.T) {
 	best = bestBand(out)
 	if out[best] > 0.6 || out[best] < 0.1 {
 		t.Fatalf("после громкого тихий тон: %v (полоса %d)", out, best)
+	}
+}
+
+func TestLoudAndQuietPlaybackLookTheSame(t *testing.T) {
+	// Один и тот же сигнал на разной громкости колонки должен давать одинаковые полосы.
+	loud, _, _ := settle(newAnalyzer(fftSize, sampleRate), sineAmp(500, 20000, fftSize))
+	quiet, _, _ := settle(newAnalyzer(fftSize, sampleRate), sineAmp(500, 200, fftSize))
+	for i := range loud {
+		if math.Abs(loud[i]-quiet[i]) > 0.1 {
+			t.Fatalf("громкость влияет на полосы: громко %v, тихо %v", loud, quiet)
+		}
 	}
 }
 
