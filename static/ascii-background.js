@@ -98,11 +98,11 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
           }
         }
       } else {
-        const reach = (wave + .08 + band * .45) * .9;
+        const reach = (wave + .08 + band * .45) * (live ? .9 : 1);
         v = Math.max(0, 1 - (r / reach) ** 2);
       }
       if (v < .07) continue;
-      ctx.globalAlpha = .7 * Math.min(.8 * alpha, v * (active ? .45 + .9 * loud : .5) * alpha);
+      ctx.globalAlpha = (live ? .7 : 1) * Math.min(.8 * alpha, v * (active ? .45 + .9 * loud : .5) * alpha);
       ctx.fillText(ramp[Math.min(ramp.length - 1, Math.floor(v * ramp.length))], x, y);
     }
     ctx.globalAlpha = 1;
