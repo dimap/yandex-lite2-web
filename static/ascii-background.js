@@ -71,13 +71,13 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
           if (d < wide) v = Math.max(v, Math.pow(1 - d / wide, .7) * alpha);
         }
       } else if (style === 'orbit') {
-        const inner = .62, len = .08 + .3 * bandQuad;
+        const inner = .70, len = .08 + .28 * bandQuad;
         if (rn > inner && rn < inner + len) {
-          const edge = Math.min(1, (rn - inner) / .04 + .4) * Math.min(1, (inner + len - rn) / .04 + .4);
-          v = (.2 + .8 * bandQuad) * Math.min(1, edge);
-          if (rn > inner + len - .06) v = Math.min(1, v + .3 * bandQuad);
+          const t = (rn - inner) / len;
+          const endFade = Math.max(0, Math.min(1, (1.02 - rn) / .12));
+          v = (.25 + .75 * bandQuad) * (1 - .45 * t) * endFade;
         }
-        if (Math.abs(rn - inner) < .012) v = Math.max(v, .12 * (.4 + .6 * bandQuad));
+        if (Math.abs(rn - inner) < .012) v = Math.max(v, .14 * (.4 + .6 * bandQuad));
       } else {
         const reach = wave + .08 + band * .45;
         v = Math.max(0, 1 - (r / reach) ** 2);

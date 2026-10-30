@@ -4689,14 +4689,15 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
           }
         } else if (style === 'orbit') {
           // Столбики наружу от модели; один сектор 90° и его зеркала по горизонтали и вертикали.
-          // Начинаем за корпусом (0.62), длина — до края виджета по меньшей стороне.
-          const inner = 0.62, len = 0.08 + 0.3 * bandQuad;
+          // Начинаем дальше от центра (0.70), а к концу столбик плавно гаснет, чтобы веер не
+          // выглядел заливкой на всю площадь.
+          const inner = 0.70, len = 0.08 + 0.28 * bandQuad;
           if (rn > inner && rn < inner + len) {
-            const edge = Math.min(1, (rn - inner) / 0.04 + 0.4) * Math.min(1, (inner + len - rn) / 0.04 + 0.4);
-            v = (0.2 + 0.8 * bandQuad) * Math.min(1, edge) * energy;
-            if (rn > inner + len - 0.06) v = Math.min(1, v + 0.3 * bandQuad * energy);   // яркий кончик
+            const t = (rn - inner) / len;
+            const endFade = Math.max(0, Math.min(1, (1.02 - rn) / 0.12));
+            v = (0.25 + 0.75 * bandQuad) * (1 - 0.45 * t) * endFade * energy;
           }
-          if (Math.abs(rn - inner) < 0.012) v = Math.max(v, 0.12 * energy * (0.4 + 0.6 * bandQuad));
+          if (Math.abs(rn - inner) < 0.012) v = Math.max(v, 0.14 * energy * (0.4 + 0.6 * bandQuad));
         } else {
           // Лучи из центра: дальность зависит от полосы в этом направлении.
           const reach = (0.46 + 0.5 * band) * energy * (0.85 + 0.3 * loud);
