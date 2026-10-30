@@ -419,6 +419,24 @@ def initd_hook_script():
             f"[ \"$1\" = start ] || exit 0\n[ -x {BOOT_HOOK} ] && {BOOT_HOOK}\nexit 0\n")
 
 
+# /etc/init.d лежит на корне, который у колонки в рантайме только для чтения: свои S99z* туда в своё время
+# положил способ рута, перемонтировав корень на время записи. Панель делает то же — но только по явному
+# действию пользователя («Подключить хук») и всегда возвращает корень обратно в ro.
+ROOT_RW = "mount -o remount,rw / 2>/dev/null || mount -o remount,rw ubi0:rootfs /"
+ROOT_RO = "mount -o remount,ro / 2>/dev/null"
+
+
+def with_root_rw(script):
+    """sh: выполнить с корнем, перемонтированным в rw, и вернуть ro — даже если внутри ошибка."""
+    return f"{{ {ROOT_RW}; }} >/dev/null 2>&1; {{ {script}; }}; rc=$?; {{ {ROOT_RO}; }} >/dev/null 2>&1; exit $rc"
+
+
+def initd_write():
+    """sh: положить свой сценарий автозапуска в init.d (чужие файлы и свой свежий не трогаем)."""
+    return (f"grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null || "
+            f"{{ printf '%s' {shlex.quote(initd_hook_script())} > {INITD_HOOK} && chmod 755 {INITD_HOOK}; }} || exit 4")
+
+
 def initd_writable():
     """sh: в init.d можно писать. Пробуем по-настоящему: test -w у busybox для root не видит, что раздел только для чтения."""
     return f"{{ touch {INITD_DIR}/.webpanel_w 2>/dev/null && rm -f {INITD_DIR}/.webpanel_w; }}"
@@ -430,9 +448,11 @@ def hook_active():
 
 
 def hook_drop():
-    """sh: снять хук — строку из rootkeeper.sh (и созданный нами файл), свой скрипт из init.d."""
+    """sh: снять хук — строку из rootkeeper.sh (и созданный нами файл), свой скрипт из init.d.
+    init.d на корне только для чтения — файл убираем тем же коротким перемонтированием, как положили."""
     return (f"[ -f {ROOTKEEPER} ] && sed -i '/{HOOK_MARK}/d' {ROOTKEEPER}; {ROOTKEEPER_DROP_CREATED}; "
-            f"grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null && rm -f {INITD_HOOK}")
+            f"grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null && "
+            f"{{ rm -f {INITD_HOOK} 2>/dev/null || {with_root_rw(f'rm -f {INITD_HOOK} 2>/dev/null')}; true; }}")
 
 
 # Сегменты 7-сегментного индикатора: A — верх, B — верх-право, C — низ-право,
@@ -2204,16 +2224,19 @@ echo @@BLUEZ
                 res["frames"] = decode_clock_pattern(".binscled.zst", self.adb.read_bytes(BOOT_CUSTOM))
         return res
 
-    def _ensure_hook(self):
+    def _ensure_hook(self, remount=False):
         """Кладёт свежий хук и подключает его к rootkeeper.sh.
 
         rootkeeper.sh запускается из onboot.sh раньше, чем Quasar читает анимации и звуки, — это
         единственная точка запуска при загрузке, которая живёт в /data. Перед правкой сохраняем копию.
+        remount — rootkeeper.sh нет, а /etc/init.d на корне только для чтения: положить туда свой
+        S99zwebpanel, на секунду перемонтировав корень в rw (только по явному действию пользователя).
         """
         with tempfile.TemporaryDirectory() as td:
             write_unix(Path(td) / "hook", BOOT_HOOK_SCRIPT)
             self.adb.shell(f"mkdir -p {WEB_DIR}")
             self.adb.push(Path(td) / "hook", BOOT_HOOK)
+        remount_branch = f"elif {with_root_rw(initd_write())}; then :; " if remount else ""
         _, err, rc = self.adb.shell(
             f"chmod 755 {BOOT_HOOK}; "
             f"if [ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null; then "
@@ -2223,13 +2246,12 @@ echo @@BLUEZ
             f"[ -f {ROOTKEEPER}.webpanel.bak ] || cp {ROOTKEEPER} {ROOTKEEPER}.webpanel.bak; "
             f"grep -q '{HOOK_MARK}' {ROOTKEEPER} || "
             f"sed -i '1a [ -x {BOOT_HOOK} ] && {BOOT_HOOK} {HOOK_MARK}' {ROOTKEEPER}; "
-            f"elif {initd_writable()}; then "
-            f"grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null || "
-            f"{{ printf '%s' {shlex.quote(initd_hook_script())} > {INITD_HOOK} && chmod 755 {INITD_HOOK}; }} || exit 4; "
+            f"elif {initd_writable()}; then {initd_write()}; "
+            + remount_branch +
             f"else exit 3; fi", check=False)
         if rc == 3:
             raise AdbError(f"нет {ROOTKEEPER}, штатная загрузка ({ROOTKEEPER_CALLER}) его не вызывает, а /etc/init.d "
-                           "только для чтения: подключить к загрузке не к чему")
+                            "только для чтения: подключить к загрузке не к чему")
         if rc != 0:
             raise AdbError(err.strip() or "не удалось подключить хук к загрузке")
 
@@ -2261,8 +2283,10 @@ echo @@BLUEZ
                 "broken": bool(users) and not (hook and fresh), "rootkeeper": ROOTKEEPER,
                 "file": INITD_HOOK if "initd" in flags else ROOTKEEPER}
 
-    def hook_repair(self):
-        self._ensure_hook()
+    def hook_repair(self, remount=False):
+        """Подключить/обновить хук. remount — корень только для чтения: положить свой скрипт в init.d,
+        коротко перемонтировав корень (кнопка в панели спрашивает подтверждение)."""
+        self._ensure_hook(remount=bool(remount))
         return self.hook_status()
 
     def _drop_hook_if_unused(self):
@@ -5403,7 +5427,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/anim/reset": lambda: p.anim_reset(d.get("kind"), d.get("name")),
             "/api/anim/my": lambda: p.my_anim_save(d.get("kind"), d.get("name"), d.get("frames"), d.get("text")),
             "/api/anim/my/delete": lambda: p.my_anim_delete(d.get("kind"), d.get("name")),
-            "/api/hook/repair": p.hook_repair,
+            "/api/hook/repair": lambda: p.hook_repair(bool(d.get("remount"))),
             "/api/ring/try": lambda: p.ring_try(d.get("text"), d.get("seconds", 5)),
             "/api/clock/boot": lambda: p.boot_install(d["frames"]),
             "/api/clock/boot/reset": p.boot_reset,

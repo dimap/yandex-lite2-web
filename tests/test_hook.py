@@ -1,4 +1,5 @@
 """Подключение хука к загрузке: команды выполняются настоящим sh во временной папке вместо колонки."""
+import os
 import shutil
 import subprocess
 import sys
@@ -102,6 +103,41 @@ class RootkeeperHook(unittest.TestCase):
         self.panel._ensure_hook()
         self.assertIn(server.HOOK_MARK, self.keeper.read_text())
         self.assertFalse((self.initd / "S99zwebpanel").exists())
+
+    def test_readonly_initd_gets_script_by_remount_and_drops_cleanly(self):
+        # Корень колонки в рантайме только для чтения: rootkeeper.sh нет, /etc/init.d не пишется, v0.2.0
+        # тут честно отказывала. Хук кладём в init.d коротким перемонтированием rw→ro (mount подменён),
+        # откат («выключить последнюю свою функцию», «Убрать всё») убирает файл тем же способом.
+        self.caller.write_text("echo nothing\n")
+        self.initd.chmod(0o755)
+        (self.initd / "S99zdropbear").write_text("#!/bin/sh\n")   # чужой скрипт рута — не трогаем
+        self.initd.chmod(0o555)
+        bindir = self.root / "bin"
+        bindir.mkdir()
+        (bindir / "mount").write_text(
+            "#!/bin/sh\n"
+            f'case "$*" in *remount,rw*) chmod 755 {self.initd};; *remount,ro*) chmod 555 {self.initd};; esac\n'
+            "exit 0\n")
+        (bindir / "mount").chmod(0o755)
+        path = {"PATH": f"{bindir}:{os.environ['PATH']}"}
+        with patch.dict("os.environ", path):
+            with self.assertRaises(server.AdbError):
+                self.panel._ensure_hook()                    # без перемонтирования — отказ, файл не появился
+            self.assertFalse((self.initd / "S99zwebpanel").exists())
+            self.panel.hook_repair(remount=True)             # с перемонтированием — кладём
+        script = self.initd / "S99zwebpanel"
+        self.assertEqual(script.read_text(), server.initd_hook_script())
+        self.assertEqual(oct(script.stat().st_mode)[-3:], "755")
+        self.assertEqual(oct(self.initd.stat().st_mode)[-3:], "555")   # корень вернулся в только-чтение
+        st = self.panel.hook_status()
+        self.assertTrue(st["hook"] and st["broken"] is False)
+        self.assertEqual(st["file"], str(script))
+        self.assertFalse(st["possible"])                     # rootkeeper нет, init.d по-прежнему ro
+        with patch.dict("os.environ", path):
+            self.panel._drop_hook_if_unused()                # откат одной кнопкой — без adb и консоли
+        self.assertFalse(script.exists())
+        self.assertTrue((self.initd / "S99zdropbear").exists())
+        self.assertEqual(oct(self.initd.stat().st_mode)[-3:], "555")
 
     def test_existing_rootkeeper_keeps_its_own_lines(self):
         self.keeper.write_text("#!/bin/sh\nstart_root_things\n")
