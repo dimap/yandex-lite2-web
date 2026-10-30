@@ -13,6 +13,7 @@ import contextlib
 import hashlib
 import io
 import json
+import math
 import os
 import platform
 import random
@@ -293,6 +294,65 @@ VIZ_RUN = f"exec {VIZD} >{VIZ_DIR}/viz.log 2>&1"
 VIZ_SRC = Path(__file__).resolve().parent / "device" / "viz"
 VIZ_ON = "/tmp/webpanel_viz.on"   # визуализатор включён в панели
 VIZ_BT = "/tmp/webpanel_viz.bt"   # идёт Bluetooth-переливание: полосы считает tap из того же потока
+
+# ---------- эквалайзер для Bluetooth-выхода ----------
+# Пресеты в виде полос (тип, частота, усиление дБ, добротность): tap на колонке получает готовые
+# коэффициенты биквадов и применяет их к потоку, который идёт в Bluetooth-колонку.
+EQ_FILE = f"{VIZ_DIR}/eq.json"
+EQ_PRESETS = {
+    "flat": (),
+    "rock": (("lowshelf", 100, 3.0), ("peaking", 800, -2.0, 1.0), ("highshelf", 8000, 2.0)),
+    "electronic": (("lowshelf", 70, 4.0), ("peaking", 2500, 2.0, 1.0), ("highshelf", 10000, 2.0)),
+    "vocal": (("peaking", 2500, 3.0, 1.0), ("lowshelf", 120, -2.0), ("highshelf", 6000, 1.0)),
+    "night": (("lowshelf", 80, 3.0), ("highshelf", 6000, -3.0)),
+}
+
+
+def eq_coeffs(band, fs=48000):
+    """Коэффициенты биквада (b0,b1,b2,a1,a2) по формулам RBJ; уже нормированы на a0."""
+    kind, freq, gain = band[:3]
+    q = band[3] if len(band) > 3 else 0.7
+    a = 10 ** (gain / 40)
+    w = 2 * math.pi * freq / fs
+    cw, sw = math.cos(w), math.sin(w)
+    if kind == "peaking":
+        alpha = sw / (2 * q)
+        b0, b1, b2 = 1 + alpha * a, -2 * cw, 1 - alpha * a
+        a0, a1, a2 = 1 + alpha / a, -2 * cw, 1 - alpha / a
+    else:   # полки: S = 1 (стандартный наклон)
+        alpha = sw / 2 * math.sqrt(2.0)
+        k = 2 * math.sqrt(a) * alpha
+        if kind == "lowshelf":
+            b0 = a * ((a + 1) - (a - 1) * cw + k)
+            b1 = 2 * a * ((a - 1) - (a + 1) * cw)
+            b2 = a * ((a + 1) - (a - 1) * cw - k)
+            a0 = (a + 1) + (a - 1) * cw + k
+            a1 = -2 * ((a - 1) + (a + 1) * cw)
+            a2 = (a + 1) + (a - 1) * cw - k
+        else:
+            b0 = a * ((a + 1) + (a - 1) * cw + k)
+            b1 = -2 * a * ((a - 1) + (a + 1) * cw)
+            b2 = a * ((a + 1) + (a - 1) * cw - k)
+            a0 = (a + 1) - (a - 1) * cw + k
+            a1 = 2 * ((a - 1) - (a + 1) * cw)
+            a2 = (a + 1) - (a - 1) * cw - k
+    return (b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0)
+
+
+def eq_curve(preset, points=64, fs=48000):
+    """АЧХ пресета для графика: логарифмическая сетка 20 Гц … 20 кГц и дБ."""
+    coeffs = [eq_coeffs(b, fs) for b in EQ_PRESETS[preset]]
+    freqs = [20 * (20000 / 20) ** (i / (points - 1)) for i in range(points)]
+    db = []
+    for f in freqs:
+        w = 2 * math.pi * f / fs
+        z1 = complex(math.cos(w), -math.sin(w))
+        z2 = z1 * z1
+        h = 1 + 0j
+        for b0, b1, b2, a1, a2 in coeffs:
+            h *= (b0 + b1 * z1 + b2 * z2) / (1 + a1 * z1 + a2 * z2)
+        db.append(round(20 * math.log10(abs(h)), 1))
+    return freqs, db
 # Агент панели (device/agent): команды, файлы и консоль по TLS с токеном — рядом с adb, а не вместо него.
 # adb ставит, обновляет и чинит агента; агент молчит — панель работает через adb, как раньше.
 AGENT_DIR = f"{WEB_DIR}/agent"
@@ -4697,6 +4757,38 @@ echo @@BLUEZ
                 if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac) else "")
         self.adb.shell(f"{soft}amixer -D bluealsa sset {shlex.quote(m.group(1))} 100% >/dev/null", check=False)
 
+    def btout_eq_status(self):
+        """Текущий пресет эквалайзера и его АЧХ для графика (без записи на колонку)."""
+        preset = load_settings().get("eq_preset") or "flat"
+        if preset not in EQ_PRESETS:
+            preset = "flat"
+        freqs, db = eq_curve(preset)
+        return {"preset": preset, "presets": list(EQ_PRESETS),
+                "freqs": [round(f, 1) for f in freqs], "db": db}
+
+    def btout_eq(self, preset=None):
+        """Выбрать пресет (None — применить сохранённый) и положить коэффициенты для tap на колонке."""
+        s = load_settings()
+        if preset is None:
+            preset = s.get("eq_preset") or "flat"
+        preset = str(preset)
+        if preset not in EQ_PRESETS:
+            raise AdbError("неизвестный пресет эквалайзера")
+        s["eq_preset"] = preset
+        save_settings(s)
+        filters = [eq_coeffs(b) for b in EQ_PRESETS[preset]]
+        payload = {"enabled": preset != "flat",
+                   "filters": [dict(zip(("b0", "b1", "b2", "a1", "a2"), c)) for c in filters]}
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / "eq.json"
+            write_unix(f, json.dumps(payload, ensure_ascii=False))
+            self.adb.shell(f"mkdir -p {VIZ_DIR}", check=False)
+            self.adb.push(f, EQ_FILE + ".new")
+        self.adb.shell(f"chmod 644 {EQ_FILE}.new; mv {EQ_FILE}.new {EQ_FILE}", check=False)
+        st = self.btout_eq_status()
+        st["preset"] = preset
+        return st
+
     def _btout_last(self, devices):
         mac = getattr(self, "_btout_last_mac", None)
         if not mac:
@@ -4806,6 +4898,10 @@ echo @@BLUEZ
         # сторож дальше следит за подключением (подмена уже стоит — он её не трогает, пока колонка на связи)
         self.adb.shell(f"start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}")
         self._btout_volume_max()   # громкость BT-колонки в bluealsa — всегда 100 %
+        try:
+            self.btout_eq()        # сохранённый пресет эквалайзера — в tap
+        except Exception as e:     # noqa: BLE001 — без эквалайзера звук всё равно должен включиться
+            JOURNAL.add(f"Эквалайзер не применён: {e}", "warn")
         return {**self.bt_state(), "restarted": restarted}
 
     def btout_off(self):
@@ -5510,6 +5606,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/radio/search": lambda: p.radio_search(q.get("q", ""), q.get("country", "")),
             "/api/panel/version": lambda: self.updater.check(q.get("refresh") == "1"),
             "/api/bt": p.bt_state,
+            "/api/btout/eq": p.btout_eq_status,
             "/api/metrics": lambda: p.metrics.get(q.get("range", 3600)),
         }
         if u.path in routes:
@@ -5644,6 +5741,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/btout/scan": lambda: p.btout_scan(d.get("seconds", 12)),
             "/api/btout/use": lambda: p.btout_use(d.get("mac")),
             "/api/btout/off": p.btout_off,
+            "/api/btout/eq": lambda: p.btout_eq(d.get("preset")),
             "/api/system": lambda: p.system(d["action"]),
             "/api/fs/write": lambda: p.fs_write(d["path"], d["text"]),
             "/api/fs/delete": lambda: p.fs_delete(d["path"]),

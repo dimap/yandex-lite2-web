@@ -415,6 +415,10 @@
   .bt-pair.bt-out .info { flex: 1 1 100%; min-width: 0; }
   .bt-out .info .meta { display: block; margin-top: 2px; }
   .bt-out .actions { display: flex; flex-wrap: wrap; gap: 8px; flex-direction: row-reverse; justify-content: flex-end; }
+  .bt-eq { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-2); }
+  .bt-eq-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .bt-eq-head select { width: auto; min-width: 170px; }
+  .bt-eq canvas { display: block; width: 100%; height: 72px; margin-top: 8px; }
   .bt-pair .info { flex: 1; min-width: 0; }
   .bt-pair .info b { display: block; }
   .bt-left { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -1463,6 +1467,10 @@
           <div id="bt-out-pick" hidden>
             <p class="hint">Включите на Bluetooth-колонке режим сопряжения — панель поищет её рядом. Колонки и наушники — первыми.</p>
             <div class="bt-list" id="bt-out-list"></div>
+          </div>
+          <div class="bt-eq" id="bt-eq-row" hidden>
+            <div class="bt-eq-head"><b>Эквалайзер</b><select class="field" id="bt-eq" aria-label="Пресет эквалайзера"></select></div>
+            <canvas id="bt-eq-curve" width="360" height="72" aria-label="АЧХ эквалайзера"></canvas>
           </div>
         </section>
 
@@ -3543,6 +3551,7 @@ $('#bt-power').onchange = e => {
     .then(() => { if (btData) $('#bt-power').checked = btData.powered; });
 };
 // ---- звук через Bluetooth-колонку ----
+let btEq = null;
 function renderBtOut() {
   const o = btData?.out || { on: false }, last = !o.on && o.last;
   const self = `из колонки «${esc($('#model-name').textContent.trim() || 'Станция')}»`;   // откуда звук на самом деле
@@ -3558,7 +3567,46 @@ function renderBtOut() {
   $('#bt-out-btn').classList.toggle('primary', !o.on);
   $('#bt-out-other').hidden = !last;
   if (o.on) $('#bt-out-pick').hidden = true;
+  // эквалайзер имеет смысл только когда звук реально идёт в Bluetooth-колонку
+  const eqRow = $('#bt-eq-row');
+  eqRow.hidden = !(o.on && o.state === 'bt');
+  if (!eqRow.hidden && !btEq) loadBtEq();
 }
+// ---- эквалайзер Bluetooth-выхода ----
+const EQ_NAMES = { flat: 'Без изменений', rock: 'Рок', electronic: 'Электроника', vocal: 'Вокал / подкаст', night: 'Ночной' };
+async function loadBtEq() {
+  try { btEq = await api('/api/btout/eq'); renderBtEq(); } catch { btEq = null; }
+}
+function renderBtEq() {
+  if (!btEq) return;
+  const sel = $('#bt-eq');
+  const names = btEq.presets || Object.keys(EQ_NAMES);
+  if (sel.options.length !== names.length)
+    sel.innerHTML = names.map(v => `<option value="${v}">${EQ_NAMES[v] || v}</option>`).join('');
+  sel.value = btEq.preset;
+  const cv = $('#bt-eq-curve');
+  if (!cv) return;
+  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  ctx.clearRect(0, 0, w, h);
+  const css = getComputedStyle(document.documentElement);
+  const grid = css.getPropertyValue('--line-2').trim() || '#ddd';
+  const accent = css.getPropertyValue('--accent').trim() || '#e8590c';
+  const X = f => Math.log10(f / 20) / Math.log10(1000) * w;
+  const Y = d => h / 2 - d / 15 * (h / 2);
+  ctx.strokeStyle = grid; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2); ctx.stroke();
+  for (const f of [100, 1000, 10000]) { ctx.beginPath(); ctx.moveTo(X(f), 0); ctx.lineTo(X(f), h); ctx.stroke(); }
+  ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.beginPath();
+  (btEq.freqs || []).forEach((f, i) => { const x = X(f), y = Y(btEq.db[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.stroke();
+}
+$('#bt-eq').onchange = e => {
+  const preset = e.target.value, name = EQ_NAMES[preset] || preset;
+  act(e.target, async () => {
+    btEq = await api('/api/btout/eq', { preset });
+    renderBtEq();
+  }, 'Эквалайзер: ' + name);
+};
 // «Выбрать колонку» / «Другая колонка»: ищем рядом и показываем список
 function btOutScan(b) {
   const pick = $('#bt-out-pick'); pick.hidden = false;
@@ -4738,8 +4786,9 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
             }
           }
         } else {
-          // Лучи из центра: дальность зависит от полосы в этом направлении.
-          const reach = (0.46 + 0.5 * band) * energy * (0.85 + 0.3 * loud) * 0.9;
+          // Лучи из центра: дальность зависит от полосы в этом направлении. Живой спектр был ярче —
+          // для него и приглушение, и радиус меньше; фейковый оставляем заметным.
+          const reach = (0.46 + 0.5 * band) * energy * (0.85 + 0.3 * loud) * (live ? 0.9 : 1);
           v = r < reach ? 1 - (r / reach) ** 2 : 0;
           v = Math.max(v, Math.max(0, Math.sin(r * 16 - t * 3.4)) ** 3 * 0.5 * energy * (1 - r));   // волны-кольца
         }
@@ -4749,7 +4798,7 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
           v = Math.max(v, Math.max(0, 1 - (Math.hypot(dx, dy) / idleR / wave) ** 2) * 0.45 * idle);
         }
         if (v < 0.08) continue;
-        ctx.globalAlpha = 0.7 * Math.min(0.8, v * 0.85);
+        ctx.globalAlpha = (live ? 0.7 : 1) * Math.min(0.8, v * 0.85);
         ctx.fillText(RAMP[Math.min(RAMP.length - 1, Math.floor(v * RAMP.length))], x, y);
       }
     }

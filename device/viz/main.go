@@ -44,6 +44,7 @@ const (
 	// Визуализатор включён в панели; звук сейчас идёт через Bluetooth-колонку (полосы пишет tap).
 	onFlag = "/tmp/webpanel_viz.on"
 	btFlag = "/tmp/webpanel_viz.bt"
+	eqFile = "/data/quasar/webpanel/viz/eq.json"
 )
 
 // Полосы — поровну по логарифмической шкале 40 Гц … 16 кГц: визуализатору нужны четыре направления.
@@ -301,18 +302,28 @@ func run(ctx context.Context, device string) error {
 	return ctx.Err()
 }
 
-// runTap — режим для переливания звука в Bluetooth-колонку: читает PCM из stdin, отдаёт его без
-// изменений в stdout и, если визуализатор включён, считает полосы из того же потока. Отдельного
-// клиента ALSA нет — второй слушатель петли не нужен, и щелчка тоже.
+// runTap — режим для переливания звука в Bluetooth-колонку: читает PCM из stdin, применяет эквалайзер
+// (если панель выбрала пресет) и отдаёт его в stdout; если визуализатор включён, считает полосы из
+// того же потока. Отдельного клиента ALSA нет — второй слушатель петли не нужен, и щелчка тоже.
 func runTap(ctx context.Context) error {
 	s := newStream()
+	eq := &equalizer{path: eqFile}
+	eq.Reload()
 	buf := make([]byte, 16384)
-	active, lastFlag := false, time.Time{}
+	active, lastFlag, lastEq := false, time.Time{}, time.Time{}
 	defer os.Remove(btFlag)
 	for ctx.Err() == nil {
 		n, err := os.Stdin.Read(buf)
 		if n > 0 {
-			if _, werr := os.Stdout.Write(buf[:n]); werr != nil {
+			if time.Since(lastEq) > 500*time.Millisecond {
+				eq.Reload()
+				lastEq = time.Now()
+			}
+			data := buf[:n]
+			if out, ok := eq.Process(data); ok {
+				data = out
+			}
+			if _, werr := os.Stdout.Write(data); werr != nil {
 				return werr
 			}
 			if _, statErr := os.Stat(onFlag); statErr == nil {
@@ -321,7 +332,7 @@ func runTap(ctx context.Context) error {
 					os.WriteFile(btFlag, []byte("1"), 0600) // признаки жизни для кодека
 					lastFlag = time.Now()
 				}
-				s.feed(buf[:n])
+				s.feed(data)
 			} else if active {
 				active = false
 				os.Remove(btFlag)
