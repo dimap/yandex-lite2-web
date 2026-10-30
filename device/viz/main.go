@@ -333,17 +333,26 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 	defer os.Remove(statusPath)
+	backoff := 2 * time.Second
 	for {
+		start := time.Now()
 		err := run(ctx, *device)
 		if ctx.Err() != nil {
 			return
 		}
 		log.Printf("захват остановился: %v", err)
 		writeStatus(status{Pid: os.Getpid(), Version: version, At: time.Now().UnixMilli(), Error: err.Error()})
-		select { // звук перезапускается вместе с Quasar — пробуем снова
+		// Открытие захвата перенастраивает общий TDM-интерфейс кодека — это слышно коротким щелчком.
+		// Поэтому неудачную попытку (занято, звук ещё не поднялся) не долбим каждые 2 с: пауза растёт.
+		if time.Since(start) > 10*time.Second {
+			backoff = 2 * time.Second
+		} else if backoff < 30*time.Second {
+			backoff *= 2
+		}
+		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(2 * time.Second):
+		case <-time.After(backoff):
 		}
 	}
 }
