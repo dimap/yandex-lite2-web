@@ -36,7 +36,8 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
     // Кольца — по всплескам низа (или по биту, если живого спектра нет), а не по таймеру.
     bassAvg += (bands[0] - bassAvg) * (live ? .05 : .12);
     const onPeak = live ? bands[0] - bassAvg > .1 && bands[0] > .3 : beat > .85;
-    if (active && onPeak && now - lastRing > (live ? 220 : 420)) {
+    const stale = live && now - lastRing > 1200 && loud > .15;   // давно не было пиков — всё равно пускаем
+    if (active && (onPeak || stale) && now - lastRing > (live ? 220 : 420)) {
       rings.push({ t0: now, band: live ? bands[0] : .6 });
       lastRing = now;
     }
@@ -63,11 +64,12 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
       else if (style === 'rings') {
         for (const rg of rings) {
           const age = (now - rg.t0) / 1000;
-          const rad = .3 + age * .45, wide = .015 + .06 * rg.band, d = Math.abs(rn - rad);
-          if (d < wide) v = Math.max(v, (1 - d / wide) * (1 - age / 1.6) * (.45 + .55 * rg.band));
+          const rad = .48 + age * .32, wide = .015 + .07 * rg.band, d = Math.abs(rn - rad);
+          const fadeIn = Math.min(1, age / .12);
+          if (d < wide) v = Math.max(v, (1 - d / wide) * (1 - age / 1.6) * fadeIn * (.45 + .55 * rg.band));
         }
       } else if (style === 'orbit') {
-        const inner = .55, len = .08 + .38 * bandQuad;
+        const inner = .62, len = .08 + .3 * bandQuad;
         if (rn > inner && rn < inner + len) {
           const edge = Math.min(1, (rn - inner) / .04 + .4) * Math.min(1, (inner + len - rn) / .04 + .4);
           v = (.2 + .8 * bandQuad) * Math.min(1, edge);

@@ -4650,7 +4650,8 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
     // так они совпадают с музыкой и читаются.
     bassAvg += (bands[0] - bassAvg) * (live ? 0.04 : 0.1);
     const onPeak = live ? bands[0] - bassAvg > 0.1 && bands[0] > 0.3 : beat > 0.85;
-    if (energy > 0.4 && onPeak && now - lastRing > (live ? 220 : 420)) {
+    const stale = live && now - lastRing > 1200 && loud > 0.15;   // давно не было пиков — всё равно пускаем
+    if (energy > 0.4 && (onPeak || stale) && now - lastRing > 220) {
       rings.push({ t0: now, band: live ? bands[0] : 0.5 + 0.5 * beat });
       lastRing = now;
     }
@@ -4676,17 +4677,17 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
         const bandQuad = bands[kq] * (1 - fq) + bands[kq + 1] * fq;
         let v = 0;
         if (style === 'rings') {
-          // Кольца расходятся от модели; радиус считаем по меньшей стороне, чтобы не улетали за экран.
+          // Кольца появляются уже за корпусом модели и расходятся к краю — иначе их не видно.
           for (const rg of rings) {
             const age = (now - rg.t0) / 1000;
-            const rad = 0.3 + age * 0.45, wide = 0.015 + 0.06 * rg.band;
-            const d = Math.abs(rn - rad);
-            if (d < wide) v = Math.max(v, (1 - d / wide) * (1 - age / 1.6) * (0.45 + 0.55 * rg.band) * energy);
+            const rad = 0.48 + age * 0.32, wide = 0.015 + 0.07 * rg.band;
+            const d = Math.abs(rn - rad), fadeIn = Math.min(1, age / 0.12);
+            if (d < wide) v = Math.max(v, (1 - d / wide) * (1 - age / 1.6) * fadeIn * (0.45 + 0.55 * rg.band) * energy);
           }
         } else if (style === 'orbit') {
           // Столбики наружу от модели; один сектор 90° и его зеркала по горизонтали и вертикали.
-          // Радиус — по меньшей стороне: веер всегда влезает в виджет и не «занимает всю площадь».
-          const inner = 0.55, len = 0.08 + 0.38 * bandQuad;
+          // Начинаем за корпусом (0.62), длина — до края виджета по меньшей стороне.
+          const inner = 0.62, len = 0.08 + 0.3 * bandQuad;
           if (rn > inner && rn < inner + len) {
             const edge = Math.min(1, (rn - inner) / 0.04 + 0.4) * Math.min(1, (inner + len - rn) / 0.04 + 0.4);
             v = (0.2 + 0.8 * bandQuad) * Math.min(1, edge) * energy;
