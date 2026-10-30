@@ -4656,7 +4656,7 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
       lastRing = now;
     }
     if (rings.length > 8) rings.splice(0, rings.length - 8);
-    for (let i = rings.length - 1; i >= 0; i--) if (now - rings[i].t0 > 1600) rings.splice(i, 1);
+    for (let i = rings.length - 1; i >= 0; i--) if (now - rings[i].t0 > 1400) rings.splice(i, 1);
     ctx.clearRect(0, 0, cw, ch);
     if (energy < 0.02 && idle < 0.02) return;
     ctx.font = `${FS}px 'JetBrains Mono', monospace`;
@@ -4677,12 +4677,15 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
         const bandQuad = bands[kq] * (1 - fq) + bands[kq + 1] * fq;
         let v = 0;
         if (style === 'rings') {
-          // Кольца появляются уже за корпусом модели и расходятся к краю — иначе их не видно.
+          // Кольца живут в видимой зоне вокруг корпуса: появляются на 0.6 и идут до края,
+          // яркость держится почти до конца — раньше гасли, не дойдя до края.
           for (const rg of rings) {
             const age = (now - rg.t0) / 1000;
-            const rad = 0.48 + age * 0.32, wide = 0.015 + 0.07 * rg.band;
-            const d = Math.abs(rn - rad), fadeIn = Math.min(1, age / 0.12);
-            if (d < wide) v = Math.max(v, (1 - d / wide) * (1 - age / 1.6) * fadeIn * (0.45 + 0.55 * rg.band) * energy);
+            const rad = 0.6 + age * 0.35, wide = 0.02 + 0.08 * rg.band;
+            const alpha = (0.55 + 0.45 * rg.band) * Math.max(0, Math.min(1, (1.06 - rad) / 0.12))
+              * Math.min(1, age / 0.08);
+            const d = Math.abs(rn - rad);
+            if (d < wide) v = Math.max(v, Math.pow(1 - d / wide, 0.7) * alpha * energy);
           }
         } else if (style === 'orbit') {
           // Столбики наружу от модели; один сектор 90° и его зеркала по горизонтали и вертикали.

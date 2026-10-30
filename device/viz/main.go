@@ -241,9 +241,9 @@ func run(ctx context.Context, device string) error {
 
 	a := newAnalyzer(fftSize, sampleRate)
 	history := make([]int16, fftSize)
-	hop := fftSize / 2
+	hop := fftSize   // без перекрытия: панель всё равно читает 10 раз в секунду, а FFT — вдвое дешевле
 	hopBuf := make([]int16, 0, hop)
-	buf := make([]byte, 4096)
+	buf := make([]byte, 16384)
 	r := bufio.NewReaderSize(stdout, 1<<16)
 	lastWrite := time.Time{}
 	var st status

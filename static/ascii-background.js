@@ -42,7 +42,7 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
       lastRing = now;
     }
     if (rings.length > 8) rings.splice(0, rings.length - 8);
-    for (let i = rings.length - 1; i >= 0; i--) if (now - rings[i].t0 > 1600) rings.splice(i, 1);
+    for (let i = rings.length - 1; i >= 0; i--) if (now - rings[i].t0 > 1400) rings.splice(i, 1);
 
     const style = window.__vizStyle || 'rays';
     const fs = 13, col = fs * .62, row = fs * 1.1;
@@ -64,9 +64,11 @@ export function startAsciiBackground(canvas, { playing = () => false, spectrum =
       else if (style === 'rings') {
         for (const rg of rings) {
           const age = (now - rg.t0) / 1000;
-          const rad = .48 + age * .32, wide = .015 + .07 * rg.band, d = Math.abs(rn - rad);
-          const fadeIn = Math.min(1, age / .12);
-          if (d < wide) v = Math.max(v, (1 - d / wide) * (1 - age / 1.6) * fadeIn * (.45 + .55 * rg.band));
+          const rad = .6 + age * .35, wide = .02 + .08 * rg.band;
+          const alpha = (.55 + .45 * rg.band) * Math.max(0, Math.min(1, (1.06 - rad) / .12))
+            * Math.min(1, age / .08);
+          const d = Math.abs(rn - rad);
+          if (d < wide) v = Math.max(v, Math.pow(1 - d / wide, .7) * alpha);
         }
       } else if (style === 'orbit') {
         const inner = .62, len = .08 + .3 * bandQuad;
