@@ -3915,6 +3915,7 @@ echo @@BLUEZ
     # Платформа yam по device-tree — те же правила, что в install.sh yam (getprop есть не на всех колонках).
     # Порядок важен: у Лайт и Мини в compatible есть amlogic,axg, у Лайт 2 — тоже, поэтому axg — последним.
     YAM2_PLATFORMS = ((r"station-mini2", "yandexmini_2"), (r"cucumber", "cucumber"), (r"yandex,station-midi", "yandexmidi"),
+                      (r"prune", "plum"),
                       (r"orion", "orion"), (r"pickle", "pickle"), (r"station-mini3|bergamot", "bergamot"),
                       (r"saturn", "saturn"), (r"tulip", "yandexstation"), (r"yandexstation_2|station-max", "yandexstation_2"),
                       (r"mediatek,mt8167|jbl.*link.*music", "jbl_link_music"), (r"mango", "mango"), (r"plum", "plum"),
@@ -5600,8 +5601,9 @@ class PanelUpdater:
 
 # Платформа в device-tree (compatible «yandex,plum», модель «Yandex Plum EVT2») → профиль колонки.
 # Имя хоста тут не годится: владелец мог его переименовать.
-PLATFORM_MODELS = {"plum": "lite2", "pickle": "mini3pro", "bergamot": "mini3", "yandexmidi": "station2",
-                   "station-mini2": "mini2", "station-micro": "lite", "yandexmicro": "lite"}
+PLATFORM_MODELS = {"plum": "lite2", "prune": "lite2", "pickle": "mini3pro", "bergamot": "mini3",
+                   "yandexmidi": "station2", "station-midi": "station2", "station-mini2": "mini2",
+                   "station-micro": "lite", "yandexmicro": "lite"}
 
 
 def detect_model(adb):

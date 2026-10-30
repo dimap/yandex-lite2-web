@@ -6,7 +6,7 @@ export function rendererProfile(profile,status={}){
   const hostname=String(status.hostname||'').trim().toLowerCase();
   let id;
   // Device-tree identity wins over a hostname that the owner may have renamed.
-  for(const [platform,model]of Object.entries({bergamot:'mini3',pickle:'mini3pro',plum:'lite2',yandexmidi:'station2','station-mini2':'mini2'})){
+  for(const [platform,model]of Object.entries({bergamot:'mini3',pickle:'mini3pro',plum:'lite2',prune:'lite2',yandexmidi:'station2','station-midi':'station2','station midi':'station2','station-mini2':'mini2'})){
     if(new RegExp('(^|[^a-z0-9])'+platform+'([^a-z0-9]|$)').test(hardware)){id=model;break;}
   }
   if(!id&&/\bstation[ -]micro\b/.test(hardware))id='lite';

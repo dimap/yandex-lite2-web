@@ -17,6 +17,8 @@ const cases=[
   [{hardware_model:'yandex,station-micro',hostname:'renamed'},'lite'],
   [{hostname:'yandex-station-lite'},'lite'],
   [{hardware_model:'Yandex Plum EVT2',hostname:'yandex-station-lite'},'lite2'],
+  [{hardware_model:'Yandex Prune EVT2',hostname:'renamed'},'lite2'],
+  [{hardware_model:'Yandex Station Midi',hostname:'renamed'},'station2'],
   [{hostname:'Yandex-Mini2-2ZTR'},'mini2'],
   [{hardware_model:'Yandex Station Mini 2',hostname:'renamed'},'mini2'],
   [{hostname:'Yandex-Mini1-1234'},'lite2'],

@@ -89,6 +89,16 @@ class ProfileTests(unittest.TestCase):
                          ('lite', 'station-micro'))
         self.assertEqual(set(profiles.PROFILES['lite']['tested']), {'alarm', 'sounds', 'say'})   # остальное — на пробу
 
+    def test_model_detection_covers_prune_and_station_midi(self):
+        s = fresh_server()
+        cases = (
+            ('yandex,prune-evt2 yandex,prune amlogic, axg Yandex Prune EVT2', ('lite2', 'prune')),
+            ('yandex,station-midi amlogic, axg Yandex Station Midi', ('station2', 'station-midi')),
+        )
+        for identity, expected in cases:
+            device = SimpleNamespace(shell=lambda *a, _text=identity, **k: (_text, '', 0))
+            self.assertEqual(s.detect_model(device), expected, identity)
+
     def test_mini2_maps_lite2_clock_names_to_its_segments(self):
         s = fresh_server()
         profiles.install(s, 'mini2')
