@@ -21,7 +21,7 @@ PROFILES = {
     'lite2': dict(name='Станция Лайт 2', platform='plum', clock=True, boot=True, alarms=True, light=True, tested=TRIAL_FEATURES),
     # Lite 2 без сегментного дисплея (например, Prune): кольцо и остальное как у Lite 2.
     'lite2nc': dict(name='Станция Лайт 2 (без часов)', platform='plum', clock=False, boot=False, alarms=True,
-                    light=True, tested=TRIAL_FEATURES),
+                    light=True, tested=()),
     'station2': dict(name='Станция 2', platform='yandexmidi', clock=False, boot=False, alarms=False, light=True, ledpanel=True),
     'mini3pro': dict(name='Станция Мини 3 Про', platform='pickle', clock=True, boot=False, alarms=False, light=True),
     # Common ADB features and a distinct 3D model; LED layout has not been verified on hardware.
@@ -32,7 +32,7 @@ PROFILES = {
                   tested=('say',)),   # «Сказать на колонке» — issue #16
     # Та же плата без clock-сегментов: кольцо 6 RGB, без дисплея.
     'mini2nc': dict(name='Станция Мини 2 (без часов)', platform='yandexmini_2', led_prefix='mini2', clock=False,
-                    clock_max=170, bt_volume=False, boot=False, alarms=False, light=True, tested=('say',)),
+                    clock_max=170, bt_volume=False, boot=False, alarms=False, light=True, tested=()),
 }
 
 # Мини 2: цифры 1–4 из сегментов A–G без точек H, двоеточие PLUS1/PLUS2, MINUS посередине, DEGREE.
