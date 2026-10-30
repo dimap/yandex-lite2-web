@@ -211,10 +211,10 @@ func (a *analyzer) bands(samples []int16) (out [bandsCount]float64, rms, peak fl
 		if !silent {
 			v = math.Max(0, math.Min(1, (dbs[b]-(a.ref-refRange))/refRange))
 		}
-		// быстрая атака, медленное затухание — как у обычных эквалайзеров
-		k := 0.55
+		// быстрая атака и достаточно быстрое затухание — иначе визуализатор «отстаёт» от музыки
+		k := 0.7
 		if v < a.env[b] {
-			k = 0.18
+			k = 0.3
 		}
 		a.env[b] += (v - a.env[b]) * k
 		out[b] = math.Round(a.env[b]*1000) / 1000
