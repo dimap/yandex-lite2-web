@@ -7599,16 +7599,23 @@ function wwRender() {
 
 async function wwLoad() {
   clearTimeout(wwTimer);
+  let ok = true;
   try { ww = await api('/api/wakeword/status'); }
-  catch (e) { ww = { installed: false, supported: false, error: e.message }; }
+  catch (e) { ww = { installed: false, supported: false, error: e.message }; ok = false; }
   wwRender();
-  if (wwOn() && ww.running && !$('#tab-wakeword').hidden) wwTimer = setTimeout(wwLoad, 300);
+  if (!ok) { wwTimer = setTimeout(wwLoad, 3000); return; }
+  if (wwOn() && ww.running) {
+    // открыта вкладка — как в оригинальном UI, иначе достаточно следить за наличием/навигацией
+    wwTimer = setTimeout(wwLoad, $('#tab-wakeword').hidden ? 3000 : 300);
+  } else {
+    wwTimer = setTimeout(wwLoad, 5000);
+  }
 }
 window.wwLoad = wwLoad;
 
 $('#ww-refresh').onclick = () => wwLoad();
-$('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start'); wwRender(); }, 'Демон запущен');
-$('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop'); wwRender(); }, 'Демон остановлен');
+$('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start'); wwRender(); wwLoad(); }, 'Демон запущен');
+$('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop'); wwRender(); wwLoad(); }, 'Демон остановлен');
 $('#ww-autostart').onchange = e => {
   const on = e.target.checked;
   act(e.target, async () => { ww = await api('/api/wakeword/autostart', { on }); wwRender(); },
