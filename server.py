@@ -1737,13 +1737,45 @@ echo @@BLUEZ
         st.update(self.version())
         st["ffmpeg"] = bool(self.ffmpeg)
         st["vol_level"] = alsa_to_level(st.get("vol_master"))
+        st["muted"] = bool(load_settings().get("mute_before")) and st["vol_level"] == 0
         st["via"] = "agent" if self.adb.agent and self.adb.agent_ok else "adb"
         return st
 
     # ---------- громкость ----------
+    def _volume_level(self):
+        """Громкость колонки в уровнях 0–100: Glagol главнее, иначе ALSA Master."""
+        v = (self.glagol.state or {}).get("volume")
+        if isinstance(v, (int, float)):
+            return max(0, min(100, round(float(v) * 20) * 5))
+        out, _, _ = self.adb.shell("amixer cget name='Master Playback Volume' 2>/dev/null; true", check=False)
+        m = re.search(r": values=(\d+)", strip_ansi(out))
+        return alsa_to_level(m.group(1)) if m else None
+
+    def set_mute(self, on):
+        """Выключить/вернуть звук: запоминаем громкость и ставим 0 через тот же путь, что и ползунок."""
+        s = load_settings()
+        if on:
+            if not s.get("mute_before"):
+                vol = self._volume_level()
+                if vol is None:
+                    raise AdbError("не удалось узнать громкость колонки")
+                if vol > 0:
+                    s["mute_before"] = vol / 100
+                    save_settings(s)
+            self.set_volume({"level": 0})
+            return {"muted": True, "volume": 0}
+        before = round(float(s.pop("mute_before", 0.5)) * 100)
+        save_settings(s)
+        self.set_volume({"level": before})
+        return {"muted": False, "volume": before}
+
     def set_volume(self, data):
         if "level" in data:
             level = max(0, min(100, round(float(data["level"]) / 5) * 5))
+            if level > 0:   # пользователь выставил громкость — режим mute снимаем
+                s = load_settings()
+                if s.pop("mute_before", None) is not None:
+                    save_settings(s)
             # Через Glagol громкость ставит сам Quasar — тогда на колонке те же цифры и та же логика.
             if self.glagol.ws:
                 self.glagol.send({"command": "setVolume", "volume": level / 100})
@@ -3083,7 +3115,29 @@ echo @@BLUEZ
                 "age": age, "device": "hw:0,0"}
 
     def viz_set(self, on):
-        """Включить/выключить живой спектр. Включение при первом разе ставит программу на колонку."""
+        """Включить/выключить живой спектр. Включение при первом разе ставит программу на колонку.
+
+        Открытие захвата кодека слышно коротким щелчком, поэтому на время переключения ставим
+        играющую музыку на паузу и сразу продолжаем — щелчок не пугает.
+        """
+        resume = False
+        try:
+            if (self.glagol.state or {}).get("playing") and self.glagol.ws:
+                self.glagol.send({"command": "stop"}, timeout=4)
+                resume = True
+                time.sleep(0.4)
+        except Exception:  # noqa: BLE001
+            resume = False
+        try:
+            return self._viz_set(on)
+        finally:
+            if resume:
+                try:
+                    self.glagol.send({"command": "play"}, timeout=4)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _viz_set(self, on):
         if not on:
             self.adb.shell(f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; "
                            f"rm -f {VIZ_SD} {VIZ_ON} {VIZ_STATUS} {VIZ_BT}; true", check=False)
@@ -5406,6 +5460,7 @@ class Handler(BaseHTTPRequestHandler):
         p = self.panel
         routes = {
             "/api/status": p.status,
+            "/api/mute": lambda: {"muted": bool(load_settings().get("mute_before")), "volume": p._volume_level()},
             "/api/sounds": p.sounds,
             "/api/sounds/custom": p.sounds_custom,
             "/api/patterns": p.patterns,
@@ -5538,6 +5593,7 @@ class Handler(BaseHTTPRequestHandler):
         self._jdata = d if isinstance(d, dict) else {}
         routes = {
             "/api/volume": lambda: p.set_volume(d),
+            "/api/mute": lambda: p.set_mute(bool(d.get("on"))),
             "/api/play": lambda: p.play_system(d["name"]),
             "/api/sounds/reset": lambda: p.sound_reset(d["name"]),
             "/api/sounds/play-original": lambda: p.sound_play_original(d["name"]),

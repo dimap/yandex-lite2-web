@@ -309,7 +309,7 @@
   .vol-main { display: flex; align-items: center; gap: 18px; }
   .vol-big { font-size: 56px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; min-width: 2.2ch; font-variant-numeric: tabular-nums; }
   .vol-big small { font-size: 26px; color: var(--muted); }
-  .vol-main > div:last-child { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .vol-main > div:nth-of-type(2) { flex: 1; display: flex; flex-direction: column; gap: 6px; }
   .vol-bt { display: flex; align-items: center; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line-2); }
   .vol-bt label { font-size: 13px; font-weight: 600; color: var(--text-2); min-width: 84px; }
   .vol-bt span { font-family: var(--mono); font-size: 13px; color: var(--muted); min-width: 40px; text-align: right; }
@@ -1127,6 +1127,7 @@
     <symbol id="i-like" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 20s-7-4.4-9-9.2C1.7 7.6 3.8 4.5 7 4.5c2 0 3.3 1.1 5 3 1.7-1.9 3-3 5-3 3.2 0 5.3 3.1 4 6.3C19 15.6 12 20 12 20z"/></symbol>
     <symbol id="i-dislike" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></g></symbol>
     <symbol id="i-vol" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></g></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l4 6M21 9l-4 6"/></g></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></symbol>
     <symbol id="i-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></g></symbol>
     <symbol id="i-palette" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.9 1.4-1.9l-.3-.9c-.4-1.2.5-2.2 1.7-2.2H17a4 4 0 0 0 4-4c0-5-4-9-9-9z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></g></symbol>
@@ -1314,6 +1315,7 @@
           <div class="vol-main">
             <div class="vol-big" id="vol-big">—</div>
             <div><label for="vol-master" class="meta" style="font-weight:600;color:var(--text-2)">Динамик</label><input type="range" id="vol-master" min="0" max="100" step="5"></div>
+            <button type="button" class="cbtn" id="vol-mute" aria-label="Выключить звук" aria-pressed="false" title="Выключить звук"><svg width="20" height="20" aria-hidden="true"><use href="#i-mute"/></svg></button>
           </div>
           <div class="chips">
             <button class="pill" data-level="10">Тихо</button><button class="pill" data-level="30">30</button>
@@ -1598,7 +1600,8 @@
           <div class="progress"><span class="mu-pos">0:00</span><input type="range" class="mu-seek" min="0" max="100" value="0" step="1" aria-label="Позиция в треке"><span class="mu-dur">0:00</span></div>
           <div class="controls pl-controls" data-mu-controls="full"></div>
           <div class="mu-volrow"><svg width="18" height="18" aria-hidden="true"><use href="#i-vol"/></svg>
-            <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span></div>
+            <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span>
+            <button type="button" class="cbtn vol-mute" aria-label="Выключить звук" aria-pressed="false" title="Выключить звук"><svg width="18" height="18" aria-hidden="true"><use href="#i-mute"/></svg></button></div>
           <label class="pl-speaker" id="pl-speaker-row" hidden><svg width="16" height="16" aria-hidden="true"><use href="#i-vol"/></svg>
             <span class="meta">Колонка</span><select class="field" id="pl-speaker" aria-label="Колонка, которой управляет плеер"></select></label>
 
@@ -1636,7 +1639,8 @@
       <section class="card pl-msheet-only" data-pl-sec="vol">
         <h2>Громкость</h2>
         <div class="mu-volrow"><svg width="18" height="18" aria-hidden="true"><use href="#i-vol"/></svg>
-          <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span></div>
+          <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span>
+          <button type="button" class="cbtn vol-mute" aria-label="Выключить звук" aria-pressed="false" title="Выключить звук"><svg width="18" height="18" aria-hidden="true"><use href="#i-mute"/></svg></button></div>
         <div id="pl-speakers" hidden><h2 style="font-size:15px;margin-top:6px">Колонки</h2><div class="tlist" id="pl-speakers-list"></div></div>
       </section>
       <section class="card pl-ya-only" id="pl-artist-card" data-pl-sec="artist">
@@ -2681,6 +2685,8 @@ async function refreshStatus() {
     if (!volDragging) {
       const [m, b] = [+s.vol_level || 0, +s.vol_bt || 0];
       showLevel(m);
+      volMuted = !!s.muted;
+      renderMute();
       $('#vol-bt').max = 255; $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b);
     }
     $('#ffmpeg-hint').textContent = s.ffmpeg ? 'ffmpeg найден — подходят любые форматы.' : 'ffmpeg не найден — подходят только WAV.';
@@ -2712,12 +2718,34 @@ function showLevel(level) {
   $('#vol-master').value = Math.round(level);
   $('#vol-big').textContent = Math.round(level);
 }
+// Mute: выключаем звук, запоминая громкость на сервере; повторное нажатие возвращает её.
+let volMuted = false;
+function renderMute() {
+  $$('#vol-mute, .vol-mute').forEach(b => {
+    b.classList.toggle('on', volMuted);
+    b.setAttribute('aria-pressed', volMuted ? 'true' : 'false');
+    const title = volMuted ? 'Включить звук' : 'Выключить звук';
+    b.title = title; b.setAttribute('aria-label', title);
+  });
+}
+$$('#vol-mute, .vol-mute').forEach(b => b.onclick = () => {
+  const mute = !volMuted;
+  act(b, async () => {
+    const r = await api('/api/mute', { on: mute });
+    volMuted = !!r.muted;
+    if (typeof r.volume === 'number') showLevel(r.volume);
+    renderMute();
+  }, mute ? 'Звук выключен' : 'Звук включён');
+});
+function unmuteUi(level) {
+  if (level > 0 && volMuted) { volMuted = false; renderMute(); }
+}
 let volTimer;
 for (const [id, key] of [['#vol-master', 'level'], ['#vol-bt', 'bt']]) {
   const el = $(id);
   el.addEventListener('input', () => {
     volDragging = true;
-    if (key === 'level') showLevel(+el.value);
+    if (key === 'level') { showLevel(+el.value); unmuteUi(+el.value); }
     else $('#vol-bt-v').textContent = pct(el.value);
     clearTimeout(volTimer);
     volTimer = setTimeout(() => act(null, () => api('/api/volume', { [key]: +el.value })), 150);
@@ -2727,6 +2755,7 @@ for (const [id, key] of [['#vol-master', 'level'], ['#vol-bt', 'bt']]) {
 $$('[data-level]').forEach(b => b.onclick = () => act(b, async () => {
   await api('/api/volume', { level: +b.dataset.level });
   showLevel(+b.dataset.level);
+  unmuteUi(+b.dataset.level);
 }));
 
 // ---------- звуки ----------
@@ -4527,7 +4556,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   if (e.target.matches('input.mu-seek')) { mu.seeking = true; $$('.mu-pos').forEach(x => x.textContent = fmtDur(+e.target.value)); }
-  if (e.target.matches('input.mu-vol')) { mu.volSet = Date.now(); $$('.mu-vol-v').forEach(x => x.textContent = e.target.value); }
+  if (e.target.matches('input.mu-vol')) { mu.volSet = Date.now(); $$('.mu-vol-v').forEach(x => x.textContent = e.target.value); unmuteUi(+e.target.value); }
 });
 document.addEventListener('change', e => {
   if (e.target.matches('input.mu-seek'))
