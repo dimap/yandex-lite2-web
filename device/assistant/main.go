@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -26,6 +28,9 @@ const (
 	sayLimit   = 900 // символов в одном «Повтори за мной»: длиннее Алиса читает минуту и больше
 	historyMax = 20
 )
+
+// Ключ в тексте ошибки чужого API: в 401 провайдеры возвращают начало ключа — вслух его не читаем.
+var keyLike = regexp.MustCompile(`(sk-|Bearer\s+)[A-Za-z0-9_\-]{8,}`)
 
 type entry struct {
 	At       int64  `json:"at"`
@@ -166,6 +171,7 @@ func (d *Daemon) ask(question, source string) {
 		answer, err := chat(ctx, c.LLM, msgs)
 		if err != nil {
 			unglow()
+			d.notifyError(ctx, c, err)
 			finish(err)
 			return
 		}
@@ -181,18 +187,24 @@ func (d *Daemon) ask(question, source string) {
 		if c.TTS.Provider != "openai" {
 			unglow() // дальше кольцом управляет сама Алиса: она читает ответ со своей анимацией
 		}
-		err = d.speak(ctx, c, answer)
+		byAlice, err := d.speak(ctx, c, answer)
 		unglow()
 		finish(err)
 		// беседа без «Алисы»: синтезатор не открывает микрофон сам, как это делает Алиса после своей речи
-		if err == nil && c.TTS.Provider == "openai" && c.Mode.FollowUp && d.inMode() {
+		if err == nil && !byAlice && c.Mode.FollowUp && d.inMode() {
 			d.alice.Listen()
 		}
 	}()
 }
 
-func (d *Daemon) speak(ctx context.Context, c Config, text string) error {
-	if c.TTS.Provider == "openai" {
+// speak озвучивает текст выбранным голосом; byAlice — прочитала Алиса (в том числе запасным путём,
+// тогда её микрофон после ответа уже открыт сам). Если голос ассистента недоступен (адрес, ключ, сеть,
+// aplay) — текст читает Алиса, чтобы ответ и голосовые ошибки всё равно прозвучали.
+func (d *Daemon) speak(ctx context.Context, c Config, text string) (byAlice bool, err error) {
+	if c.TTS.Provider != "openai" {
+		return true, d.aliceSay(text)
+	}
+	voiceErr := func() error {
 		wav, err := speech(ctx, c.TTS, c.LLM.Proxy, text)
 		if err != nil {
 			return err
@@ -206,11 +218,46 @@ func (d *Daemon) speak(ctx context.Context, c Config, text string) error {
 			return fmt.Errorf("aplay: %v %s", err, bytes.TrimSpace(out))
 		}
 		return nil
+	}()
+	if voiceErr == nil {
+		return false, nil
 	}
+	if ctx.Err() != nil {
+		return false, voiceErr // ответ отменили новым вопросом — Алисе читать нечего
+	}
+	log.Printf("озвучка ассистента не сработала (%v) — читаю голосом Алисы", voiceErr)
+	return true, d.aliceSay(text)
+}
+
+func (d *Daemon) aliceSay(text string) error {
 	d.mu.Lock()
 	d.sayAt, d.ours, d.wokeUser = time.Now(), false, false
 	d.mu.Unlock()
 	return d.alice.Say(forSpeech(text, sayLimit))
+}
+
+// notifyError — ошибку ассистента (сеть, ключ, пустой ответ) слышно голосом: в панели она видна,
+// но колонка должна сказать сама. Озвучка тем же голосом, что читает ответы; не выйдет — speak
+// перейдёт на голос Алисы.
+func (d *Daemon) notifyError(ctx context.Context, c Config, err error) {
+	if ctx.Err() != nil {
+		return // вопрос прерван новым — о старой ошибке молчим
+	}
+	d.set("speaking", "")
+	if _, e := d.speak(ctx, c, voiceError(err)); e != nil {
+		log.Printf("не удалось сообщить об ошибке голосом: %v", e)
+	}
+}
+
+// voiceError — текст ошибки, который не стыдно произнести: без ключей (провайдеры любят вернуть
+// начало ключа в тексте 401), в одну строку и с ограничением длины.
+func voiceError(err error) string {
+	msg := keyLike.ReplaceAllString(err.Error(), "ключ")
+	msg = strings.Join(strings.Fields(msg), " ")
+	if r := []rune(msg); len(r) > 200 {
+		msg = string(r[:200]) + "…"
+	}
+	return "Ошибка ассистента: " + msg
 }
 
 func (d *Daemon) inMode() bool {
@@ -239,7 +286,7 @@ func (d *Daemon) setMode(on bool, announce bool) {
 		if on {
 			text = "Переключаюсь на ассистента. Спрашивайте."
 		}
-		if err := d.speak(context.Background(), c, text); err != nil {
+		if _, err := d.speak(context.Background(), c, text); err != nil {
 			log.Printf("не удалось сообщить о режиме: %v", err)
 		}
 	}()
@@ -500,7 +547,7 @@ func (d *Daemon) command() {
 		c := d.cfg
 		d.mu.Unlock()
 		go func() {
-			if err := d.speak(context.Background(), c, cmd.Say); err != nil {
+			if _, err := d.speak(context.Background(), c, cmd.Say); err != nil {
 				log.Printf("сказать: %v", err)
 			}
 		}()

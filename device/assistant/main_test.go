@@ -1,11 +1,52 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestVoiceError(t *testing.T) {
+	// В 401 провайдер возвращает начало ключа: вслух его не читаем. Переводы строк — в одну.
+	got := voiceError(errors.New("API ответил 401: Incorrect API key provided: sk-AbC123456789. Подробности:\nсм. https://example.com"))
+	if !strings.HasPrefix(got, "Ошибка ассистента: ") || strings.Contains(got, "sk-AbC123456789") ||
+		strings.Contains(got, "\n") || !strings.Contains(got, "ключ") {
+		t.Fatalf("%q", got)
+	}
+	long := voiceError(errors.New(strings.Repeat("очень длинная ошибка ", 40)))
+	if r := []rune(long); len(r) > len([]rune("Ошибка ассистента: "))+201 {
+		t.Fatalf("не обрезана: %d символов", len(r))
+	}
+}
+
+func TestChatRejectsEmptyAnswer(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"choices":[{"message":{"content":"   \n"}}]}`)
+	}))
+	defer srv.Close()
+	_, err := chat(context.Background(), LLM{BaseURL: srv.URL, Model: "test"}, []message{{"user", "привет"}})
+	if err == nil || !strings.Contains(err.Error(), "пустой") {
+		t.Fatalf("пустой ответ модели должен быть ошибкой: %v", err)
+	}
+}
+
+func TestSpeechRejectsNonWAV(t *testing.T) {
+	// Так выглядит недоступный голос ассистента в speak(): текст вернулся не WAV — читаем голосом Алисы.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "это не wav")
+	}))
+	defer srv.Close()
+	if _, err := speech(context.Background(), TTS{BaseURL: srv.URL, Model: "tts", Voice: "alloy"}, "", "привет"); err == nil {
+		t.Fatal("не-WAV должен давать ошибку — по ней speak переходит на Алису")
+	}
+}
 
 func TestMatchTrigger(t *testing.T) {
 	triggers := defaults().Triggers
