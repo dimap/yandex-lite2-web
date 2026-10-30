@@ -1,0 +1,278 @@
+// vizd — живой спектр звука колонки для визуализатора панели.
+//
+// Захватывает не микрофон, а то, что реально играет усилитель: на Лайт 2 это кодек hw:0,0 (TDM-B),
+// его захват повторяет выходной сигнал (проверено: тихий тон виден в захвате, в тишине — цифровой ноль;
+// микрофон PDM остаётся Алисе). Считает FFT и раз в 50 мс пишет 4 полосы в /tmp/webpanel_viz.json.
+// Панель читает их тем же потоком, что и светодиоды, и кормит визуализатор.
+package main
+
+import (
+	"bufio"
+	"context"
+	"encoding/binary"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"math"
+	"os"
+	"os/exec"
+	"os/signal"
+	"runtime"
+	"runtime/debug"
+	"syscall"
+	"time"
+)
+
+var version = "dev"
+
+const (
+	statusPath  = "/tmp/webpanel_viz.json"
+	sampleRate  = 48000
+	fftSize     = 2048
+	bandsCount  = 4
+	writeEvery  = 50 * time.Millisecond
+	statusLimit = 8 << 20
+)
+
+// Полосы — поровну по логарифмической шкале 40 Гц … 16 кГц: визуализатору нужны четыре направления.
+var bandEdges = func() [bandsCount + 1]float64 {
+	var e [bandsCount + 1]float64
+	lo, hi := 40.0, 16000.0
+	for i := range e {
+		e[i] = lo * math.Pow(hi/lo, float64(i)/float64(bandsCount))
+	}
+	return e
+}()
+
+type status struct {
+	Pid     int       `json:"pid"`
+	Version string    `json:"version"`
+	At      int64     `json:"t"`
+	Bands   []float64 `json:"bands,omitempty"`
+	RMS     float64   `json:"rms,omitempty"`
+	Peak    float64   `json:"peak,omitempty"`
+	Error   string    `json:"error,omitempty"`
+}
+
+func writeStatus(st status) {
+	b, err := json.Marshal(st)
+	if err != nil {
+		return
+	}
+	tmp := statusPath + ".tmp"
+	if os.WriteFile(tmp, b, 0600) == nil {
+		os.Rename(tmp, statusPath)
+	}
+}
+
+// analyzer — окно Ханна и FFT на 2048 точек: таблицы готовим один раз, чтобы в цикле не мусорить.
+type analyzer struct {
+	n            int
+	window       []float64
+	re, im       []float64
+	cos, sin     []float64
+	rev          []int
+	env          [bandsCount]float64
+	binLo, binHi [bandsCount]int
+	binHz        float64
+}
+
+func newAnalyzer(n int, rate float64) *analyzer {
+	a := &analyzer{n: n, window: make([]float64, n), re: make([]float64, n), im: make([]float64, n),
+		cos: make([]float64, n/2), sin: make([]float64, n/2), rev: make([]int, n), binHz: rate / float64(n)}
+	bits := 0
+	for 1<<bits < n {
+		bits++
+	}
+	for i := 0; i < n; i++ {
+		a.window[i] = 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/float64(n-1))
+		a.rev[i] = reverseBits(i, bits)
+	}
+	for i := 0; i < n/2; i++ {
+		a.cos[i] = math.Cos(-2 * math.Pi * float64(i) / float64(n))
+		a.sin[i] = math.Sin(-2 * math.Pi * float64(i) / float64(n))
+	}
+	half := n / 2
+	for b := 0; b < bandsCount; b++ {
+		lo := int(bandEdges[b] / a.binHz)
+		hi := int(bandEdges[b+1] / a.binHz)
+		if lo < 1 {
+			lo = 1
+		}
+		if hi <= lo {
+			hi = lo + 1
+		}
+		if hi > half {
+			hi = half
+		}
+		a.binLo[b], a.binHi[b] = lo, hi
+	}
+	return a
+}
+
+func reverseBits(v, bits int) int {
+	var r int
+	for i := 0; i < bits; i++ {
+		r = r<<1 | v&1
+		v >>= 1
+	}
+	return r
+}
+
+// fft — итеративная радикс-2 по месту.
+func (a *analyzer) fft() {
+	n := a.n
+	for i := 0; i < n; i++ {
+		if j := a.rev[i]; j > i {
+			a.re[i], a.re[j] = a.re[j], a.re[i]
+			a.im[i], a.im[j] = a.im[j], a.im[i]
+		}
+	}
+	for size := 2; size <= n; size <<= 1 {
+		half, step := size>>1, n/size
+		for start := 0; start < n; start += size {
+			for k := 0; k < half; k++ {
+				idx := k * step
+				wr, wi := a.cos[idx], a.sin[idx]
+				i, j := start+k, start+k+half
+				tr := wr*a.re[j] - wi*a.im[j]
+				ti := wr*a.im[j] + wi*a.re[j]
+				a.re[j], a.im[j] = a.re[i]-tr, a.im[i]-ti
+				a.re[i], a.im[i] = a.re[i]+tr, a.im[i]+ti
+			}
+		}
+	}
+}
+
+// bands считает четыре полосы 0…1 (сглаженные) и RMS/пик окна.
+func (a *analyzer) bands(samples []int16) (out [bandsCount]float64, rms, peak float64) {
+	// Постоянную составляющую убираем взвешенно по окну: если вычесть обычное среднее, окно Ханна само
+	// «подсветит» остаток DC (в захвате кодека в тишине он ровно −1 LSB, но и нецелое число периодов тона
+	// даёт смещение). Взвешенное среднее делает нулевой бин ровно нулём.
+	var sw, sxw float64
+	for i, s := range samples {
+		sw += a.window[i]
+		sxw += float64(s) * a.window[i]
+	}
+	dc := sxw / sw
+	var sum float64
+	for i, s := range samples {
+		v := float64(s) - dc
+		sum += v * v
+		if av := math.Abs(v); av > peak {
+			peak = av
+		}
+		a.re[i] = v * a.window[i]
+		a.im[i] = 0
+	}
+	rms = math.Sqrt(sum/float64(len(samples))) / 32768
+	peak /= 32768
+	a.fft()
+	for b := 0; b < bandsCount; b++ {
+		var mag float64
+		for k := a.binLo[b]; k < a.binHi[b]; k++ {
+			mag += 2 * math.Hypot(a.re[k], a.im[k]) / float64(a.n)
+		}
+		amp := mag / float64(a.binHi[b]-a.binLo[b])
+		db := 20 * math.Log10(amp+1e-6)
+		v := math.Max(0, math.Min(1, (db+60)/60))
+		// быстрая атака, медленное затухание — как у обычных эквалайзеров
+		k := 0.55
+		if v < a.env[b] {
+			k = 0.18
+		}
+		a.env[b] += (v - a.env[b]) * k
+		out[b] = math.Round(a.env[b]*1000) / 1000
+	}
+	return out, rms, peak
+}
+
+// run открывает захват и крутит анализ, пока не отменят контекст или не отвалится arecord.
+func run(ctx context.Context, device string) error {
+	cmd := exec.CommandContext(ctx, "arecord", "-q", "-D", device, "-f", "S16_LE", "-c", "2",
+		"-r", "48000", "-t", "raw", "--buffer-time=100000")
+	cmd.Stderr = os.Stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	defer func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	}()
+
+	a := newAnalyzer(fftSize, sampleRate)
+	history := make([]int16, fftSize)
+	hop := fftSize / 2
+	hopBuf := make([]int16, 0, hop)
+	buf := make([]byte, 4096)
+	r := bufio.NewReaderSize(stdout, 1<<16)
+	lastWrite := time.Time{}
+	var st status
+	for ctx.Err() == nil {
+		n, readErr := r.Read(buf)
+		for i := 0; i+4 <= n; i += 4 {
+			l := int32(int16(binary.LittleEndian.Uint16(buf[i:])))
+			rr := int32(int16(binary.LittleEndian.Uint16(buf[i+2:])))
+			hopBuf = append(hopBuf, int16((l+rr)/2))
+			if len(hopBuf) < hop {
+				continue
+			}
+			copy(history, history[hop:])
+			copy(history[fftSize-hop:], hopBuf)
+			hopBuf = hopBuf[:0]
+			bands, rms, peak := a.bands(history)
+			if time.Since(lastWrite) < writeEvery {
+				continue
+			}
+			lastWrite = time.Now()
+			st = status{Pid: os.Getpid(), Version: version, At: lastWrite.UnixMilli(),
+				Bands: append([]float64(nil), bands[:]...), RMS: math.Round(rms*1000) / 1000,
+				Peak: math.Round(peak*1000) / 1000}
+			writeStatus(st)
+		}
+		if readErr != nil {
+			if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
+				return fmt.Errorf("arecord завершился")
+			}
+			return readErr
+		}
+	}
+	return ctx.Err()
+}
+
+func main() {
+	device := flag.String("device", "hw:0,0", "ALSA-устройство захвата (то, что играет усилитель)")
+	show := flag.Bool("version", false, "показать версию")
+	flag.Parse()
+	if *show {
+		fmt.Println(version)
+		return
+	}
+	runtime.GOMAXPROCS(1)
+	debug.SetGCPercent(50)
+	debug.SetMemoryLimit(statusLimit)
+	log.SetFlags(log.Ldate | log.Ltime)
+	log.Printf("vizd %s запущен, захват %s", version, *device)
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+	defer os.Remove(statusPath)
+	for {
+		err := run(ctx, *device)
+		if ctx.Err() != nil {
+			return
+		}
+		log.Printf("захват остановился: %v", err)
+		writeStatus(status{Pid: os.Getpid(), Version: version, At: time.Now().UnixMilli(), Error: err.Error()})
+		select { // звук перезапускается вместе с Quasar — пробуем снова
+		case <-ctx.Done():
+			return
+		case <-time.After(2 * time.Second):
+		}
+	}
+}

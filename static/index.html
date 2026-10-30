@@ -1246,6 +1246,10 @@
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz"></div></label>
         <label class="set-item"><div class="set-label"><b>Фон в покое</b><small>Пока музыка не играет, символы за моделью медленно переливаются</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz-idle"></div></label>
+        <label class="set-item" id="viz-row"><div class="set-label"><b>Живой спектр с колонки</b><small>Экспериментально: визуализатор показывает настоящий звук, который играет усилитель колонки, а не имитацию.
+          Программа (2 МБ) ставится на колонку и работает, пока включено; «Убрать всё» в настройках её удаляет</small></div>
+          <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz-live" disabled></div></label>
+        <p class="hint untested-note" id="viz-untested" hidden>На этой модели живой спектр не проверялся — напишите в Issues, заработало ли.</p>
         <label class="set-item"><div class="set-label"><b>Приватный режим</b><small>Серийный номер, Wi‑Fi, логин Яндекса, адреса и имена устройств — точками,
           в «Логах» скрыты Device ID, аккаунт и токены. Чтобы случайный скриншот ничего не выдал; одно значение можно открыть нажатием</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-private"></div></label>
@@ -3093,9 +3097,12 @@ async function liveLeds() {
   if (want) {
     try {
       const r = await api('/api/leds/live');
+      const liveBands = r.spectrum?.bands?.length === 4;
+      // Живой спектр с колонки (vizd) свежее эквалайзера Quasar — он и так идёт всё время, пока играет музыка.
+      if (liveBands) window.__spectrum = { bands: r.spectrum.bands, t: performance.now() };
       if (r.v) {
         const v = r.v;
-        if (isSpectrum(v)) window.__spectrum = { bands: [0, 1, 2, 3].map(p => (v[p * 8] + v[p * 8 + 3] + v[p * 8 + 6]) / 756), t: performance.now() };
+        if (!liveBands && isSpectrum(v)) window.__spectrum = { bands: [0, 1, 2, 3].map(p => (v[p * 8] + v[p * 8 + 3] + v[p * 8 + 6]) / 756), t: performance.now() };
         if (Date.now() >= ($('#clock-preview')._until || 0)) toModel(v);
         if (Date.now() >= ringAnimUntil) toRing(r.ring);
       }
@@ -5341,9 +5348,40 @@ document.addEventListener('pointermove', e => {
 $$('#set-accent .sw').forEach(b => b.onclick = () => { store.set('ui.accent', b.dataset.v); applyUI(); });
 $('#set-viz').onchange = e => { store.set('ui.viz', e.target.checked ? '1' : '0'); applyUI(); };
 $('#set-viz-idle').onchange = e => { store.set('ui.vizIdle', e.target.checked ? '1' : '0'); applyUI(); };
+// Живой спектр с колонки: программа читает захват её усилителя, панель получает полосы потоком светодиодов.
+let vizLive = null;
+function renderVizRow() {
+  const box = $('#set-viz-live'), note = $('#viz-row small');
+  box.disabled = !vizLive;
+  box.checked = !!vizLive?.running;
+  note.textContent = !vizLive ? 'Состояние недоступно: нет связи с колонкой'
+    : !vizLive.installed ? 'Экспериментально: включите — панель поставит на колонку программу (2 МБ), которая слушает не микрофон, а сам усилитель. «Убрать всё» её удаляет'
+    : vizLive.running ? 'Включён: спектр идёт с колонки живьём. Работает, пока панель на связи'
+    : 'Выключен. Программа на колонке осталась — включите снова или уберите через «Убрать всё» в настройках';
+}
+async function loadViz() {
+  try { vizLive = await api('/api/viz'); } catch { vizLive = null; }
+  renderVizRow();
+}
+$('#set-viz-live').onchange = async e => {
+  const want = e.target.checked;
+  e.target.disabled = true;
+  try {
+    vizLive = await api('/api/viz', { on: want });
+    if (want && !vizLive.running) throw new Error(vizLive.error || 'визуализатор не запустился');
+    toast(want ? 'Живой спектр включён' : 'Живой спектр выключен');
+  } catch (err) {
+    e.target.checked = !want;
+    toast(err.message, true);
+  } finally {
+    renderVizRow();
+    if (vizLive) e.target.checked = !!vizLive.running;
+  }
+};
 $('#set-private').onchange = e => { store.set('ui.private', e.target.checked ? '1' : '0'); applyUI(); };
 $('#set-minibar').onchange = e => { store.set('ui.minibar', e.target.checked ? '1' : '0'); applyUI(); loadMusic(); };
 applyUI();
+loadViz();
 buildTiles(); fillTileSettings();
 
 // Доступ: пароль панели и установка как приложение.
@@ -6994,6 +7032,7 @@ function onConnected() {
   loadSounds().catch(e => { if (!e.offline) $('#sounds').innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
   loadSay();
   loadSparks();
+  loadViz();
   api('/api/patterns').then(p => { patterns = p; renderPatterns(); }).catch(e => e.offline || toast(e.message, true));
   loadMusic();
   loadDispState();

@@ -282,6 +282,15 @@ ASSIST_CMD = "/tmp/webpanel_assistant.cmd"
 ASSIST_SD = "/tmp/webpanel_assistant.sd"
 ASSIST_RUN = f"exec {ASSISTD} -dir {ASSIST_DIR} >{ASSIST_DIR}/assistant.log 2>&1"
 ASSIST_SRC = Path(__file__).resolve().parent / "device" / "assistant"
+# Живой спектр с колонки: маленькая программа читает захват кодека (то, что реально играет усилитель,
+# а не микрофон — микрофон остаётся Алисе) и раз в 50 мс пишет 4 полосы в /tmp. Панель читает их тем же
+# потоком, что и светодиоды. Пока экспериментально: после перезагрузки колонки не поднимается сам.
+VIZ_DIR = f"{WEB_DIR}/viz"
+VIZD = f"{VIZ_DIR}/vizd"
+VIZ_STATUS = "/tmp/webpanel_viz.json"
+VIZ_SD = "/tmp/webpanel_viz.sd"
+VIZ_RUN = f"exec {VIZD} >{VIZ_DIR}/viz.log 2>&1"
+VIZ_SRC = Path(__file__).resolve().parent / "device" / "viz"
 # Агент панели (device/agent): команды, файлы и консоль по TLS с токеном — рядом с adb, а не вместо него.
 # adb ставит, обновляет и чинит агента; агент молчит — панель работает через adb, как раньше.
 AGENT_DIR = f"{WEB_DIR}/agent"
@@ -1315,6 +1324,7 @@ class LedStream:
     def __init__(self, adb):
         self.adb = adb
         self.values, self.at, self.wanted = None, 0.0, 0.0
+        self.viz, self.viz_at = None, 0.0
         self.lock = threading.Lock()
         self.running = False
 
@@ -1328,7 +1338,11 @@ class LedStream:
         if not v or time.time() - self.at > 1.5:
             return {"v": None}
         r = v[len(CLOCK_LEDS):]
-        return {"v": v[:len(CLOCK_LEDS)], "ring": [r[0:3], r[3:6], r[6:9]], "age": round(time.time() - self.at, 2)}
+        res = {"v": v[:len(CLOCK_LEDS)], "ring": [r[0:3], r[3:6], r[6:9]], "age": round(time.time() - self.at, 2)}
+        # Живой спектр от vizd — тем же потоком, без отдельных запросов на каждые 100 мс.
+        if self.viz and time.time() - self.viz_at < 1.0:
+            res["spectrum"] = {"bands": self.viz.get("bands") or [], "rms": self.viz.get("rms", 0), "t": self.viz.get("t", 0)}
+        return res
 
     PIDFILE = "/tmp/webpanel_leds.pid"
 
@@ -1342,7 +1356,8 @@ class LedStream:
         ring = " ".join(f"plum:{x}" for x in self.RING)
         # Не дольше 60 с (600 × 0,1 с): даже если сервер упадёт, цикл на колонке закончится сам.
         loop = (f"echo $$ > {self.PIDFILE}; cd {LEDS}; k=0; while [ $k -lt 600 ]; do k=$((k + 1)); o=; "
-                f"for n in {clock} {ring}; do read v < $n/brightness; o=\"$o $v\"; done; echo $o; usleep 100000; done; "
+                f"for n in {clock} {ring}; do read v < $n/brightness; o=\"$o $v\"; done; echo $o; "
+                f"[ -f {VIZ_STATUS} ] && {{ printf '@viz '; cat {VIZ_STATUS}; echo; }}; usleep 100000; done; "
                 f"rm -f {self.PIDFILE}")
         want = len(CLOCK_LEDS) + len(self.RING)
         try:
@@ -1351,6 +1366,15 @@ class LedStream:
                 proc = self.adb.popen(loop, text=True)
                 try:
                     for line in proc.stdout:
+                        line = line.strip()
+                        if line.startswith("@viz "):
+                            try:
+                                self.viz, self.viz_at = json.loads(line[5:]), time.time()
+                            except ValueError:
+                                pass
+                            if time.time() - self.wanted > 3:
+                                break
+                            continue
                         parts = line.split()
                         if len(parts) == want and all(p.isdigit() for p in parts):
                             self.values, self.at = [int(p) for p in parts], time.time()
@@ -2993,6 +3017,80 @@ echo @@BLUEZ
         self._drop_hook_if_unused()
         return self.assistant_status()
 
+    # ---------- живой спектр с колонки ----------
+    VIZ_ASSET = "vizd-linux-arm64"
+
+    def _viz_binary(self, download=True):
+        return self._device_binary(VIZ_SRC, "vizd", self.VIZ_ASSET, "визуализатора", download)
+
+    _viz_md5 = (0, None)
+
+    def _viz_local_md5(self):
+        """md5 сборки на компьютере — понять, что на колонке старая программа. Без Go и сборки — None."""
+        try:
+            out = self._viz_binary(download=False)
+        except AdbError:
+            return None
+        mtime = out.stat().st_mtime
+        if self._viz_md5[0] != mtime:
+            self._viz_md5 = (mtime, hashlib.md5(out.read_bytes()).hexdigest())
+        return self._viz_md5[1]
+
+    def viz_status(self):
+        """Состояние: установлен, запущен, последние полосы. Полосы нужны в основном для проверки из панели;
+        визуализатор получает их потоком светодиодов (LedStream)."""
+        out, _, _ = self.adb.shell(
+            f"[ -x {VIZD} ] && echo @installed && md5sum {VIZD}; "
+            f"[ -f {VIZ_SD} ] && kill -0 $(cat {VIZ_SD}) 2>/dev/null && echo @running; "
+            f"echo @state; cat {VIZ_STATUS} 2>/dev/null; echo; true", check=False)
+        out = strip_ansi(out)
+        flags = set(re.findall(r"^@(\w+)$", out, re.M))
+        try:
+            state = json.loads(out.split("@state", 1)[1].strip() or "{}")
+        except (ValueError, IndexError):
+            state = {}
+        running = "running" in flags
+        age = round(time.time() - state["t"] / 1000, 2) if running and state.get("t") else None
+        local = self._viz_local_md5() if "installed" in flags else None
+        return {"supported": True, "installed": "installed" in flags, "running": running,
+                "outdated": bool(local) and local not in out,
+                "bands": (state.get("bands") or []) if running else [],
+                "rms": state.get("rms", 0) if running else 0,
+                "error": (state.get("error") or "") if running else "",
+                "age": age, "device": "hw:0,0"}
+
+    def viz_set(self, on):
+        """Включить/выключить живой спектр. Включение при первом разе ставит программу на колонку."""
+        if not on:
+            self.adb.shell(f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; rm -f {VIZ_SD} {VIZ_STATUS}; true", check=False)
+            return self.viz_status()
+        st = self.viz_status()
+        if not st["installed"] or st.get("outdated"):
+            return self.viz_install()
+        return self.viz_start()
+
+    def viz_install(self):
+        arch, _, _ = self.adb.shell("uname -m", check=False)
+        if strip_ansi(arch).strip() not in ("aarch64", "arm64"):
+            raise AdbError(f"ядро колонки {strip_ansi(arch).strip() or '?'}: живой спектр пока собран "
+                           "только под 64-битное (aarch64)")
+        binary = self._viz_binary()
+        self.adb.shell(f"mkdir -p {VIZ_DIR}; start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; true", check=False)
+        self.adb.push(binary, VIZD + ".new", timeout=300)
+        self.adb.shell(f"chmod 755 {VIZD}.new; mv {VIZD}.new {VIZD}")
+        return self.viz_start()
+
+    def viz_start(self):
+        self.adb.shell(f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; sleep 0.3; true", check=False)
+        self.detach("viz", VIZ_RUN)
+        for _ in range(12):
+            time.sleep(0.3)
+            st = self.viz_status()
+            if st["running"] and st["age"] is not None and st["age"] < 2:
+                return st
+        out, _, _ = self.adb.shell(f"tail -5 {VIZ_DIR}/viz.log", check=False)
+        raise AdbError("визуализатор не запустился: " + strip_ansi(out).strip()[-300:])
+
     def footprint(self):
         """Всё постоянное, что панель ставит на колонку. Временное (/tmp) исчезает само после перезагрузки."""
         q = lambda path: f"[ -e {path} ] && echo 1 || echo 0"
@@ -3012,9 +3110,10 @@ echo @@BLUEZ
             f"[ -d {OVR_DIR}/sounds ] && du -sk {OVR_DIR}/sounds | cut -f1 || echo 0",
             f"find {OVR_DIR}/ledpatterns -type f 2>/dev/null | wc -l",
             f"find {MY_ANIM_DIR} -type f 2>/dev/null | wc -l",
-            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC), q(AGENT_BIN), q(BT_OFF)])
+            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC), q(AGENT_BIN), q(BT_OFF),
+            q(VIZD), f"[ -d {VIZ_DIR} ] && du -sk {VIZ_DIR} | cut -f1 || echo 0"])
         v = self.adb.shell(cmd, check=False)[0].split()
-        v = (v + ["0"] * 28)[:28]
+        v = (v + ["0"] * 30)[:30]
         b = [x == "1" for x in v]
         n = lambda x: int(x) if x.isdigit() else 0
         items = [
@@ -3033,6 +3132,8 @@ echo @@BLUEZ
             {"key": "btoff", "name": "Bluetooth выключен", "on": b[27], "detail": "и после перезагрузки"},
             {"key": "privacy", "name": "Блокировка аналитики", "on": b[15] or b[16], "detail": "свой /etc/hosts"},
             {"key": "assistant", "name": "Голосовой помощник", "on": b[17], "size_kb": n(v[18])},
+            {"key": "viz", "name": "Живой спектр с колонки", "on": b[28], "size_kb": n(v[29]),
+             "detail": "экспериментально: захват звука усилителя, не микрофона"},
             {"key": "alarm", "name": "Будильник и сценарии", "on": b[6],
              "detail": f"будильников: {n(v[7].split('/')[0])}, сценариев: {n((v[7].split('/') + ['0'])[1])}", "size_kb": n(v[13])},
             {"key": "backup", "name": "Копии оригиналов", "on": b[8] or b[9] or b[10],
@@ -3055,7 +3156,8 @@ echo @@BLUEZ
             f"[ -f {BT_OFF} ] && {bt_power_sh(True)}; "            f"start-stop-daemon -K -q -p {AGENT_SD} 2>/dev/null; rm -f {AGENT_SD}; "
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; start-stop-daemon -K -p {ASSIST_SD} 2>/dev/null; "
-            f"start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
+            f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; "
+            f"p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
             f"{LED_STOP_SH}; "   # LED-панель Станции 2: фоновый led-play
             f"grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
             f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; ( {QUASAR}/q restart >/dev/null 2>&1 & ); }}; "
@@ -3073,7 +3175,7 @@ echo @@BLUEZ
         out, _, _ = self.adb.shell(
             f"b={ROOTKEEPER}.webpanel.bak; if [ -f $b ]; then "
             f"if [ \"$(md5sum < {ROOTKEEPER})\" = \"$(md5sum < $b)\" ]; then rm -f $b; echo same; else echo differs; fi; fi; "
-            f"rm -rf {WEB_DIR}; rm -f /tmp/webpanel_alarm* {ALARM_SD} /tmp/webpanel_assistant*; true", check=False)
+            f"rm -rf {WEB_DIR}; rm -f /tmp/webpanel_alarm* {ALARM_SD} /tmp/webpanel_assistant* /tmp/webpanel_viz*; true", check=False)
         self.ring_reset()
         res = self.footprint()
         if "differs" in out:
@@ -5325,6 +5427,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/footprint": p.footprint,
             "/api/privacy": p.privacy_status,
             "/api/assistant": p.assistant_status,
+            "/api/viz": p.viz_status,
             "/api/radio": p.radio_status,
             "/api/radio/search": lambda: p.radio_search(q.get("q", ""), q.get("country", "")),
             "/api/panel/version": lambda: self.updater.check(q.get("refresh") == "1"),
@@ -5489,6 +5592,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/radio/check": lambda: p.radio_check(d.get("url")),
             "/api/radio/alice": lambda: p.radio_alice(d.get("name")),
             "/api/assistant/remove": p.assistant_remove,
+            "/api/viz": lambda: p.viz_set(bool(d.get("on"))),
             "/api/assistant/models": lambda: p.assistant_models(d),
             "/api/panel/update": lambda: self.updater.update(),
             "/api/metrics/clear": lambda: p.metrics.clear(),

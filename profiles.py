@@ -11,7 +11,7 @@ from pathlib import Path
 # работает на модели, — впишите её в tested этой модели: предупреждение пропадёт. Новые функции — сюда же.
 # Работа с экраном (заставка, анимации и дисплей часов) — не здесь: у моделей разные экраны, её открывают флаги
 # clock/boot только после проверки.
-TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2", "btout", "btpower")
+TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2", "btout", "btpower", "viz")
 # ledpanel — LED-панель 88 диодов (/dev/fb0 через штатный led-play): есть только у Станции 2, проверено на устройстве.
 
 PROFILES = {
