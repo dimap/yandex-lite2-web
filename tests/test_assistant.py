@@ -127,3 +127,27 @@ class AssistantDownload(unittest.TestCase):
         with self.fetch({}):
             with self.assertRaises(server.AdbError):
                 panel._assist_binary(download=False)
+
+
+class AssistantConfigWrite(unittest.TestCase):
+    """Пустая или битая запись не должна подменять рабочий конфиг на колонке."""
+
+    def panel(self):
+        p = server.Panel(Mock())
+        p.adb.shell.return_value = ("", "", 0)
+        return p
+
+    def test_blank_new_keeps_old_config(self):
+        p = self.panel()
+        with self.assertRaises(server.AdbError):
+            p._assist_write({"enabled": False})
+        cmds = [c.args[0] for c in p.adb.shell.call_args_list if c.args]
+        self.assertTrue(any("rm -f" in c for c in cmds), cmds)
+        self.assertFalse(any("mv " in c for c in cmds), cmds)
+
+    def test_valid_new_is_moved(self):
+        p = self.panel()
+        p.adb.shell.return_value = ('{"enabled": false}', "", 0)
+        p._assist_write({"enabled": False})
+        cmds = [c.args[0] for c in p.adb.shell.call_args_list if c.args]
+        self.assertTrue(any("chmod 600" in c and "mv " in c for c in cmds), cmds)

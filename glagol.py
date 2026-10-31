@@ -268,6 +268,12 @@ class Glagol:
             if e.code in (401, 403):
                 raise AuthError("Яндекс не принял токен — войдите заново")
             raise AuthError(f"quasar.yandex.net: HTTP {e.code}")
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", e)
+            if isinstance(reason, ssl.SSLError):
+                raise AuthError("контейнер не доверяет сертификату quasar.yandex.net — проверьте сертификаты "
+                                "и прокси (SSL_CERT_FILE, HTTPS_PROXY)") from None
+            raise AuthError(f"quasar.yandex.net: {reason}") from None
         if resp.get("status") != "ok":
             raise AuthError(f"quasar.yandex.net: {resp}")
         return resp["token"]

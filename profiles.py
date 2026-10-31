@@ -12,7 +12,7 @@ from pathlib import Path
 # работает на модели, — впишите её в tested этой модели: предупреждение пропадёт. Новые функции — сюда же.
 # Работа с экраном (заставка, анимации и дисплей часов) — не здесь: у моделей разные экраны, её открывают флаги
 # clock/boot только после проверки.
-TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2", "btout", "btpower", "privacy")
+TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2", "btout", "btpower", "privacy", "viz")
 # ledpanel — LED-панель 88 диодов (/dev/fb0 через штатный led-play): есть только у Станции 2, проверено на устройстве.
 
 PROFILES = {
@@ -28,6 +28,8 @@ PROFILES = {
     # Lite 2 без сегментного дисплея (например, Prune): кольцо и остальное как у Lite 2.
     'lite2nc': dict(name='Станция Лайт 2 (без часов)', platform='plum', clock=False, boot=False, alarms=True,
                     light=True, privacy=True, tested=()),
+    # Станция 2; в device-tree — station-midi (платформа Glagol yandexmidi). Не путать со Станцией Миди:
+    # та называется cucumber/cucumber-dvt2 и этим профилем не покрыта (issue #7).
     'station2': dict(name='Станция 2', platform='yandexmidi', clock=False, boot=False, alarms=False, light=True, ledpanel=True),
     'mini3pro': dict(name='Станция Мини 3 Про', platform='pickle', clock=True, boot=False, alarms=False, light=True),
     # Common ADB features and a distinct 3D model; LED layout has not been verified on hardware.

@@ -66,6 +66,9 @@ type Daemon struct {
 	// режим ассистента: все вопросы к «Алисе» — модели; modeAt — последний разговор (для автоотключения)
 	mode   bool
 	modeAt time.Time
+	// одноразовый маршрут: следующая фраза после своего слова уходит модели, режим не включается
+	route   bool
+	routeAt time.Time
 	// своё радио: на время разговора с Алисой ставим на паузу; resume=false — Алисе велели включить что-то своё
 	radio  player
 	resume bool
@@ -115,7 +118,7 @@ func (d *Daemon) writeStatus() {
 	d.dirty = false
 	s := map[string]any{"pid": os.Getpid(), "version": version, "state": d.state, "error": d.err,
 		"config_error": d.cfgErr, "enabled": d.cfg.Enabled, "history": d.history, "at": time.Now().Unix(),
-		"mode": d.mode, "radio": d.radio.Status(), "radio_miss": d.radioMiss}
+		"mode": d.mode, "route": d.route, "radio": d.radio.Status(), "radio_miss": d.radioMiss}
 	if d.mode {
 		s["mode_until"] = d.modeAt.Add(time.Duration(d.cfg.Mode.TimeoutMin) * time.Minute).Unix()
 	}
@@ -301,6 +304,22 @@ func (d *Daemon) inMode() bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.mode
+}
+
+// setRoute — одноразовый маршрут: следующая фраза уходит модели, без режима и озвучки.
+func (d *Daemon) setRoute(on bool) {
+	d.mu.Lock()
+	d.route, d.routeAt, d.dirty = on, time.Now(), true
+	d.mu.Unlock()
+}
+
+func (d *Daemon) routeTimeout() {
+	d.mu.Lock()
+	expired := d.route && time.Since(d.routeAt) > 15*time.Second
+	d.mu.Unlock()
+	if expired {
+		d.setRoute(false)
+	}
 }
 
 // setMode включает и выключает режим ассистента; сообщает голосом и вспышкой кольца.
@@ -496,6 +515,26 @@ func (d *Daemon) onEvent(ev logEvent) {
 	if ev.kind != "phrase" || !c.Enabled {
 		return
 	}
+	d.mu.Lock()
+	route := d.route
+	if route {
+		d.route, d.dirty = false, true
+	}
+	d.mu.Unlock()
+	if route {
+		question := ev.phrase
+		d.alice.Cancel()
+		log.Printf("вопрос голосом по слову (%d симв.)", len([]rune(question)))
+		switch normalize(question) {
+		case "":
+			return
+		case "стоп", "хватит", "замолчи", "тихо", "отмена", "помолчи":
+			d.stopAnswer()
+			return
+		}
+		d.ask(question, "voice")
+		return
+	}
 	if _, ok := matchTrigger(ev.phrase, c.Mode.Enter); ok {
 		d.alice.Cancel()
 		d.setMode(true, true)
@@ -563,6 +602,7 @@ func (d *Daemon) command() {
 		Say       string   `json:"say"`
 		Stop      bool     `json:"stop"`
 		Mode      *bool    `json:"mode"`
+		Route     *bool    `json:"route"`
 		Radio     *Station `json:"radio"`
 		RadioStop bool     `json:"radio_stop"`
 		MissSeen  bool     `json:"radio_miss_seen"`
@@ -575,6 +615,9 @@ func (d *Daemon) command() {
 	}
 	if cmd.Mode != nil {
 		d.setMode(*cmd.Mode, true)
+	}
+	if cmd.Route != nil {
+		d.setRoute(*cmd.Route)
 	}
 	if cmd.Ask != "" {
 		d.ask(cmd.Ask, "panel")
@@ -647,6 +690,7 @@ func (d *Daemon) follow(ctx context.Context, path string) {
 		d.reload()
 		d.command()
 		d.modeTimeout()
+		d.routeTimeout()
 		d.writeStatus()
 		st, err := os.Stat(path)
 		if err != nil {

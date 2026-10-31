@@ -1,10 +1,12 @@
 import hashlib
 import io
 import os
+import ssl
 import subprocess
 import sys
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -44,6 +46,21 @@ class Names(unittest.TestCase):
         for bad in ("luna", "yam/luna;reboot", "../x", "yam/luna@0.2", "Yam/Luna", "yam/luna/x", ""):
             with self.assertRaises(server.AdbError, msg=bad):
                 ok(bad)
+
+
+class Catalog(unittest.TestCase):
+    def test_tls_error_is_explained(self):
+        p = server.Panel(Mock())
+        p.yam2_status = lambda: {"registries": [{"name": "official", "url": "https://repo.yse.wtf/v2"}],
+                                 "platform": "cucumber"}
+        err = urllib.error.URLError(ssl.SSLError("EOF"))
+        with patch("server.urllib.request.urlopen", side_effect=err), \
+             patch("server.time.sleep", return_value=None):
+            with self.assertRaises(server.AdbError) as cm:
+                p.yam2_catalog()
+        msg = str(cm.exception)
+        self.assertIn("каталог YAM 2", msg)
+        self.assertIn("repo.yse.wtf", msg)
 
 
 class Services(unittest.TestCase):

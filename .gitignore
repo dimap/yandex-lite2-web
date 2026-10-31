@@ -28,6 +28,7 @@ dist/
 device/assistant/build/
 .assistantd-*
 device/agent/build/
+device/viz/build/
 .yapanel-agent-*
 
 # локальные настройки Command Code

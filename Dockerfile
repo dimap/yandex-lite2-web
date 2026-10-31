@@ -11,7 +11,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X 
 WORKDIR /agent
 COPY device/agent/ ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=$(cat /VERSION)" -o /out-agent/yapanel-agent . \
- && cp /VERSION /out-agent/VERSION
+  && cp /VERSION /out-agent/VERSION
+# живой спектр (device/viz) — так же
+WORKDIR /viz
+COPY device/viz/ ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath -ldflags "-s -w -X main.version=$(cat /VERSION)" -o /out-viz/vizd . \
+  && cp /VERSION /out-viz/VERSION
 
 FROM python:3.14-slim
 
@@ -25,6 +30,7 @@ COPY static ./static
 COPY device ./device
 COPY --from=assistant /out/assistantd /out/VERSION ./device/assistant/build/
 COPY --from=assistant /out-agent/yapanel-agent /out-agent/VERSION ./device/agent/build/
+COPY --from=assistant /out-viz/vizd /out-viz/VERSION ./device/viz/build/
 COPY LICENSE ./
 
 # /data — токен Яндекса, пароль панели, сертификаты, история графиков и ключ adb (HOME).

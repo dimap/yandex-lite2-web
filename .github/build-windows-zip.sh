@@ -24,6 +24,10 @@ rm -rf "$WORK/$NAME/device/agent/build"
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go -C device/agent build -trimpath -ldflags "-s -w -X main.version=$VER" \
   -o "$WORK/$NAME/device/agent/build/yapanel-agent" .
 echo "$VER" > "$WORK/$NAME/device/agent/build/VERSION"
+rm -rf "$WORK/$NAME/device/viz/build"
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go -C device/viz build -trimpath -ldflags "-s -w -X main.version=$VER" \
+  -o "$WORK/$NAME/device/viz/build/vizd" .
+echo "$VER" > "$WORK/$NAME/device/viz/build/VERSION"
 curl -fsSL -o "$WORK/python.zip" "https://www.python.org/ftp/python/$PYVER/python-$PYVER-embed-$ARCH.zip"
 unzip -q "$WORK/python.zip" -d "$WORK/$NAME/runtime/python"
 # портативный Python не видит папку скрипта — добавляем корень панели (путь относительно ._pth)

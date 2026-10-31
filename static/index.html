@@ -309,7 +309,7 @@
   .vol-main { display: flex; align-items: center; gap: 18px; }
   .vol-big { font-size: 56px; font-weight: 800; letter-spacing: -0.04em; line-height: 1; min-width: 2.2ch; font-variant-numeric: tabular-nums; }
   .vol-big small { font-size: 26px; color: var(--muted); }
-  .vol-main > div:last-child { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .vol-main > div:nth-of-type(2) { flex: 1; display: flex; flex-direction: column; gap: 6px; }
   .vol-bt { display: flex; align-items: center; gap: 12px; padding-top: 14px; border-top: 1px solid var(--line-2); }
   .vol-bt label { font-size: 13px; font-weight: 600; color: var(--text-2); min-width: 84px; }
   .vol-bt span { font-family: var(--mono); font-size: 13px; color: var(--muted); min-width: 40px; text-align: right; }
@@ -415,6 +415,60 @@
   .bt-pair.bt-out .info { flex: 1 1 100%; min-width: 0; }
   .bt-out .info .meta { display: block; margin-top: 2px; }
   .bt-out .actions { display: flex; flex-wrap: wrap; gap: 8px; flex-direction: row-reverse; justify-content: flex-end; }
+  .bt-eq { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-2); }
+  .bt-eq-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .bt-eq-head select { width: auto; min-width: 170px; }
+  .bt-eq canvas { display: block; width: 100%; height: 96px; margin-top: 8px; }
+  .eq-custom { display: grid; gap: 7px; margin-top: 10px; }
+  .eq-band { display: grid; grid-template-columns: 76px 18px 1fr 52px; align-items: center; gap: 8px; }
+  .eq-band input[type=number] { width: 76px; }
+  .eq-band input[type=range] { width: 100%; margin: 0; }
+  .eq-band .eq-gv { text-align: right; font-size: 12px; color: var(--muted); }
+  .eq-custom .hint { margin: 2px 0 0; }
+  .app-panel { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin-top: 5px; min-width: 0; }
+  .app-panel .badge { align-self: flex-start; max-width: 100%; white-space: normal; line-height: 1.25; }
+  .app-panel .meta { overflow-wrap: anywhere; }
+  .app-panel .warn { color: var(--warn); }
+  .ww-state-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ww-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  .ww-dot.on { background: #1f9d55; }
+  .ww-dot.warn { background: var(--accent); }
+  .ww-dot.off { background: var(--muted); }
+  .ww-state { font-weight: 600; }
+  .ww-state-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  .ww-step .meta.ok { color: #1f9d55; }
+  .ww-auto { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line-2); }
+  .ww-auto span b { display: block; }
+  .ww-auto span small { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }
+  .ww-audio { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .ww-meter { flex: 1; min-width: 140px; height: 8px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+  .ww-meter span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .ww-list { display: grid; gap: 12px; }
+  .ww-word { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line-2); border-radius: 14px; }
+  .ww-word-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .ww-word-name { font-size: 15px; }
+  .ww-toggle { display: inline-flex; align-items: center; cursor: pointer; }
+  .ww-conf { position: relative; height: 8px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+  .ww-conf span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+  .ww-conf b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-2); opacity: .6; }
+  .ww-word-meta .meta { display: block; }
+  .ww-word-act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ww-word-act .field { width: auto; min-width: 150px; }
+  .ww-word-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+  .ww-word-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ww-sens { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
+  .ww-sens input { width: 120px; accent-color: var(--accent); }
+  .ww-take-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+  .ww-say { font-size: 26px; font-weight: 700; color: var(--accent); min-height: 34px; line-height: 1.1; }
+  .ww-reading { margin: 8px 0 10px; padding: 10px 12px; border-radius: 12px; background: var(--bg); color: var(--text-2); font-size: 14.5px; line-height: 1.45; }
+  .ww-steps { display: grid; gap: 12px; }
+  .ww-step { padding: 12px; border: 1px solid var(--line-2); border-radius: 14px; }
+  .ww-step-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .ww-step p { margin: 6px 0 8px; color: var(--muted); font-size: 13px; }
+  .ww-takes, .ww-hits { display: grid; gap: 6px; margin-top: 8px; }
+  .ww-take, .ww-hit { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+  .ww-progress { height: 8px; margin-top: 8px; background: var(--line-2); border-radius: 99px; overflow: hidden; }
+  .ww-progress span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
   .bt-pair .info { flex: 1; min-width: 0; }
   .bt-pair .info b { display: block; }
   .bt-left { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
@@ -1103,6 +1157,7 @@
     <symbol id="i-log" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></g></symbol>
     <symbol id="i-term" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 17l6-5-6-5M12 19h8"/></symbol>
     <symbol id="i-mic" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></g></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h2M7 8v8M11 4v16M15 7v10M19 10v4"/></g></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8l9-5"/><circle cx="15" cy="14" r="2.5"/><path d="M6 12h3M6 16h3"/></g></symbol>
     <symbol id="i-music" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g></symbol>
     <symbol id="i-link" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></g></symbol>
@@ -1127,6 +1182,7 @@
     <symbol id="i-like" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" d="M12 20s-7-4.4-9-9.2C1.7 7.6 3.8 4.5 7 4.5c2 0 3.3 1.1 5 3 1.7-1.9 3-3 5-3 3.2 0 5.3 3.1 4 6.3C19 15.6 12 20 12 20z"/></symbol>
     <symbol id="i-dislike" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></g></symbol>
     <symbol id="i-vol" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/></g></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9l4 6M21 9l-4 6"/></g></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></symbol>
     <symbol id="i-gear" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></g></symbol>
     <symbol id="i-palette" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.9 1.4-1.9l-.3-.9c-.4-1.2.5-2.2 1.7-2.2H17a4 4 0 0 0 4-4c0-5-4-9-9-9z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></g></symbol>
@@ -1155,6 +1211,7 @@
       <a href="#led" data-tab="led" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-palette"/></svg>LED-панель</a>
       <a href="#alarm" data-tab="alarm"><svg width="20" height="20" aria-hidden="true"><use href="#i-alarm"/></svg>Будильник</a>
       <a href="#scenes" data-tab="scenes"><svg width="20" height="20" aria-hidden="true"><use href="#i-flow"/></svg>Сценарии</a>
+      <a href="#wakeword" data-tab="wakeword" id="nav-wakeword" hidden><svg width="20" height="20" aria-hidden="true"><use href="#i-wave"/></svg>Активация</a>
       <a href="#assistant" data-tab="assistant"><svg width="20" height="20" aria-hidden="true"><use href="#i-mic"/></svg>Ассистент</a>
       <a href="#boot" data-tab="boot"><svg width="20" height="20" aria-hidden="true"><use href="#i-power"/></svg>Анимации</a>
       <a href="#apps" data-tab="apps"><svg width="20" height="20" aria-hidden="true"><use href="#i-box"/></svg>Приложения</a>
@@ -1244,8 +1301,17 @@
           <div class="set-ctl"><div class="tile-picks" id="set-tiles"></div></div></div>
         <label class="set-item"><div class="set-label"><b>Визуализатор за 3D-моделью</b><small>Спектр из символов за моделью, пока колонка играет музыку (нужен вход в Яндекс)</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz"></div></label>
+        <label class="set-item"><div class="set-label"><b>Вид визуализатора</b><small>Лучи из центра, кольца от модели, спектр по кругу или классические полосы снизу — цвет берётся из акцента темы</small></div>
+          <div class="set-ctl"><select class="field" id="set-viz-style" aria-label="Вид визуализатора">
+            <option value="rays">Лучи</option><option value="rings">Кольца</option><option value="orbit">Спектр по кругу</option><option value="bars">Полосы</option>
+          </select></div></label>
         <label class="set-item"><div class="set-label"><b>Фон в покое</b><small>Пока музыка не играет, символы за моделью медленно переливаются</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz-idle"></div></label>
+        <label class="set-item" id="viz-row"><div class="set-label"><b>Живой спектр с колонки</b><small>Экспериментально: визуализатор показывает настоящий звук, который играет усилитель колонки, а не имитацию.
+          Программа (2 МБ) ставится на колонку и работает, пока включено; «Убрать всё» в настройках её удаляет</small></div>
+          <div class="set-ctl"><input type="checkbox" class="switch" id="set-viz-live" disabled></div></label>
+        <p class="hint" id="viz-click-note">При включении возможен короткий щелчок: кодек переключает вход захвата. Это безопасно — включайте до начала музыки, тогда его не будет слышно.</p>
+        <p class="hint untested-note" id="viz-untested" hidden>На этой модели живой спектр не проверялся — напишите в Issues, заработало ли.</p>
         <label class="set-item"><div class="set-label"><b>Приватный режим</b><small>Серийный номер, Wi‑Fi, логин Яндекса, адреса и имена устройств — точками,
           в «Логах» скрыты Device ID, аккаунт и токены. Чтобы случайный скриншот ничего не выдал; одно значение можно открыть нажатием</small></div>
           <div class="set-ctl"><input type="checkbox" class="switch" id="set-private"></div></label>
@@ -1305,6 +1371,7 @@
           <div class="vol-main">
             <div class="vol-big" id="vol-big">—</div>
             <div><label for="vol-master" class="meta" style="font-weight:600;color:var(--text-2)">Динамик</label><input type="range" id="vol-master" min="0" max="100" step="5"></div>
+            <button type="button" class="cbtn" id="vol-mute" aria-label="Выключить звук" aria-pressed="false" title="Выключить звук"><svg width="20" height="20" aria-hidden="true"><use href="#i-mute"/></svg></button>
           </div>
           <div class="chips">
             <button class="pill" data-level="10">Тихо</button><button class="pill" data-level="30">30</button>
@@ -1443,7 +1510,7 @@
             <button class="btn sm" id="bt-pair-btn">Сделать видимой</button>
           </div>
           <div class="bt-list" id="bt-list"><div class="empty">Загрузка…</div></div>
-          <div class="vol-bt"><label for="vol-bt">Громкость</label><input type="range" id="vol-bt" min="0" max="255"><span id="vol-bt-v">—</span></div>
+          <div class="vol-bt"><label for="vol-bt" title="Громкость звука с телефона по Bluetooth">Громкость</label><input type="range" id="vol-bt" min="0" max="255"><span id="vol-bt-v">—</span></div>
           <div class="bt-pair bt-out" id="bt-out-row">
             <div class="info"><b id="bt-out-text">Звук — встроенный динамик</b><span class="meta" id="bt-out-hint">Можно играть через Bluetooth-колонку: Алиса слушает и отвечает, а звук — из неё</span></div>
             <div class="actions"><button class="btn sm" id="bt-out-other" hidden>Другая колонка</button>
@@ -1452,6 +1519,11 @@
           <div id="bt-out-pick" hidden>
             <p class="hint">Включите на Bluetooth-колонке режим сопряжения — панель поищет её рядом. Колонки и наушники — первыми.</p>
             <div class="bt-list" id="bt-out-list"></div>
+          </div>
+          <div class="bt-eq" id="bt-eq-row" hidden>
+            <div class="bt-eq-head"><b>Эквалайзер</b><select class="field" id="bt-eq" aria-label="Пресет эквалайзера"></select></div>
+            <canvas id="bt-eq-curve" width="360" height="96" aria-label="АЧХ эквалайзера"></canvas>
+            <div class="eq-custom" id="bt-eq-custom" hidden></div>
           </div>
         </section>
 
@@ -1589,7 +1661,8 @@
           <div class="progress"><span class="mu-pos">0:00</span><input type="range" class="mu-seek" min="0" max="100" value="0" step="1" aria-label="Позиция в треке"><span class="mu-dur">0:00</span></div>
           <div class="controls pl-controls" data-mu-controls="full"></div>
           <div class="mu-volrow"><svg width="18" height="18" aria-hidden="true"><use href="#i-vol"/></svg>
-            <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span></div>
+            <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span>
+            <button type="button" class="cbtn vol-mute" aria-label="Выключить звук" aria-pressed="false" title="Выключить звук"><svg width="18" height="18" aria-hidden="true"><use href="#i-mute"/></svg></button></div>
           <label class="pl-speaker" id="pl-speaker-row" hidden><svg width="16" height="16" aria-hidden="true"><use href="#i-vol"/></svg>
             <span class="meta">Колонка</span><select class="field" id="pl-speaker" aria-label="Колонка, которой управляет плеер"></select></label>
 
@@ -1627,7 +1700,8 @@
       <section class="card pl-msheet-only" data-pl-sec="vol">
         <h2>Громкость</h2>
         <div class="mu-volrow"><svg width="18" height="18" aria-hidden="true"><use href="#i-vol"/></svg>
-          <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span></div>
+          <input type="range" class="mu-vol" min="0" max="100" step="5" aria-label="Громкость"><span class="mono mu-vol-v">—</span>
+          <button type="button" class="cbtn vol-mute" aria-label="Выключить звук" aria-pressed="false" title="Выключить звук"><svg width="18" height="18" aria-hidden="true"><use href="#i-mute"/></svg></button></div>
         <div id="pl-speakers" hidden><h2 style="font-size:15px;margin-top:6px">Колонки</h2><div class="tlist" id="pl-speakers-list"></div></div>
       </section>
       <section class="card pl-ya-only" id="pl-artist-card" data-pl-sec="artist">
@@ -2164,6 +2238,60 @@
     </div>
   </main>
 
+  <main id="tab-wakeword" data-page hidden>
+    <header class="page-head">
+      <div><h1>Активация</h1><div class="sub">Свои слова для колонки. Запись и обучение идут на её микрофонах — говорите у колонки.</div>
+        <div class="sub" id="ww-support"></div></div>
+    </header>
+    <section class="card">
+      <div class="card-head"><h2>Состояние</h2></div>
+      <div class="ww-state-row">
+        <span class="ww-dot" id="ww-dot"></span><span class="ww-state" id="ww-state">Проверяю…</span>
+        <span class="ww-state-actions">
+          <button class="btn sm primary" id="ww-install" hidden>Установить пакет</button>
+          <button class="btn sm" id="ww-start" hidden>Запустить демон</button>
+          <button class="btn sm" id="ww-stop" hidden>Остановить демон</button>
+        </span>
+      </div>
+      <p class="hint" id="ww-hint">Проверяю…</p>
+      <div class="ww-audio" id="ww-audio" hidden>
+        <div class="ww-meter"><span id="ww-meter"></span></div>
+        <span class="meta" id="ww-audio-text">—</span>
+        <button class="btn sm" id="ww-listen">Проверить: «слушаю»</button>
+      </div>
+      <label class="ww-auto" id="ww-autostart-row" hidden><span><b>Запускать при загрузке</b><small>Хук панели поднимет демон после перезагрузки; «Убрать всё» выключит</small></span>
+        <input type="checkbox" class="switch" id="ww-autostart"></label>
+    </section>
+    <section class="card" id="ww-words-card" hidden>
+      <div class="card-head"><h2>Слова</h2><div class="actions"><button class="btn sm primary" id="ww-add">Добавить слово</button></div></div>
+      <div id="ww-words" class="ww-list"></div>
+    </section>
+    <section class="card" id="ww-enroll-card" hidden>
+      <div class="card-head"><h2>Новое слово: <span id="ww-enroll-name"></span></h2><div class="actions"><button class="btn sm" id="ww-cancel">Отмена</button></div></div>
+      <p class="hint">Запись идёт с микрофонов колонки. Говорите рядом с ней.</p>
+      <div class="ww-steps">
+        <div class="ww-step"><div class="ww-step-head"><b>1. Фон</b><span class="meta" id="ww-ambient-state"></span></div>
+          <p>8 секунд обычной тишины комнаты — не говорите.</p><button class="btn sm" id="ww-ambient">Записать фон</button></div>
+        <div class="ww-step"><div class="ww-step-head"><b>2. Слово</b><span class="meta" id="ww-takes-state"></span></div>
+          <p>Скажите слово у колонки. Нужно минимум 6 записей, лучше 10–15.</p>
+          <div class="ww-take-line"><button class="btn sm" id="ww-take">Записать</button><div class="ww-say" id="ww-say" aria-live="polite"></div></div>
+          <div id="ww-takes" class="ww-takes"></div></div>
+        <div class="ww-step"><div class="ww-step-head"><b>3. Обычная речь (по желанию)</b><span class="meta" id="ww-speech-state"></span></div>
+          <p>20 секунд прочитайте вслух текст ниже — чтобы слово не путалось с вашей речью.</p>
+          <div class="ww-reading">Сегодня обещали тёплую погоду, поэтому мы решили погулять в парке. Вечером нужно купить хлеб, молоко и что-нибудь к чаю. Позвоню маме и спрошу, как у неё дела. Завтра рано вставать, так что лягу пораньше и почитаю книгу.</div>
+          <button class="btn sm" id="ww-speech">Читать 20 секунд</button></div>
+        <div class="ww-step"><div class="ww-step-head"><b>4. Обучение</b><span class="meta" id="ww-train-state"></span></div>
+          <p>2–3 минуты на колонке. Сначала нужен фон и минимум 6 записей слова.</p>
+          <button class="btn sm primary" id="ww-train" disabled title="Сначала запишите фон и минимум 6 дублей слова">Обучить</button>
+          <div class="ww-progress"><span id="ww-train-bar"></span></div></div>
+      </div>
+    </section>
+    <section class="card" id="ww-hits-card" hidden>
+      <div class="card-head"><h2>Последние срабатывания</h2></div>
+      <div id="ww-hits" class="ww-hits"></div>
+    </section>
+  </main>
+
   <main id="tab-radio" data-page hidden>
     <header class="page-head">
       <div><h1>Радио</h1><div class="sub">Станции Алисы и свои интернет-радиостанции</div></div>
@@ -2672,7 +2800,9 @@ async function refreshStatus() {
     if (!volDragging) {
       const [m, b] = [s.vol_level, +s.vol_bt || 0];
       showLevel(m);
-      if (!btVolOut()) { $('#vol-bt').max = 255; $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b); }
+      volMuted = !!s.muted;
+      renderMute();
+      $('#vol-bt').max = 255; $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b);
     }
     $('#ffmpeg-hint').textContent = s.ffmpeg ? 'ffmpeg найден — подходят любые форматы.' : 'ffmpeg не найден — подходят только WAV.';
 
@@ -2705,23 +2835,44 @@ function showLevel(level) {
   if (known) $('#vol-master').value = Math.round(level);
   $('#vol-big').textContent = known ? Math.round(level) : '—';
 }
+// Mute: выключаем звук, запоминая громкость на сервере; повторное нажатие возвращает её.
+let volMuted = false;
+function renderMute() {
+  $$('#vol-mute, .vol-mute').forEach(b => {
+    b.classList.toggle('on', volMuted);
+    b.setAttribute('aria-pressed', volMuted ? 'true' : 'false');
+    const title = volMuted ? 'Включить звук' : 'Выключить звук';
+    b.title = title; b.setAttribute('aria-label', title);
+  });
+}
+$$('#vol-mute, .vol-mute').forEach(b => b.onclick = () => {
+  const mute = !volMuted;
+  act(b, async () => {
+    const r = await api('/api/mute', { on: mute });
+    volMuted = !!r.muted;
+    if (typeof r.volume === 'number') showLevel(r.volume);
+    renderMute();
+  }, mute ? 'Звук выключен' : 'Звук включён');
+});
+function unmuteUi(level) {
+  if (level > 0 && volMuted) { volMuted = false; renderMute(); }
+}
 let volTimer;
 for (const [id, key] of [['#vol-master', 'level'], ['#vol-bt', 'bt']]) {
   const el = $(id);
   el.addEventListener('input', () => {
     volDragging = true;
-    if (key === 'level') showLevel(+el.value);
-    else $('#vol-bt-v').textContent = btVolOut() ? el.value + '%' : pct(el.value);
+    if (key === 'level') { showLevel(+el.value); unmuteUi(+el.value); }
+    else $('#vol-bt-v').textContent = pct(el.value);
     clearTimeout(volTimer);
-    // звук идёт в Bluetooth-колонку — ползунок её громкости, иначе — громкости звука с телефона
-    volTimer = setTimeout(() => act(null, () => key === 'bt' && btVolOut() ? api('/api/btout/volume', { level: +el.value })
-      : api('/api/volume', { [key]: +el.value })), 150);
+    volTimer = setTimeout(() => act(null, () => api('/api/volume', { [key]: +el.value })), 150);
   });
   el.addEventListener('change', () => setTimeout(() => volDragging = false, 1500));
 }
 $$('[data-level]').forEach(b => b.onclick = () => act(b, async () => {
   await api('/api/volume', { level: +b.dataset.level });
   showLevel(+b.dataset.level);
+  unmuteUi(+b.dataset.level);
 }));
 
 // ---------- звуки ----------
@@ -3100,18 +3251,21 @@ async function liveLeds() {
   if (want) {
     try {
       const r = await api('/api/leds/live');
+      const liveBands = r.spectrum?.bands?.length === 4;
+      // Живой спектр с колонки (vizd) свежее эквалайзера Quasar — он и так идёт всё время, пока играет музыка.
+      if (liveBands) window.__spectrum = { bands: r.spectrum.bands, t: performance.now() };
       if (r.v) {
         const v = r.v;
-        if (isSpectrum(v)) window.__spectrum = { bands: [0, 1, 2, 3].map(p => (v[p * 8] + v[p * 8 + 3] + v[p * 8 + 6]) / 756), t: performance.now() };
+        if (!liveBands && isSpectrum(v)) window.__spectrum = { bands: [0, 1, 2, 3].map(p => (v[p * 8] + v[p * 8 + 3] + v[p * 8 + 6]) / 756), t: performance.now() };
         if (Date.now() >= ($('#clock-preview')._until || 0)) toModel(v);
       }
       if (Array.isArray(r.ring) && r.ring.length && Date.now() >= ringAnimUntil) toRing(r.ring);
     } catch {}
   }
   // Эквалайзер Quasar держит на часах ~15 с после старта трека, потом снова часы: пока он есть — 10 раз
-  // в секунду, без него — реже, только чтобы не пропустить следующий.
+  // в секунду, без него — реже, только чтобы не пропустить следующий. Живой спектр читаем 20 раз в секунду.
   const spectrumNow = window.__spectrum && performance.now() - window.__spectrum.t < 2500;
-  setTimeout(liveLeds, want ? (spectrumNow ? 100 : 700) : 500);
+  setTimeout(liveLeds, want ? (spectrumNow ? 50 : 700) : 500);
 }
 setTimeout(liveLeds, 1000);   // первый запуск — когда весь скрипт уже загружен
 function animateRing({ frames, loop }, seconds) {
@@ -3481,6 +3635,8 @@ function renderBt() {
   $('#bt-power').checked = d.powered;
   $('#bt-off-hint').hidden = d.powered;
   for (const el of [$('#bt-pair-row'), $('#bt-list'), card.querySelector('.vol-bt'), $('#bt-out-row')]) el.hidden = !d.powered;
+  // при выводе на Bluetooth-колонку ползунка громкости нет: остаются громкость Алисы и сама колонка
+  if (d.out?.on && d.out.state === 'bt') card.querySelector('.vol-bt').hidden = true;
   if (!d.powered) $('#bt-out-pick').hidden = true;
   $('#bt-badge').textContent = !d.powered ? 'выключен' : conn.length ? 'подключено' : 'включён';
   $('#bt-badge').className = 'badge' + (d.powered ? ' ok' : '');
@@ -3509,14 +3665,7 @@ $('#bt-power').onchange = e => {
     .then(() => { if (btData) $('#bt-power').checked = btData.powered; });
 };
 // ---- звук через Bluetooth-колонку ----
-// Пока звук идёт в Bluetooth-колонку, нижний ползунок виджета — её собственная громкость (bluealsa, в %)
-const btVolOut = () => btData?.out?.on && btData.out.state === 'bt' && btData.out.volume != null;
-function renderBtVol() {
-  const out = btVolOut();
-  $('.vol-bt label').textContent = out ? btData.out.name : 'Громкость';
-  $('.vol-bt label').title = out ? 'Громкость Bluetooth-колонки' : 'Громкость звука с телефона по Bluetooth';
-  if (out && !volDragging) { $('#vol-bt').max = 100; $('#vol-bt').value = btData.out.volume; $('#vol-bt-v').textContent = btData.out.volume + '%'; }
-}
+let btEq = null;
 function renderBtOut() {
   const o = btData?.out || { on: false }, last = !o.on && o.last;
   const self = `из колонки «${esc($('#model-name').textContent.trim() || 'Станция')}»`;   // откуда звук на самом деле
@@ -3526,14 +3675,122 @@ function renderBtOut() {
     : o.state === 'bt' ? `Звук — через ${bt(o.name)}` : `Звук — ${self} · ждём ${bt(o.name)}`;
   $('#bt-out-hint').textContent = !o.on ? (last ? `Можно вернуть звук в «${last.name}» — она уже сопряжена. Алиса перезапустится, играющая музыка остановится`
       : 'Можно играть через Bluetooth-колонку: Алиса слушает и отвечает, а звук — из неё')
-    : o.state === 'bt' ? 'Алиса, музыка, её звуки и звуки панели — из Bluetooth-колонки. Громкость — как обычно, голосом или здесь'
+    : o.state === 'bt' ? 'Алиса, музыка, её звуки и звуки панели — из Bluetooth-колонки'
     : 'Bluetooth-колонка не подключена, поэтому звук пока из самой колонки. Включите её — подключение и звук вернутся сами';
   $('#bt-out-btn').textContent = o.on ? (o.state === 'bt' ? 'Вернуть звук в колонку' : 'Больше не ждать') : last ? `Играть через «${last.name}»` : 'Выбрать колонку';
   $('#bt-out-btn').classList.toggle('primary', !o.on);
   $('#bt-out-other').hidden = !last;
   if (o.on) $('#bt-out-pick').hidden = true;
-  renderBtVol();
+  // эквалайзер имеет смысл только когда звук реально идёт в Bluetooth-колонку
+  const eqRow = $('#bt-eq-row');
+  eqRow.hidden = !(o.on && o.state === 'bt');
+  if (!eqRow.hidden && !btEq) loadBtEq();
 }
+// ---- эквалайзер Bluetooth-выхода ----
+const EQ_NAMES = { flat: 'Без изменений', rock: 'Рок', electronic: 'Электроника', vocal: 'Вокал / подкаст', night: 'Ночной', custom: 'Свой' };
+const EQ_DEFAULT = [60, 230, 910, 3600, 14000];
+const fmtDb = g => (g > 0 ? '+' : '') + g + ' дБ';
+async function loadBtEq() {
+  try { btEq = await api('/api/btout/eq'); renderBtEq(); } catch { btEq = null; }
+}
+function buildEqCustom() {
+  const box = $('#bt-eq-custom');
+  if (!box || box.children.length) return;
+  box.innerHTML = EQ_DEFAULT.map((f, i) => `<div class="eq-band">
+      <input type="number" class="field eq-f" min="20" max="20000" step="10" value="${f}" aria-label="Частота ${i + 1}, Гц">
+      <span class="meta">Гц</span>
+      <input type="range" class="eq-g" min="-12" max="12" step="1" value="0" aria-label="Усиление ${i + 1}, дБ">
+      <span class="mono eq-gv">0 дБ</span></div>`).join('')
+    + '<p class="hint">Сильное усиление может перегрузить звук — убавьте громкость.</p>';
+  box.addEventListener('input', e => {
+    const band = e.target.closest('.eq-band');
+    if (!band) return;
+    band.querySelector('.eq-gv').textContent = fmtDb(+band.querySelector('.eq-g').value);
+    scheduleEqCustom();
+  });
+  box.addEventListener('change', e => {
+    if (e.target.matches('.eq-f')) { clampEqFreq(e.target); scheduleEqCustom(); }
+  });
+}
+function clampEqFreq(inp) {
+  inp.value = Math.max(20, Math.min(20000, Math.round(+inp.value) || 60));
+}
+function eqCustomBands() {
+  return $$('#bt-eq-custom .eq-band').map(b => ({
+    f: Math.max(20, Math.min(20000, Math.round(+b.querySelector('.eq-f').value) || 60)),
+    g: Math.max(-12, Math.min(12, Math.round(+b.querySelector('.eq-g').value) || 0)) }));
+}
+function fillEqCustom(bands) {
+  buildEqCustom();
+  const rows = $$('#bt-eq-custom .eq-band');
+  (bands || []).slice(0, rows.length).forEach((b, i) => {
+    const g = Math.round(b.g);
+    rows[i].querySelector('.eq-f').value = Math.round(b.f);
+    rows[i].querySelector('.eq-g').value = g;
+    rows[i].querySelector('.eq-gv').textContent = fmtDb(g);
+  });
+}
+let btEqTimer = 0;
+function scheduleEqCustom() {
+  clearTimeout(btEqTimer);
+  btEqTimer = setTimeout(async () => {
+    try {
+      btEq = await api('/api/btout/eq', { preset: 'custom', bands: eqCustomBands() });
+      drawEqCurve();
+    } catch { /* оставляем прошлую кривую */ }
+  }, 250);
+}
+function renderBtEq() {
+  if (!btEq) return;
+  const sel = $('#bt-eq');
+  const names = btEq.presets || Object.keys(EQ_NAMES);
+  if (sel.options.length !== names.length)
+    sel.innerHTML = names.map(v => `<option value="${v}">${EQ_NAMES[v] || v}</option>`).join('');
+  sel.value = btEq.preset;
+  $('#bt-eq-custom').hidden = btEq.preset !== 'custom';
+  if (btEq.preset === 'custom') fillEqCustom(btEq.custom);
+  drawEqCurve();
+}
+function drawEqCurve() {
+  const cv = $('#bt-eq-curve');
+  if (!cv || !btEq) return;
+  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  const padL = 28, padR = 6, padT = 6, padB = 15;
+  const plotW = w - padL - padR, plotH = h - padT - padB;
+  ctx.clearRect(0, 0, w, h);
+  const css = getComputedStyle(document.documentElement);
+  const grid = css.getPropertyValue('--line-2').trim() || '#ddd';
+  const muted = css.getPropertyValue('--muted').trim() || '#888';
+  const accent = css.getPropertyValue('--accent').trim() || '#e8590c';
+  const X = f => padL + Math.log10(f / 20) / Math.log10(1000) * plotW;
+  const Y = d => padT + (1 - (d + 15) / 30) * plotH;
+  const marks = [[20, '20'], [50, '50'], [100, '100'], [200, '200'], [500, '500'], [1000, '1k'],
+                 [2000, '2k'], [5000, '5k'], [10000, '10k'], [20000, '20k']];
+  ctx.lineWidth = 1; ctx.strokeStyle = grid;
+  marks.forEach(([f]) => { ctx.beginPath(); ctx.moveTo(X(f), padT); ctx.lineTo(X(f), padT + plotH); ctx.stroke(); });
+  ctx.beginPath(); ctx.moveTo(padL, Y(0)); ctx.lineTo(w - padR, Y(0)); ctx.stroke();
+  ctx.fillStyle = muted; ctx.font = '9px ui-monospace, monospace'; ctx.textBaseline = 'top';
+  marks.forEach(([f, label]) => {
+    const x = X(f);
+    ctx.textAlign = x < padL + 10 ? 'left' : x > w - padR - 10 ? 'right' : 'center';
+    ctx.fillText(label, x, padT + plotH + 3);
+  });
+  ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  for (const d of [12, 0, -12]) ctx.fillText((d > 0 ? '+' : '') + d, padL - 4, Y(d));
+  ctx.strokeStyle = accent; ctx.lineWidth = 2; ctx.beginPath();
+  (btEq.freqs || []).forEach((f, i) => { const x = X(f), y = Y(btEq.db[i]); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.stroke();
+}
+$('#bt-eq').onchange = e => {
+  const preset = e.target.value, name = EQ_NAMES[preset] || preset;
+  $('#bt-eq-custom').hidden = preset !== 'custom';
+  if (preset === 'custom') fillEqCustom(btEq?.custom);
+  act(e.target, async () => {
+    btEq = await api('/api/btout/eq', { preset, bands: preset === 'custom' ? eqCustomBands() : undefined });
+    if (btEq.preset === 'custom') fillEqCustom(btEq.custom);
+    drawEqCurve();
+  }, 'Эквалайзер: ' + name);
+};
 // «Выбрать колонку» / «Другая колонка»: ищем рядом и показываем список
 function btOutScan(b) {
   const pick = $('#bt-out-pick'); pick.hidden = false;
@@ -3802,7 +4059,7 @@ const store = {
   set: (k, v) => { try { localStorage.setItem(PanelContext.storageKey(k), v); } catch {} },
 };
 // 'radio' временно убрана из списка вкладок вместе с пунктом меню; код вкладки остаётся
-const TABS = ['overview', 'player', 'led', 'alarm', 'scenes', 'assistant', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
+const TABS = ['overview', 'player', 'led', 'alarm', 'scenes', 'assistant', 'wakeword', 'charts', 'boot', 'apps', 'files', 'logs', 'console', 'settings'];
 let bootLoaded = false;
 let logsLoaded = false;
 let shownTab = null;
@@ -3868,6 +4125,7 @@ function showTab() {
   }
   if (tab === 'console') setTimeout(() => { termConnect(); try { termFit?.fit(); } catch {} term?.focus(); }, 0);
   if (tab === 'boot' && !bootLoaded) { bootLoaded = true; loadBoot(); }
+  if (tab === 'wakeword') { if (window.wwLoad) window.wwLoad(); if (window.wwActionsLoad) window.wwActionsLoad(); }
   loadHook();
   if (tab === 'apps') { loadYam2(); loadYam(); }
   if (tab === 'alarm') loadAlarms();
@@ -4531,7 +4789,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('input', e => {
   if (e.target.matches('input.mu-seek')) { mu.seeking = true; $$('.mu-pos').forEach(x => x.textContent = fmtDur(+e.target.value)); }
-  if (e.target.matches('input.mu-vol')) { mu.volSet = Date.now(); $$('.mu-vol-v').forEach(x => x.textContent = e.target.value); }
+  if (e.target.matches('input.mu-vol')) { mu.volSet = Date.now(); $$('.mu-vol-v').forEach(x => x.textContent = e.target.value); unmuteUi(+e.target.value); }
 });
 document.addEventListener('change', e => {
   if (e.target.matches('input.mu-seek'))
@@ -4609,6 +4867,9 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
   const RAMP = ' .·:-=+*%#@', FS = 13;
   let cw = 0, ch = 0, energy = 0, last = 0, color = '#E8590C';
   const sb = [0, 0, 0, 0];   // сглаженные полосы спектра
+  const rings = [];          // кольца, пущенные по пикам (а не по таймеру)
+  let barsH = [];            // высоты столбиков классического эквалайзера
+  let lastRing = 0, bassAvg = 0;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const readColor = () => { color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || color; };
   readColor();
@@ -4634,38 +4895,95 @@ $('#mu-oauth-go').onclick = e => act(e.currentTarget, async () => {
     const beat = Math.exp(-((t * 2) % 1) * 5);                 // запасной пульс 120 уд/мин
     // Настоящий спектр с колонки, если он свежий: сглаживаем полосы, пульс — от общей громкости.
     const sp = window.__spectrum, live = !!sp && now - sp.t < 700;
-    if (live) sp.bands.forEach((b, k) => { sb[k] += (b - sb[k]) * 0.35; }); else sb.forEach((_, k) => { sb[k] *= 0.9; });
-    const loud = (sb[0] + sb[1] + sb[2] + sb[3]) / 4;
-    const pulse = live ? 0.45 + 0.75 * loud : 0.55 + 0.45 * beat;
+    if (live) sp.bands.forEach((b, k) => { sb[k] += (b - sb[k]) * 0.7; }); else sb.forEach((_, k) => { sb[k] *= 0.9; });
+    // Без живого спектра, но пока играет, рисуем синтетические полосы — чтобы стили не пустовали.
+    const bands = live ? sb : [0, 1, 2, 3].map(k => 0.22 + 0.55 * Math.max(0, Math.sin(t * (1.1 + k * .8) + k * 2.1)) * (0.45 + 0.55 * beat));
+    const loud = (bands[0] + bands[1] + bands[2] + bands[3]) / 4;
+    const style = window.__vizStyle || 'rays';
+    // Кольца пускаем по пикам баса (или по биту, если живого спектра нет), а не по таймеру:
+    // так они совпадают с музыкой и читаются.
+    bassAvg += (bands[0] - bassAvg) * (live ? 0.04 : 0.1);
+    const onPeak = live ? bands[0] - bassAvg > 0.1 && bands[0] > 0.3 : beat > 0.85;
+    const stale = live && now - lastRing > 1200 && loud > 0.15;   // давно не было пиков — всё равно пускаем
+    if (energy > 0.4 && (onPeak || stale) && now - lastRing > 220) {
+      rings.push({ t0: now, band: live ? bands[0] : 0.5 + 0.5 * beat });
+      lastRing = now;
+    }
+    if (rings.length > 8) rings.splice(0, rings.length - 8);
+    for (let i = rings.length - 1; i >= 0; i--) if (now - rings[i].t0 > 1400) rings.splice(i, 1);
     ctx.clearRect(0, 0, cw, ch);
     if (energy < 0.02 && idle < 0.02) return;
     ctx.font = `${FS}px 'JetBrains Mono', monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = color;
-    const cx = cw / 2, cy = ch / 2, colW = FS * 0.62, rowH = FS * 1.1, maxR = Math.hypot(cx, cy), idleR = Math.min(cw, ch) * 0.75;
+    const cx = cw / 2, cy = ch / 2, colW = FS * 0.62, rowH = FS * 1.1, maxR = Math.hypot(cx, cy), minHalf = Math.min(cw, ch) / 2, idleR = Math.min(cw, ch) * 0.75;
+    // «Полосы»: четыре прямоугольных столбика снизу вверх — по одному на полосу (полос у нас 4).
+    if (style === 'bars') {
+      if (barsH.length !== 4) barsH = [0, 0, 0, 0];
+      for (let k = 0; k < 4; k++) {
+        const target = playing ? 0.08 + 0.9 * bands[k] : 0;
+        barsH[k] += (target - barsH[k]) * (playing ? 0.7 : 0.12);
+      }
+    }
     for (let y = rowH / 2; y < ch; y += rowH) {
       for (let x = colW / 2; x < cw; x += colW) {
-        const dx = x - cx, dy = y - cy;
-        const r = Math.hypot(dx, dy) / maxR, a = Math.atan2(dy, dx);
-        // дальность луча в этом направлении: по спектру (4 полосы по кругу, зеркально сверху и снизу —
-        // справа низкие частоты, слева высокие) или, без него, несколько «частот» по углу
-        let amp;
-        if (live) {
-          const u = Math.abs(a) / Math.PI * 3, k = Math.min(2, Math.floor(u)), f = u - k;
-          amp = 0.2 + 0.95 * (sb[k] * (1 - f) + sb[k + 1] * f) + 0.06 * Math.sin(a * 9 + t * 2);
-        } else amp = 0.4 + 0.22 * Math.sin(a * 3 + t * 1.3) + 0.18 * Math.sin(a * 7 - t * 2.1) + 0.12 * Math.sin(a * 13 + t * 3.7);
-        // Лучи идут прямо из центра и редеют к концу.
-        const reach = (0.42 + 0.5 * amp * pulse) * energy;
-        let v = r < reach ? 1 - (r / reach) ** 2 : 0;
-        v = Math.max(v, Math.max(0, Math.sin(r * 16 - t * 3.4)) ** 3 * 0.5 * energy * (1 - r));   // волны-кольца
+        const dx = x - cx, dy = y - cy, dist = Math.hypot(dx, dy);
+        const r = dist / maxR, rn = dist / minHalf, a = Math.atan2(dy, dx);
+        // Лучи: справа низкие, слева высокие, зеркально сверху и снизу.
+        const u = Math.abs(a) / Math.PI * 3, k = Math.min(2, Math.floor(u)), f = u - k;
+        const band = bands[k] * (1 - f) + bands[k + 1] * f;
+        // Спектр по кругу: один сектор 90°, отражённый по обеим осям, — получается симметричный веер.
+        const qa = Math.min(Math.abs(a), Math.PI - Math.abs(a));
+        const uq = qa / (Math.PI / 2) * 3, kq = Math.min(2, Math.floor(uq)), fq = uq - kq;
+        const bandQuad = bands[kq] * (1 - fq) + bands[kq + 1] * fq;
+        let v = 0;
+        if (style === 'rings') {
+          // Кольца живут в видимой зоне вокруг корпуса: появляются на 0.6 и идут до края,
+          // яркость держится почти до конца — раньше гасли, не дойдя до края.
+          for (const rg of rings) {
+            const age = (now - rg.t0) / 1000;
+            const rad = 0.6 + age * 0.35, wide = 0.02 + 0.08 * rg.band;
+            const alpha = (0.55 + 0.45 * rg.band) * Math.max(0, Math.min(1, (1.06 - rad) / 0.12))
+              * Math.min(1, age / 0.08);
+            const d = Math.abs(rn - rad);
+            if (d < wide) v = Math.max(v, Math.pow(1 - d / wide, 0.7) * alpha * energy);
+          }
+        } else if (style === 'orbit') {
+          // Столбики наружу от центра (сектор 90° и зеркала). Внутренний радиус маленький:
+          // начало прячется за корпусом, а внешний край уходит дальше и читается на просвет.
+          const inner = 0.35, len = 0.12 + 0.62 * bandQuad;
+          if (rn > inner && rn < inner + len) {
+            const t = (rn - inner) / len;
+            const endFade = Math.max(0, Math.min(1, (1.08 - rn) / 0.12));
+            v = (0.25 + 0.75 * bandQuad) * (1 - 0.25 * t) * endFade * energy;
+          }
+          if (Math.abs(rn - inner) < 0.012) v = Math.max(v, 0.14 * energy * (0.4 + 0.6 * bandQuad));
+        } else if (style === 'bars') {
+          // Четыре прямоугольных столбика снизу вверх, по полосе на каждый, с промежутками.
+          const slot = (x / cw) * 4, bi = Math.min(3, Math.floor(slot)), within = slot - bi;
+          if (within > 0.08 && within < 0.92) {
+            const h = barsH[bi] || 0;
+            const t = y / ch;                         // 0 сверху, 1 снизу
+            if (h > 0.01 && t > 1 - h) {
+              const k2 = (t - (1 - h)) / h;           // 0 у вершины, 1 у основания
+              v = 0.62 + 0.38 * (1 - k2);
+            }
+          }
+        } else {
+          // Лучи из центра: дальность зависит от полосы в этом направлении. Живой спектр был ярче —
+          // для него и приглушение, и радиус меньше; фейковый оставляем заметным.
+          const reach = (0.46 + 0.5 * band) * energy * (0.85 + 0.3 * loud) * (live ? 0.9 : 1);
+          v = r < reach ? 1 - (r / reach) ** 2 : 0;
+          v = Math.max(v, Math.max(0, Math.sin(r * 16 - t * 3.4)) ** 3 * 0.5 * energy * (1 - r));   // волны-кольца
+        }
         if (idle) {
           const wave = 0.78 + 0.12 * Math.sin(a * 3 + ti * 0.8) + 0.07 * Math.sin(a * 7 - ti);
           // сплошное пятно из центра; крупнее модели, чтобы край выходил из-за корпуса
           v = Math.max(v, Math.max(0, 1 - (Math.hypot(dx, dy) / idleR / wave) ** 2) * 0.45 * idle);
         }
         if (v < 0.08) continue;
-        ctx.globalAlpha = Math.min(0.8, v * 0.85);
+        ctx.globalAlpha = (live ? 0.7 : 1) * Math.min(0.8, v * 0.85);
         ctx.fillText(RAMP[Math.min(RAMP.length - 1, Math.floor(v * RAMP.length))], x, y);
       }
     }
@@ -4757,9 +5075,19 @@ function renderYam2() {
   $('#y2-catalog').innerHTML = list.length ? list.map(p => {
     const have = inst[p.name];
     const action = !p.fits ? '' : !have ? 'Установить' : vcmp(p.latest, have.version) > 0 ? `Обновить с ${esc(have.version)}` : '';
+    const sup = p.panel, nm = t => (sup && sup.names && sup.names[t]) || t;
     return `<div class="app${have ? ' installed' : ''}${p.fits ? '' : ' other'}">
       <div class="app-top"><b>${esc(p.name)}</b><span class="mono">${esc(p.latest)}</span></div>
       <p>${esc(p.summary)}</p>
+      ${sup ? `<div class="app-panel">
+        <span class="badge ok">Интеграция с панелью</span>
+        <span class="meta">вкладка «${esc(sup.tab || 'Активация')}»</span>
+        <span class="meta">Проверено: ${sup.tested.map(t => esc(nm(t))).join(', ')}</span>
+        ${sup.untested.length ? `<span class="meta">Не тестировалось: ${sup.untested.map(t => esc(nm(t))).join(', ')}</span>` : ''}
+        ${sup.unsupported.length ? `<span class="meta">Не поддерживается: ${sup.unsupported.map(t => esc(nm(t))).join(', ')}</span>` : ''}
+        ${sup.untested.includes(c.platform) || sup.unsupported.includes(c.platform)
+          ? `<span class="meta warn">Ваша станция (${esc(nm(c.platform))}) — ${sup.unsupported.includes(c.platform) ? 'не поддерживается' : 'не тестировалась'}; на свой риск</span>` : ''}
+      </div>` : ''}
       ${p.fits ? '' : `<span class="meta">не для ${esc(c.platform)}: ${esc((p.targets || []).join(', '))}</span>`}
       <div class="row">${action ? `<button class="btn sm${have ? '' : ' primary'}" data-name="${esc(p.name)}">${action}</button>`
         : have ? '<span class="badge ok">установлено</span>' : ''}
@@ -5310,12 +5638,14 @@ function applyUI() {
                         ['--accent-soft', accent && `color-mix(in srgb, ${accent} 15%, var(--card))`]])
     v ? root.style.setProperty(k, v) : root.style.removeProperty(k);
   window.__vizOff = store.get('ui.viz') === '0';
+  window.__vizStyle = store.get('ui.vizStyle') || 'rays';
   $$('#set-theme button').forEach(b => b.classList.toggle('active', b.dataset.v === theme));
   const glow = store.get('ui.glow') || 'cursor';
   if (glow === 'off') delete root.dataset.glow; else root.dataset.glow = glow;
   $$('#set-glow button').forEach(b => b.classList.toggle('active', b.dataset.v === glow));
   $$('#set-accent .sw').forEach(b => b.classList.toggle('sel', b.dataset.v === accent));
   $('#set-viz').checked = !window.__vizOff;
+  $('#set-viz-style').value = window.__vizStyle;
   window.__vizIdleOff = store.get('ui.vizIdle') === '0';
   $('#set-viz-idle').checked = !window.__vizIdleOff;
   privateOff = store.get('ui.private') === '0';
@@ -5347,10 +5677,42 @@ document.addEventListener('pointermove', e => {
 }, { passive: true });
 $$('#set-accent .sw').forEach(b => b.onclick = () => { store.set('ui.accent', b.dataset.v); applyUI(); });
 $('#set-viz').onchange = e => { store.set('ui.viz', e.target.checked ? '1' : '0'); applyUI(); };
+$('#set-viz-style').onchange = e => { store.set('ui.vizStyle', e.target.value); applyUI(); };
 $('#set-viz-idle').onchange = e => { store.set('ui.vizIdle', e.target.checked ? '1' : '0'); applyUI(); };
+// Живой спектр с колонки: программа читает захват её усилителя, панель получает полосы потоком светодиодов.
+let vizLive = null;
+function renderVizRow() {
+  const box = $('#set-viz-live'), note = $('#viz-row small');
+  box.disabled = !vizLive;
+  box.checked = !!vizLive?.running;
+  note.textContent = !vizLive ? 'Состояние недоступно: нет связи с колонкой'
+    : !vizLive.installed ? 'Экспериментально: включите — панель поставит на колонку программу (2 МБ), которая слушает не микрофон, а сам усилитель. «Убрать всё» её удаляет'
+    : vizLive.running ? 'Включён: спектр идёт с колонки живьём. Работает, пока панель на связи'
+    : 'Выключен. Программа на колонке осталась — включите снова или уберите через «Убрать всё» в настройках';
+}
+async function loadViz() {
+  try { vizLive = await api('/api/viz'); } catch { vizLive = null; }
+  renderVizRow();
+}
+$('#set-viz-live').onchange = async e => {
+  const want = e.target.checked;
+  e.target.disabled = true;
+  try {
+    vizLive = await api('/api/viz', { on: want });
+    if (want && !vizLive.running) throw new Error(vizLive.error || 'визуализатор не запустился');
+    toast(want ? 'Живой спектр включён' : 'Живой спектр выключен');
+  } catch (err) {
+    e.target.checked = !want;
+    toast(err.message, true);
+  } finally {
+    renderVizRow();
+    if (vizLive) e.target.checked = !!vizLive.running;
+  }
+};
 $('#set-private').onchange = e => { store.set('ui.private', e.target.checked ? '1' : '0'); applyUI(); };
 $('#set-minibar').onchange = e => { store.set('ui.minibar', e.target.checked ? '1' : '0'); applyUI(); loadMusic(); };
 applyUI();
+loadViz();
 buildTiles(); fillTileSettings();
 
 // Доступ: пароль панели и установка как приложение.
@@ -7001,6 +7363,7 @@ function onConnected() {
   loadSounds().catch(e => { if (!e.offline) $('#sounds').innerHTML = `<div class="empty">${esc(e.message)}</div>`; });
   loadSay();
   loadSparks();
+  loadViz();
   api('/api/patterns').then(p => { patterns = p; renderPatterns(); }).catch(e => e.offline || toast(e.message, true));
   loadMusic();
   loadDispState();
@@ -7153,6 +7516,279 @@ voiceInput = bindVoiceInput(document, { store, ready: () => !!(online && mu.info
 
   redraw();
 })();
+</script>
+<script>
+// ---------- слова активации: тонкий клиент к API демона tangenx/wakeword ----------
+let ww = null, wwTimer = 0, wwSig = '', wwBusy = '', wwActions = null;
+const wwOn = () => !!(ww && ww.installed && ww.supported);
+const wwPct = x => Math.round(Math.max(0, Math.min(1, +x || 0)) * 100) + '%';
+
+async function wwApi(path, method = 'GET', body = null) {
+  if (method === 'GET') {
+    const r = await PanelContext.fetch('/api/wakeword/proxy?path=' + encodeURIComponent(path));
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || r.statusText);
+    return d;
+  }
+  const r = await PanelContext.fetch('/api/wakeword/proxy', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, method, body }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || r.statusText);
+  return d;
+}
+
+async function wwPlay(path) {
+  const r = await PanelContext.fetch('/api/wakeword/proxy?path=' + encodeURIComponent(path));
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  const url = URL.createObjectURL(await r.blob());
+  const a = new Audio(url);
+  a.onended = () => URL.revokeObjectURL(url);
+  await a.play();
+}
+
+function wwRender() {
+  const nav = $('#nav-wakeword');
+  if (nav) nav.hidden = !(ww && ww.installed && ww.supported);
+  if (!ww) return;
+  const on = wwOn(), running = !!ww.running;
+  const stateEl = $('#ww-state'), dot = $('#ww-dot');
+  stateEl.textContent = !ww.installed ? 'не установлен' : !ww.supported ? 'не поддерживается'
+    : running ? 'работает' : 'остановлен';
+  dot.className = 'ww-dot' + (on && running ? ' on' : on ? ' warn' : ' off');
+  $('#ww-hint').textContent = !ww.installed
+    ? 'Пакет tangenx/wakeword не установлен. Установите его в «Приложения» → YAM 2, затем вернитесь сюда.'
+    : !ww.supported ? `Плагин не поддерживает эту модель (${ww.platform || '?'}).`
+    : ww.error ? `Демон не отвечает: ${ww.error}`
+    : running ? (ww.dry_run
+        ? 'Демон работает, маршрутизация включена: по слову панель сама решает — Алиса, ассистент или сценарий.'
+        : 'Демон работает. Запись и обучение идут с микрофонов колонки — говорите рядом с ней.')
+    : 'Демон установлен, но не запущен — нажмите «Запустить демон».';
+  $('#ww-install').hidden = ww.installed;
+  $('#ww-start').hidden = !on || running;
+  $('#ww-stop').hidden = !on || !running;
+  $('#ww-autostart-row').hidden = !on;
+  $('#ww-autostart').checked = !!ww.autostart;
+  $('#ww-words-card').hidden = !on || !running;
+
+  const sup = ww.support || {};
+  const nm = t => (sup.names || {})[t] || t;
+  const tested = (sup.tested || []).map(nm).join(', ');
+  const unt = (sup.untested || []).map(nm).join(', ');
+  const unsup = (sup.unsupported || []).map(nm).join(', ');
+  const cur = ww.platform || '';
+  let supText = `Проверено: ${tested || '—'}.`;
+  if (unt) supText += ` Не тестировалось: ${unt}.`;
+  if (unsup) supText += ` Не поддерживается: ${unsup}.`;
+  if ((sup.untested || []).includes(cur)) supText += ` Ваша станция (${nm(cur)}) не тестировалась — на свой риск.`;
+  else if ((sup.unsupported || []).includes(cur)) supText += ` Ваша станция (${nm(cur)}) не поддерживается.`;
+  $('#ww-support').textContent = supText;
+
+  const a = ww.audio || {};
+  $('#ww-audio').hidden = !on || !running;
+  const db = Number.isFinite(+a.level) ? +a.level : -60;
+  const lvl = Math.max(0, Math.min(1, (db + 60) / 60));
+  $('#ww-meter').style.width = Math.round(lvl * 100) + '%';
+  $('#ww-audio-text').textContent = !a.ok
+    ? (a.error || 'нет аудио с микрофона — проверьте, что микрофон колонки включён')
+    : `микрофон ${a.channel || 'vqe_0'} · уровень ${db.toFixed(0)} дБ`;
+
+  const words = ww.words || [];
+  const wa = (wwActions && wwActions.actions) || {};
+  const scenes = (wwActions && wwActions.scenes) || [];
+  const sig = JSON.stringify([words.map(w => [w.id, w.name, w.enabled, w.sensitivity, w.takes,
+    w.threshold, w.recall, w.false_per_h, w.false_clips]), wa]);
+  const dragging = document.activeElement && document.activeElement.closest('#ww-words')
+    && document.activeElement.type === 'range';
+  if (sig !== wwSig && !dragging) {
+    wwSig = sig;
+    $('#ww-words').innerHTML = words.length ? words.map(w => {
+      const id = esc(w.id), sens = Math.round((+w.sensitivity || 0) * 100);
+      const thr = Math.round(Math.min(0.99, Math.max(0.05, (+w.threshold || 0) - (+w.sensitivity || 0))) * 100);
+      const a = wa[w.id] || { type: 'alice' };
+      return `<div class="ww-word">
+        <div class="ww-word-head"><b class="ww-word-name">${esc(w.name)}</b>
+          <label class="ww-toggle" title="Включить или выключить слово"><input type="checkbox" class="switch" data-ww-enable="${id}" ${w.enabled ? 'checked' : ''} aria-label="Слово «${esc(w.name)}» включено"></label></div>
+        <div class="ww-conf" title="Уверенность сейчас; отметка — порог срабатывания"><span data-ww-meter="${id}" style="width:${wwPct(w.score)}"></span><b style="left:${thr}%"></b></div>
+        <div class="ww-word-meta"><span class="meta">${w.takes || 0} записей · узнаёт ${wwPct(w.recall)} · ложных ≈ ${(+w.false_per_h || 0).toFixed(1)}/ч${w.false_clips ? ` · отмечено: ${w.false_clips}` : ''} · сейчас <span data-ww-score="${id}">${wwPct(w.score)}</span></span></div>
+        ${(w.notes || []).length ? `<div class="meta">${w.notes.map(esc).join('<br>')}</div>` : ''}
+        <div class="ww-word-act"><label class="meta">действие</label>
+          <select class="field" data-ww-act="${id}">
+            <option value="alice" ${a.type === 'alice' ? 'selected' : ''}>Алиса</option>
+            <option value="assistant" ${a.type === 'assistant' ? 'selected' : ''}>Ассистент</option>
+            <option value="scene" ${a.type === 'scene' ? 'selected' : ''}>Сценарий</option>
+            <option value="none" ${a.type === 'none' ? 'selected' : ''}>Ничего</option>
+          </select>
+          ${a.type === 'scene' ? `<select class="field" data-ww-scene="${id}">${scenes.map(x => `<option value="${x.id}" ${x.id === a.scene ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
+        </div>
+        <div class="ww-word-foot">
+          <label class="ww-sens"><span>реже</span><input type="range" min="-30" max="30" step="5" value="${Math.max(-30, Math.min(30, sens))}" data-ww-sens="${id}"><span>чаще</span></label>
+          <div class="ww-word-actions"><button class="btn sm" data-ww-retrain="${id}">Переобучить</button><button class="btn sm danger" data-ww-del="${id}">Удалить</button></div>
+        </div></div>`;
+    }).join('') : '<p class="hint">Слов пока нет. Нажмите «Добавить слово».</p>';
+  } else {
+    words.forEach(w => {
+      const id = window.CSS && CSS.escape ? CSS.escape(w.id) : String(w.id).replace(/"/g, '\\"');
+      const m = document.querySelector(`[data-ww-meter="${id}"]`);
+      if (m) m.style.width = wwPct(w.score);
+      const s = document.querySelector(`[data-ww-score="${id}"]`);
+      if (s) s.textContent = wwPct(w.score);
+    });
+  }
+
+  const e = ww.enroll;
+  $('#ww-enroll-card').hidden = !on || !e;
+  if (e) {
+    $('#ww-enroll-name').textContent = e.name || '';
+    const ambEl = $('#ww-ambient-state');
+    if (wwBusy !== 'ambient') {
+      ambEl.textContent = e.has_ambient ? 'фон записан' : '';
+      ambEl.classList.toggle('ok', !!e.has_ambient);
+    }
+    const takes = e.takes || [];
+    $('#ww-takes-state').textContent = `${takes.length} из ${e.min_takes || 6}`;
+    $('#ww-takes').innerHTML = takes.map((sec, i) => `<div class="ww-take"><span>${i + 1}: ${(+sec).toFixed(2)} с</span><span><button class="btn sm" data-ww-take-play="${i}">▶</button> <button class="btn sm danger" data-ww-take-del="${i}">×</button></span></div>`).join('');
+    const sp = +e.speech_secs || 0, spEl = $('#ww-speech-state');
+    if (wwBusy !== 'speech') {
+      spEl.textContent = sp ? `записано · ${sp.toFixed(0)} с` : '';
+      spEl.classList.toggle('ok', sp > 0);
+    }
+    $('#ww-train').disabled = !e.has_ambient || takes.length < (e.min_takes || 6)
+      || !!(ww.train && ww.train.active);
+  }
+  const tr = ww.train || {};
+  $('#ww-train-state').textContent = tr.active ? `${tr.stage || 'обучение'} · ${Math.round((+tr.frac || 0) * 100)}%`
+    : tr.error ? tr.error : tr.done ? 'готово' : '';
+  $('#ww-train-bar').style.width = tr.active ? Math.round((+tr.frac || 0) * 100) + '%' : '0';
+
+  const hits = ww.hits || [];
+  $('#ww-hits-card').hidden = !on || !running || !hits.length;
+  $('#ww-hits').innerHTML = hits.slice(0, 12).map(h => `<div class="ww-hit">
+    <span>${esc(h.name || h.word)} · ${Math.round((+h.score || 0) * 100)}% · ${new Date(h.at).toLocaleTimeString()}</span>
+    <span><button class="btn sm" data-ww-hit-play="${h.id}">▶</button> <button class="btn sm" data-ww-hit-false="${h.id}">Ложное</button></span></div>`).join('');
+}
+
+async function wwLoad() {
+  clearTimeout(wwTimer);
+  let ok = true;
+  try { ww = await api('/api/wakeword/status'); }
+  catch (e) { ww = { installed: false, supported: false, error: e.message }; ok = false; }
+  wwRender();
+  if (!ok) { wwTimer = setTimeout(wwLoad, 3000); return; }
+  if (wwOn() && ww.running) {
+    // открыта вкладка — как в оригинальном UI, иначе достаточно следить за наличием/навигацией
+    wwTimer = setTimeout(wwLoad, $('#tab-wakeword').hidden ? 3000 : 300);
+  } else {
+    wwTimer = setTimeout(wwLoad, 5000);
+  }
+}
+window.wwLoad = wwLoad;
+
+async function wwActionsLoad() {
+  try { wwActions = await api('/api/wakeword/actions'); } catch { wwActions = null; }
+  wwSig = '';
+  wwRender();
+}
+window.wwActionsLoad = wwActionsLoad;
+
+$('#ww-install').onclick = e => act(e.currentTarget, async () => {
+  await api('/api/wakeword/install', {});
+  await wwLoad();
+  await wwActionsLoad();
+}, 'Пакет установлен');
+$('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start', {}); wwRender(); wwLoad(); }, 'Демон запущен');
+$('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop', {}); wwRender(); wwLoad(); }, 'Демон остановлен');
+$('#ww-autostart').onchange = e => {
+  const on = e.target.checked;
+  act(e.target, async () => { ww = await api('/api/wakeword/autostart', { on }); wwRender(); },
+      on ? 'Автозапуск включён' : 'Автозапуск выключен');
+};
+$('#ww-listen').onclick = e => act(e.currentTarget, () => wwApi('/api/listen', 'POST'), 'Слушаю');
+$('#ww-add').onclick = () => {
+  const name = prompt('Название слова активации');
+  if (!name || !name.trim()) return;
+  act(null, async () => { await wwApi('/api/enroll/start', 'POST', { name: name.trim() }); await wwLoad(); }, 'Записываем «' + name.trim() + '»');
+};
+$('#ww-ambient').onclick = e => {
+  const btn = e.currentTarget; if (btn.disabled) return;
+  btn.disabled = true; wwBusy = 'ambient';
+  $('#ww-ambient-state').textContent = 'тихо… 8 секунд';
+  (async () => {
+    try { await wwApi('/api/enroll/ambient', 'POST'); toast('Фон записан'); }
+    catch (err) { toast(err.message, true); }
+    finally { wwBusy = ''; btn.disabled = false; await wwLoad(); }
+  })();
+};
+$('#ww-take').onclick = e => {
+  const btn = e.currentTarget; if (btn.disabled) return;
+  btn.disabled = true; wwBusy = 'take';
+  (async () => {
+    try {
+      for (const n of ['3', '2', '1']) { $('#ww-say').textContent = n + '…'; await new Promise(r => setTimeout(r, 500)); }
+      $('#ww-say').textContent = 'Говорите!';
+      const r = await wwApi('/api/enroll/take', 'POST');
+      if (r.ok) toast(`Запись: ${(+r.duration || 0).toFixed(2)} с`);
+      else toast(r.message || 'Не получилось', true);
+    } catch (err) { toast(err.message, true); }
+    finally { $('#ww-say').textContent = ''; wwBusy = ''; btn.disabled = false; await wwLoad(); }
+  })();
+};
+$('#ww-speech').onclick = e => {
+  const btn = e.currentTarget; if (btn.disabled) return;
+  btn.disabled = true; wwBusy = 'speech';
+  $('#ww-speech-state').textContent = 'читайте вслух… 20 секунд';
+  (async () => {
+    try { await wwApi('/api/enroll/speech?secs=20', 'POST'); toast('Речь записана'); }
+    catch (err) { toast(err.message, true); }
+    finally { wwBusy = ''; btn.disabled = false; await wwLoad(); }
+  })();
+};
+$('#ww-train').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/train', 'POST'); await wwLoad(); }, 'Обучение запущено');
+$('#ww-cancel').onclick = e => act(e.currentTarget, async () => { await wwApi('/api/enroll/cancel', 'POST'); await wwLoad(); }, 'Отменено');
+
+$('#ww-words').addEventListener('change', e => {
+  const t = e.target;
+  if (t.dataset.wwAct) {
+    const word = t.dataset.wwAct, kind = t.value;
+    const scene = kind === 'scene' ? ((wwActions?.scenes || [])[0]?.id || '') : '';
+    act(null, async () => {
+      wwActions = await api('/api/wakeword/actions', { word, action: kind, scene });
+      wwSig = '';
+      await wwLoad();
+    });
+  } else if (t.dataset.wwScene) {
+    const word = t.dataset.wwScene, scene = t.value;
+    act(null, async () => {
+      wwActions = await api('/api/wakeword/actions', { word, action: 'scene', scene });
+      wwSig = '';
+      await wwLoad();
+    });
+  } else if (t.dataset.wwEnable) {
+    act(null, async () => { await wwApi('/api/words/' + encodeURIComponent(t.dataset.wwEnable), 'POST', { enabled: t.checked }); await wwLoad(); });
+  } else if (t.dataset.wwSens) {
+    act(null, async () => { await wwApi('/api/words/' + encodeURIComponent(t.dataset.wwSens), 'POST', { sensitivity: (+t.value) / 100 }); await wwLoad(); });
+  }
+});
+$('#ww-words').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.wwRetrain) act(b, async () => { await wwApi('/api/words/' + encodeURIComponent(b.dataset.wwRetrain) + '/retrain', 'POST'); await wwLoad(); }, 'Переобучаю…');
+  if (b.dataset.wwDel && confirm('Удалить слово со всеми записями?'))
+    act(b, async () => { await wwApi('/api/words/' + encodeURIComponent(b.dataset.wwDel), 'DELETE'); await wwLoad(); }, 'Слово удалено');
+});
+$('#ww-takes').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.wwTakePlay) act(b, () => wwPlay('/api/enroll/take/' + b.dataset.wwTakePlay));
+  if (b.dataset.wwTakeDel) act(b, async () => { await wwApi('/api/enroll/take/' + b.dataset.wwTakeDel, 'DELETE'); await wwLoad(); });
+});
+$('#ww-hits').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.wwHitPlay) act(b, () => wwPlay('/api/hits/' + b.dataset.wwHitPlay));
+  if (b.dataset.wwHitFalse) act(b, async () => { await wwApi('/api/hits/' + b.dataset.wwHitFalse + '/false', 'POST'); await wwLoad(); }, 'Запомнил как ложное');
+});
+
+wwLoad();
+wwActionsLoad();
 </script>
 <script src="static/vendor/qrcode.js"></script>
 <script src="static/vendor/xterm/xterm.js"></script>

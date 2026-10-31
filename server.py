@@ -13,6 +13,7 @@ import contextlib
 import hashlib
 import io
 import json
+import math
 import os
 import platform
 import random
@@ -55,7 +56,6 @@ SOUNDS_DIR = f"{QUASAR}/sounds"
 PATTERNS = {"ring": f"{QUASAR}/ledpatterns/oknix", "clock": f"{QUASAR}/ledpatterns/clock"}
 LOGS_DIR = "/data/quasar/daemons_logs"
 LEDS = "/sys/class/leds"
-REMOTE_PLAY = "/tmp/webpanel_play.wav"
 
 # Дисплей часов: 4 позиции × сегменты A–H, затем дополнительные символы.
 # Порядок дополнительных байтов в кадре — по проверкам заставки на колонке: значок градуса, верхняя точка
@@ -64,6 +64,7 @@ CLOCK_EXTRAS = ["DEGREE", "DH", "DL", "DM"]
 CLOCK_LEDS = [f"{s}{p}" for p in range(4) for s in "ABCDEFGH"] + CLOCK_EXTRAS
 CLOCK_FRAME = 1 + len(CLOCK_LEDS) + 2  # флаг, яркости, длительность (мс, big-endian)
 WEB_DIR = "/data/quasar/webpanel"
+PLAY_LOG = "/tmp/webpanel_play.log"   # stderr aplay: по нему видно, почему звук не заиграл
 BOOT_TARGET = f"{QUASAR}/ledpatterns/clock/boot.binscled.zst"
 BOOT_CUSTOM = f"{WEB_DIR}/boot.binscled.zst"
 BOOT_ORIG = f"{WEB_DIR}/boot.orig.binscled.zst"
@@ -282,6 +283,132 @@ ASSIST_CMD = "/tmp/webpanel_assistant.cmd"
 ASSIST_SD = "/tmp/webpanel_assistant.sd"
 ASSIST_RUN = f"exec {ASSISTD} -dir {ASSIST_DIR} >{ASSIST_DIR}/assistant.log 2>&1"
 ASSIST_SRC = Path(__file__).resolve().parent / "device" / "assistant"
+# Живой спектр с колонки: маленькая программа читает захват кодека (то, что реально играет усилитель,
+# а не микрофон — микрофон остаётся Алисе) и раз в 50 мс пишет 4 полосы в /tmp. Панель читает их тем же
+# потоком, что и светодиоды. Пока экспериментально: после перезагрузки колонки не поднимается сам.
+VIZ_DIR = f"{WEB_DIR}/viz"
+VIZD = f"{VIZ_DIR}/vizd"
+VIZ_STATUS = "/tmp/webpanel_viz.json"
+VIZ_SD = "/tmp/webpanel_viz.sd"
+VIZ_RUN = f"exec {VIZD} >{VIZ_DIR}/viz.log 2>&1"
+VIZ_SRC = Path(__file__).resolve().parent / "device" / "viz"
+VIZ_ON = "/tmp/webpanel_viz.on"   # визуализатор включён в панели
+VIZ_BT = "/tmp/webpanel_viz.bt"   # идёт Bluetooth-переливание: полосы считает tap из того же потока
+
+# ---------- свои слова активации (yam-пакет tangenx/wakeword) ----------
+# Демон живёт на колонке и отдаёт маленький JSON API на 8780. Панель не копирует его код:
+# только читает состояние и шлёт команды (запись идёт микрофонами колонки), а API проксирует.
+WAKE_PKG = "/data/yam/pkgs/tangenx/wakeword"
+WAKE_SHARE = "/data/yam/share/tangenx.wakeword"
+WAKE_BIN = "/data/yam/bin/wakeword"
+WAKE_DATA = "/data/wakeword"
+WAKE_PID = "/tmp/wakeword.pid"
+WAKE_LOG = "/tmp/wakeword.log"
+WAKE_AUTOSTART = f"{WEB_DIR}/wakeword.autostart"   # маркер: поднимать демон хуком панели после загрузки
+WAKE_PORT = 8780
+# targets из yam.yaml пакета: Макс (yandexstation_2), Стрит и Android-Станция не поддерживаются.
+# что известно про пакет: README плагина + живая проверка на Лайт 2
+WAKE_SUPPORT = {
+    "tab": "Активация",
+    "note": "Интеграция с панелью",
+    "tested": ["plum", "pickle", "yandexmidi", "yandexmini_2", "bergamot"],
+    "untested": ["yandexmicro", "yandexmini", "cucumber"],
+    "unsupported": ["yandexstation", "orion"],
+    "names": {"plum": "Лайт 2", "pickle": "Станция 2", "yandexmidi": "Станция 2",
+              "yandexmini_2": "Мини 2", "bergamot": "Мини 3", "yandexmicro": "Микро",
+              "yandexmini": "Мини", "cucumber": "Миди", "yandexstation": "Станция 1",
+              "orion": "Макс"},
+}
+WAKE_TARGETS = ("yandexmicro", "plum", "yandexmini", "yandexmini_2", "bergamot", "pickle",
+                "cucumber", "yandexmidi", "yandexstation", "orion")
+WAKE_SETTINGS = f"{WAKE_DATA}/settings.json"
+WAKE_ACTIONS_KEY = "wakeword_actions"
+
+# ---------- эквалайзер для Bluetooth-выхода ----------
+# Пресеты в виде полос (тип, частота, усиление дБ, добротность): tap на колонке получает готовые
+# коэффициенты биквадов и применяет их к потоку, который идёт в Bluetooth-колонку.
+EQ_FILE = f"{VIZ_DIR}/eq.json"
+EQ_PRESETS = {
+    "flat": (),
+    "rock": (("lowshelf", 100, 5.0), ("peaking", 800, -3.0, 1.0), ("highshelf", 8000, 3.0)),
+    "electronic": (("lowshelf", 70, 6.0), ("peaking", 2500, 3.0, 1.0), ("highshelf", 10000, 3.0)),
+    "vocal": (("peaking", 2500, 4.0, 1.0), ("lowshelf", 120, -3.0), ("highshelf", 6000, 2.0)),
+    "night": (("lowshelf", 80, 5.0), ("highshelf", 6000, -4.0)),
+}
+EQ_CUSTOM_DEFAULT = ({"f": 60, "g": 0}, {"f": 230, "g": 0}, {"f": 910, "g": 0},
+                     {"f": 3600, "g": 0}, {"f": 14000, "g": 0})
+EQ_GAIN_MAX = 12.0
+
+
+def eq_custom_bands(raw):
+    """Пять полос своего эквалайзера: частота 20–20000 Гц и усиление −12…+12 дБ."""
+    bands = []
+    for b in list(raw or [])[:len(EQ_CUSTOM_DEFAULT)]:
+        try:
+            f, g = float(b.get("f")), float(b.get("g"))
+        except (TypeError, ValueError, AttributeError):
+            raise AdbError("плохие настройки эквалайзера")
+        if not 20 <= f <= 20000:
+            raise AdbError("частота вне 20–20000 Гц")
+        if not -EQ_GAIN_MAX <= g <= EQ_GAIN_MAX:
+            raise AdbError(f"усиление вне −{EQ_GAIN_MAX:.0f}…+{EQ_GAIN_MAX:.0f} дБ")
+        bands.append({"f": round(f, 1), "g": round(g, 1)})
+    bands += [dict(b) for b in EQ_CUSTOM_DEFAULT[len(bands):]]
+    return bands
+
+
+def eq_filters(preset, custom=None):
+    """Полосы (тип, частота, усиление, добротность) для пресета или своего набора."""
+    if preset != "custom":
+        return list(EQ_PRESETS[preset])
+    return [("peaking", b["f"], b["g"], 1.0) for b in (custom or EQ_CUSTOM_DEFAULT) if b["g"]]
+
+
+def eq_coeffs(band, fs=48000):
+    """Коэффициенты биквада (b0,b1,b2,a1,a2) по формулам RBJ; уже нормированы на a0."""
+    kind, freq, gain = band[:3]
+    q = band[3] if len(band) > 3 else 0.7
+    a = 10 ** (gain / 40)
+    w = 2 * math.pi * freq / fs
+    cw, sw = math.cos(w), math.sin(w)
+    if kind == "peaking":
+        alpha = sw / (2 * q)
+        b0, b1, b2 = 1 + alpha * a, -2 * cw, 1 - alpha * a
+        a0, a1, a2 = 1 + alpha / a, -2 * cw, 1 - alpha / a
+    else:   # полки: S = 1 (стандартный наклон)
+        alpha = sw / 2 * math.sqrt(2.0)
+        k = 2 * math.sqrt(a) * alpha
+        if kind == "lowshelf":
+            b0 = a * ((a + 1) - (a - 1) * cw + k)
+            b1 = 2 * a * ((a - 1) - (a + 1) * cw)
+            b2 = a * ((a + 1) - (a - 1) * cw - k)
+            a0 = (a + 1) + (a - 1) * cw + k
+            a1 = -2 * ((a - 1) + (a + 1) * cw)
+            a2 = (a + 1) + (a - 1) * cw - k
+        else:
+            b0 = a * ((a + 1) + (a - 1) * cw + k)
+            b1 = -2 * a * ((a - 1) + (a + 1) * cw)
+            b2 = a * ((a + 1) + (a - 1) * cw - k)
+            a0 = (a + 1) - (a - 1) * cw + k
+            a1 = 2 * ((a - 1) - (a + 1) * cw)
+            a2 = (a + 1) - (a - 1) * cw - k
+    return (b0 / a0, b1 / a0, b2 / a0, a1 / a0, a2 / a0)
+
+
+def eq_curve(preset, custom=None, points=96, fs=48000):
+    """АЧХ для графика: логарифмическая сетка 20 Гц … 20 кГц и дБ."""
+    coeffs = [eq_coeffs(b, fs) for b in eq_filters(preset, custom)]
+    freqs = [20 * (20000 / 20) ** (i / (points - 1)) for i in range(points)]
+    db = []
+    for f in freqs:
+        w = 2 * math.pi * f / fs
+        z1 = complex(math.cos(w), -math.sin(w))
+        z2 = z1 * z1
+        h = 1 + 0j
+        for b0, b1, b2, a1, a2 in coeffs:
+            h *= (b0 + b1 * z1 + b2 * z2) / (1 + a1 * z1 + a2 * z2)
+        db.append(round(20 * math.log10(abs(h)), 1))
+    return freqs, db
 # Агент панели (device/agent): команды, файлы и консоль по TLS с токеном — рядом с adb, а не вместо него.
 # adb ставит, обновляет и чинит агента; агент молчит — панель работает через adb, как раньше.
 AGENT_DIR = f"{WEB_DIR}/agent"
@@ -341,8 +468,14 @@ fwd() {
   # громкость колонки — силами bluealsa: многие колонки не слушают её по AVRCP; после переподключения сбрасывается
   dbus-send --system --print-reply --dest=org.bluealsa /org/bluealsa/hci0/dev_$(echo "$M" | tr : _)/a2dpsrc/sink \
     org.freedesktop.DBus.Properties.Set string:org.bluealsa.PCM1 string:SoftVolume variant:boolean:true >/dev/null 2>&1
+  # громкость BT-колонки в bluealsa — всегда 100 %: остаются громкость Алисы и громкость на самой колонке
+  ctl=$(amixer -D bluealsa scontrols 2>/dev/null | sed -n "s/^Simple mixer control '\(.*A2DP\)',0$/\1/p" | head -n 1)
+  [ -n "$ctl" ] && amixer -D bluealsa sset "$ctl" 100% >/dev/null 2>&1
+  # если живой спектр установлен — вставляем tap: он пересылает звук дальше и считает полосы
+  tap=cat
+  [ -x __VIZ__ ] && tap="__VIZ__ -tap"
   start-stop-daemon -S -b -m -p $F -x /bin/sh -- -c "arecord -q -D hw:Loopback,1,0 -f S16_LE -c 2 -r 48000 -t raw \
-    --buffer-time=100000 | aplay -q -D bluealsa:DEV=$M,PROFILE=a2dp -f S16_LE -c 2 -r 48000 -t raw --buffer-time=200000"
+    --buffer-time=100000 | $tap | aplay -q -D bluealsa:DEV=$M,PROFILE=a2dp -f S16_LE -c 2 -r 48000 -t raw --buffer-time=200000"
 }
 fwd_stop() {   # переливалка — sh с двумя детьми: гасим всю группу процессов
   p=$(cat $F 2>/dev/null) && g=$(awk '{print $5}' /proc/$p/stat 2>/dev/null) && [ "${g:-0}" -gt 1 ] && kill -- -$g 2>/dev/null
@@ -390,6 +523,9 @@ BOOT_HOOK_SCRIPT = (
     f"[ -f {ALARM_CONF} ] && [ -f {ALARMD} ] && start-stop-daemon -S -b -m -p {ALARM_SD} -x /bin/sh -- {ALARMD}\n"
     f"[ -f {ASSIST_CONF} ] && [ -x {ASSISTD} ] && start-stop-daemon -S -b -m -p {ASSIST_SD} -x /bin/sh -- -c {shlex.quote(ASSIST_RUN)}\n"
     f"[ -f {BTOUT_MAC} ] && [ -f {BTOUT_SH} ] && start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}\n"
+    # свои слова активации: демон из yam-пакета, стартуем из /data (rootfs-init после OTA пропадает)
+    f"[ -f {WAKE_AUTOSTART} ] && [ -x {WAKE_BIN} ] && start-stop-daemon -S -b -m -N 10 -p {WAKE_PID} -x /bin/sh -- -c "
+    f"{shlex.quote(f'exec {WAKE_BIN} run -data {WAKE_DATA} -negatives {WAKE_SHARE}/negatives.bin -listen 127.0.0.1:{WAKE_PORT} >> {WAKE_LOG} 2>&1')}\n"
     f"{BT_OFF_BOOT}\n"
     f"[ -f {AGENT_TOKENS} ] && [ -x {AGENT_BIN} ] && start-stop-daemon -S -b -m -p {AGENT_SD} -x /bin/sh -- -c {shlex.quote(AGENT_RUN)}\n"
     # службы пакетов yam 2, отмеченные «при загрузке»
@@ -955,14 +1091,6 @@ class Connection:
             return "", "adb get-state: таймаут"
         return p.stdout.decode().strip(), p.stderr.decode().strip()
 
-    def _reachable(self):
-        host, _, port = self.adb.serial.rpartition(":")
-        try:
-            socket.create_connection((host, int(port)), timeout=1.5).close()
-            return True
-        except OSError:
-            return False
-
     def _alive(self):
         """adb get-state верит в старое TCP-соединение: после резкого выключения колонки он ещё долго
         отвечает «device». Поэтому проверяем по-настоящему — короткой командой на колонке."""
@@ -1005,11 +1133,9 @@ class Connection:
                 self._sleep(3)
                 continue
             state, err = self._adb_state()
-            if state == "device" and network and not self._reachable():
-                self.note(f"{self.adb.serial} пропала из сети", "warn")
-                self._drop()
-                state = ""
-            elif state == "device" and not self._alive():
+            # голый TCP-коннект к 5555 оставлял на adbd сокеты в CLOSE_WAIT и забивал его;
+            # живость проверяем через сам adb: get-state и короткую shell-команду
+            if state == "device" and not self._alive():
                 self.note("adb числит колонку подключённой, но она не отвечает — сбрасываем соединение", "warn")
                 self._drop()
                 state = ""
@@ -1020,10 +1146,9 @@ class Connection:
                 self._set("online")
                 self._sleep(3)
                 continue
-            if not network or not self._reachable():
+            if not network:
                 if self.state != "waiting":
-                    self.note(f"{self.adb.serial} не отвечает по сети" if network
-                              else f"Устройство не найдено: {err or state}", "warn")
+                    self.note(f"Устройство не найдено: {err or state}", "warn")
                 self.attempts = 0
                 self._set("waiting")
                 self._sleep(3)
@@ -1345,6 +1470,7 @@ class LedStream:
     def __init__(self, adb):
         self.adb = adb
         self.values, self.at, self.wanted = None, 0.0, 0.0
+        self.viz, self.viz_at = None, 0.0
         self.lock = threading.Lock()
         self.running = False
 
@@ -1355,38 +1481,69 @@ class LedStream:
                 self.running = True
                 threading.Thread(target=self._run, daemon=True, name="led-stream").start()
         v = self.values
-        if not v or time.time() - self.at > 1.5:
-            return {"v": None}
-        r = v[len(CLOCK_LEDS):]
-        return {"v": v[:len(CLOCK_LEDS)], "ring": [r[0:3], r[3:6], r[6:9]], "age": round(time.time() - self.at, 2)}
+        res = {"v": None}
+        if v and time.time() - self.at <= 1.5:
+            r = v[len(CLOCK_LEDS):]
+            res = {"v": v[:len(CLOCK_LEDS)], "ring": [r[0:3], r[3:6], r[6:9]], "age": round(time.time() - self.at, 2)}
+        # Живой спектр от vizd — тем же потоком, без отдельных запросов на каждые 100 мс.
+        # Отдаём его и без свежих светодиодов: после перезапуска Quasar (например, при переходе
+        # на Bluetooth-колонку) они на несколько секунд пропадают, а спектр уже есть.
+        if self.viz and time.time() - self.viz_at < 1.0:
+            res["spectrum"] = {"bands": self.viz.get("bands") or [], "rms": self.viz.get("rms", 0), "t": self.viz.get("t", 0)}
+        return res
 
     PIDFILE = "/tmp/webpanel_leds.pid"
 
     def _kill_device_loop(self):
-        # Цикл на колонке НЕ умирает вместе с adb shell — гасим его явно по PID-файлу.
-        self.adb.shell(f"[ -f {self.PIDFILE} ] && kill $(cat {self.PIDFILE}) 2>/dev/null; rm -f {self.PIDFILE}; true",
-                       check=False)
+        # Цикл на колонке НЕ умирает вместе с adb shell — гасим его явно. PID-файл у циклов один,
+        # и после перезапуска панели в нём уже новый PID, поэтому старые ищем по командной строке.
+        self.adb.shell(f"for p in $(ps | awk '/webpanel_leds\\.pid/ && !/awk/ {{print $1}}'); do kill $p 2>/dev/null; done; "
+                       f"rm -f {self.PIDFILE}; true", check=False)
 
     def _run(self):
         clock = " ".join(f"{LED_PREFIX}:white:clock{n}" for n in CLOCK_LEDS)
         ring = " ".join(f"plum:{x}" for x in self.RING)
         # Не дольше 60 с (600 × 0,1 с): даже если сервер упадёт, цикл на колонке закончится сам.
-        loop = (f"echo $$ > {self.PIDFILE}; cd {LEDS}; k=0; while [ $k -lt 600 ]; do k=$((k + 1)); o=; "
-                f"for n in {clock} {ring}; do read v < $n/brightness; o=\"$o $v\"; done; echo $o; usleep 100000; done; "
+        # Спектр читаем чаще светодиодов (25 Гц против 12,5): столбики должны успевать за музыкой,
+        # а лишние чтения sysfs не нужны.
+        loop = (f"echo $$ > {self.PIDFILE}; cd {LEDS}; k=0; while [ $k -lt 1200 ]; do k=$((k + 1)); o=; "
+                f"if [ $((k % 2)) -eq 1 ]; then for n in {clock} {ring}; do read v < $n/brightness; o=\"$o $v\"; done; echo $o; fi; "
+                f"[ -s {VIZ_STATUS} ] && {{ read line < {VIZ_STATUS}; echo \"@viz $line\"; }}; usleep 40000; done; "
                 f"rm -f {self.PIDFILE}")
         want = len(CLOCK_LEDS) + len(self.RING)
         try:
             self._kill_device_loop()   # хвосты прошлого запуска сервера
             while time.time() - self.wanted <= 3:
                 proc = self.adb.popen(loop, text=True)
+                stop = threading.Event()
+
+                def guard(proc=proc, stop=stop):
+                    # Если процесс на колонке убили снаружи (другая панель, перезагрузка), чтение
+                    # из потока агента может не вернуться. Не ждём вечно: гасим proc.
+                    while not stop.wait(0.5):
+                        if time.time() - self.wanted > 4:
+                            proc.kill()
+                            return
+
+                threading.Thread(target=guard, daemon=True, name="led-guard").start()
                 try:
                     for line in proc.stdout:
+                        line = line.strip()
+                        if line.startswith("@viz "):
+                            try:
+                                self.viz, self.viz_at = json.loads(line[5:]), time.time()
+                            except ValueError:
+                                pass
+                            if time.time() - self.wanted > 3:
+                                break
+                            continue
                         parts = line.split()
                         if len(parts) == want and all(p.isdigit() for p in parts):
                             self.values, self.at = [int(p) for p in parts], time.time()
                         if time.time() - self.wanted > 3:
                             break
                 finally:
+                    stop.set()
                     proc.kill()
                     proc.wait()
         except OSError:
@@ -1647,6 +1804,11 @@ class Panel:
         self.adb = adb
         self._version = None
         self.ffmpeg = shutil.which("ffmpeg")
+        self._ww_info = None       # кэш «пакет установлен»: вкладка опрашивает статус часто
+        self._ww_info_at = 0.0
+        self._ww_router = None
+        self._ww_router_stop = threading.Event()
+        self._ww_last_hit = None
 
     def _configure_glagol(self, device_id):
         # Glagol использует тип устройства из прошивки, а не профиль LED/часов панели.
@@ -1720,13 +1882,45 @@ echo @@BLUEZ
         st.update(self.version())
         st["ffmpeg"] = bool(self.ffmpeg)
         st["vol_level"] = alsa_to_level(st.get("vol_master"))
+        st["muted"] = bool(load_settings().get("mute_before")) and st["vol_level"] == 0
         st["via"] = "agent" if self.adb.agent and self.adb.agent_ok else "adb"
         return st
 
     # ---------- громкость ----------
+    def _volume_level(self):
+        """Громкость колонки в уровнях 0–100: Glagol главнее, иначе ALSA Master."""
+        v = (self.glagol.state or {}).get("volume")
+        if isinstance(v, (int, float)):
+            return max(0, min(100, round(float(v) * 20) * 5))
+        out, _, _ = self.adb.shell("amixer cget name='Master Playback Volume' 2>/dev/null; true", check=False)
+        m = re.search(r": values=(\d+)", strip_ansi(out))
+        return alsa_to_level(m.group(1)) if m else None
+
+    def set_mute(self, on):
+        """Выключить/вернуть звук: запоминаем громкость и ставим 0 через тот же путь, что и ползунок."""
+        s = load_settings()
+        if on:
+            if not s.get("mute_before"):
+                vol = self._volume_level()
+                if vol is None:
+                    raise AdbError("не удалось узнать громкость колонки")
+                if vol > 0:
+                    s["mute_before"] = vol / 100
+                    save_settings(s)
+            self.set_volume({"level": 0})
+            return {"muted": True, "volume": 0}
+        before = round(float(s.pop("mute_before", 0.5)) * 100)
+        save_settings(s)
+        self.set_volume({"level": before})
+        return {"muted": False, "volume": before}
+
     def set_volume(self, data):
         if "level" in data:
             level = max(0, min(100, round(float(data["level"]) / 5) * 5))
+            if level > 0:   # пользователь выставил громкость — режим mute снимаем
+                s = load_settings()
+                if s.pop("mute_before", None) is not None:
+                    save_settings(s)
             # Через Glagol громкость ставит сам Quasar — тогда на колонке те же цифры и та же логика.
             if self.glagol.ws:
                 self.glagol.send({"command": "setVolume", "volume": level / 100})
@@ -1755,9 +1949,23 @@ echo @@BLUEZ
         sd = f"/tmp/webpanel_{tag}.sd"
         self.adb.shell(f"rm -f {sd}; start-stop-daemon -S -b -m -p {sd} -x /bin/sh -- -c {shlex.quote(script)}")
 
-    def _play_remote_wav(self, path):
-        self.adb.shell("killall aplay 2>/dev/null; true")
-        self.detach("play", f"aplay -q {shlex.quote(path)}")
+    def _push_play_file(self, local):
+        # Уникальное имя: пока играет старый файл, новый ему не мешает; после проигрывания убираем.
+        remote = f"{WEB_DIR}/play-{os.getpid()}-{os.urandom(4).hex()}.wav"
+        self.adb.shell(f"mkdir -p {WEB_DIR}", check=False)
+        self.adb.push(local, remote)
+        return remote
+
+    def _play_remote_wav(self, path, cleanup=False):
+        self.adb.shell("killall aplay 2>/dev/null; true", check=False)
+        q = shlex.quote(path)
+        rm = f"; rm -f {q}" if cleanup else ""
+        self.detach("play", f"rm -f {PLAY_LOG}; aplay -q {q} >{PLAY_LOG} 2>&1{rm}")
+        # aplay в фоне: через секунду смотрим его stderr. Успешный -q ничего не пишет, ошибка видна.
+        time.sleep(1.0)
+        log = strip_ansi(self.adb.shell(f"tail -c 400 {PLAY_LOG} 2>/dev/null; true", check=False)[0]).strip()
+        if re.search(r"(?i)(error|cannot|failed|no such|unable|busy)", log):
+            raise AdbError("не удалось проиграть звук на колонке: " + log[-300:])
 
     def _transcode_and_play(self, src_bytes):
         if not self.ffmpeg:
@@ -1769,8 +1977,8 @@ echo @@BLUEZ
                                input=src_bytes, capture_output=True, timeout=300)
             if p.returncode != 0:
                 raise AdbError("ffmpeg: " + p.stderr.decode("utf-8", "replace").strip()[-400:])
-            self.adb.push(dst, REMOTE_PLAY)
-        self._play_remote_wav(REMOTE_PLAY)
+            remote = self._push_play_file(dst)
+        self._play_remote_wav(remote, cleanup=True)
 
     def _play_path(self, path):
         # Расширению верить нельзя: например, sounds/common/boot.wav — это MP3. aplay берём только для RIFF.
@@ -1857,8 +2065,8 @@ echo @@BLUEZ
         if data[:4] == b"RIFF":
             with tempfile.TemporaryDirectory() as td:
                 (Path(td) / "f.wav").write_bytes(data)
-                self.adb.push(Path(td) / "f.wav", REMOTE_PLAY)
-            self._play_remote_wav(REMOTE_PLAY)
+                remote = self._push_play_file(Path(td) / "f.wav")
+            self._play_remote_wav(remote, cleanup=True)
         else:
             self._transcode_and_play(data)
         return {"ok": True}
@@ -1868,8 +2076,8 @@ echo @@BLUEZ
             with tempfile.NamedTemporaryFile(suffix=".wav") as f:
                 f.write(body)
                 f.flush()
-                self.adb.push(f.name, REMOTE_PLAY)
-            self._play_remote_wav(REMOTE_PLAY)
+                remote = self._push_play_file(f.name)
+            self._play_remote_wav(remote, cleanup=True)
         else:
             self._transcode_and_play(body)
         return {"ok": True}
@@ -2334,7 +2542,8 @@ echo @@BLUEZ
     HOOK_USERS = (("заставка", BOOT_CUSTOM), ("звук запуска", SOUND_CUSTOM), ("заставка при каждой загрузке", BOOT_ALWAYS),
                   ("автозапуск yamd", YAM_AUTOSTART), ("будильник", ALARM_CONF), ("блокировка аналитики", HOSTS_CUSTOM),
                   ("ассистент", ASSIST_CONF), ("звук через Bluetooth-колонку", BTOUT_MAC),
-                  ("защищённое соединение (агент)", AGENT_TOKENS), ("Bluetooth выключен", BT_OFF))
+                  ("защищённое соединение (агент)", AGENT_TOKENS), ("Bluetooth выключен", BT_OFF),
+                  ("слова активации", WAKE_AUTOSTART))
 
     def _hook_users_script(self):
         """Печатает по строке на каждую функцию, которой нужен хук."""
@@ -2641,7 +2850,20 @@ echo @@BLUEZ
         with tempfile.TemporaryDirectory() as td:
             f = Path(td) / "config.json"
             write_unix(f, json.dumps(cfg, ensure_ascii=False, indent=1))
-            self.adb.push(f, ASSIST_CONF + ".new")
+            try:
+                self.adb.push(f, ASSIST_CONF + ".new")
+            except Exception:
+                self.adb.shell(f"rm -f {ASSIST_CONF}.new", check=False)
+                raise
+        # push мог оборваться и оставить пустой .new: не ставим его вместо рабочего конфига
+        out, _, _ = self.adb.shell(f"cat {ASSIST_CONF}.new 2>/dev/null; true", check=False)
+        try:
+            saved = json.loads(strip_ansi(out).strip() or "{}")
+        except ValueError:
+            saved = None
+        if not isinstance(saved, dict) or not saved:
+            self.adb.shell(f"rm -f {ASSIST_CONF}.new", check=False)
+            raise AdbError("конфиг помощника не записался на колонку — оставил прежний")
         self.adb.shell(f"chmod 600 {ASSIST_CONF}.new; mv {ASSIST_CONF}.new {ASSIST_CONF}")
 
     @staticmethod
@@ -3068,6 +3290,389 @@ echo @@BLUEZ
         self._drop_hook_if_unused()
         return self.assistant_status()
 
+    # ---------- живой спектр с колонки ----------
+    VIZ_ASSET = "vizd-linux-arm64"
+
+    def _viz_binary(self, download=True):
+        return self._device_binary(VIZ_SRC, "vizd", self.VIZ_ASSET, "визуализатора", download)
+
+    _viz_md5 = (0, None)
+
+    def _viz_local_md5(self):
+        """md5 сборки на компьютере — понять, что на колонке старая программа. Без Go и сборки — None."""
+        try:
+            out = self._viz_binary(download=False)
+        except AdbError:
+            return None
+        mtime = out.stat().st_mtime
+        if self._viz_md5[0] != mtime:
+            self._viz_md5 = (mtime, hashlib.md5(out.read_bytes()).hexdigest())
+        return self._viz_md5[1]
+
+    def viz_status(self):
+        """Состояние: установлен, запущен, последние полосы. Полосы нужны в основном для проверки из панели;
+        визуализатор получает их потоком светодиодов (LedStream)."""
+        out, _, _ = self.adb.shell(
+            f"[ -x {VIZD} ] && echo @installed && md5sum {VIZD}; "
+            f"[ -f {VIZ_SD} ] && kill -0 $(cat {VIZ_SD}) 2>/dev/null && echo @running; "
+            f"echo @state; cat {VIZ_STATUS} 2>/dev/null; echo; true", check=False)
+        out = strip_ansi(out)
+        flags = set(re.findall(r"^@(\w+)$", out, re.M))
+        try:
+            state = json.loads(out.split("@state", 1)[1].strip() or "{}")
+        except (ValueError, IndexError):
+            state = {}
+        running = "running" in flags
+        age = round(time.time() - state["t"] / 1000, 2) if running and state.get("t") else None
+        local = self._viz_local_md5() if "installed" in flags else None
+        return {"supported": True, "installed": "installed" in flags, "running": running,
+                "outdated": bool(local) and local not in out,
+                "bands": (state.get("bands") or []) if running else [],
+                "rms": state.get("rms", 0) if running else 0,
+                "error": (state.get("error") or "") if running else "",
+                "age": age, "device": "hw:0,0"}
+
+    def viz_set(self, on):
+        """Включить/выключить живой спектр. Включение при первом разе ставит программу на колонку.
+
+        Открытие захвата кодека слышно коротким щелчком, поэтому на время переключения ставим
+        играющую музыку на паузу и сразу продолжаем — щелчок не пугает.
+        """
+        resume = False
+        try:
+            if (self.glagol.state or {}).get("playing") and self.glagol.ws:
+                self.glagol.send({"command": "stop"}, timeout=4)
+                resume = True
+                time.sleep(0.4)
+        except Exception:  # noqa: BLE001
+            resume = False
+        try:
+            return self._viz_set(on)
+        finally:
+            if resume:
+                try:
+                    self.glagol.send({"command": "play"}, timeout=4)
+                except Exception:  # noqa: BLE001
+                    pass
+
+    def _viz_set(self, on):
+        if not on:
+            self.adb.shell(f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; "
+                           f"rm -f {VIZ_SD} {VIZ_ON} {VIZ_STATUS} {VIZ_BT}; true", check=False)
+            return self.viz_status()
+        st = self.viz_status()
+        if not st["installed"] or st.get("outdated"):
+            st = self.viz_install()
+        else:
+            st = self.viz_start()
+        # Флаг для tap: при выводе на Bluetooth-колонку полосы считает он, из того же потока.
+        # Если переливание уже идёт, перезапускаем его — иначе в конвейере не окажется tap.
+        self.adb.shell(
+            f"touch {VIZ_ON}; "
+            f"[ -f {BTOUT_MAC} ] && {{ p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
+            f"rm -f {BTOUT_FWD_SD}; }}; true", check=False)
+        return st
+
+    def viz_install(self):
+        arch, _, _ = self.adb.shell("uname -m", check=False)
+        if strip_ansi(arch).strip() not in ("aarch64", "arm64"):
+            raise AdbError(f"ядро колонки {strip_ansi(arch).strip() or '?'}: живой спектр пока собран "
+                           "только под 64-битное (aarch64)")
+        binary = self._viz_binary()
+        self.adb.shell(f"mkdir -p {VIZ_DIR}; start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; true", check=False)
+        self.adb.push(binary, VIZD + ".new", timeout=300)
+        self.adb.shell(f"chmod 755 {VIZD}.new; mv {VIZD}.new {VIZD}")
+        return self.viz_start()
+
+    def viz_start(self):
+        self.adb.shell(f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; sleep 0.3; true", check=False)
+        self.detach("viz", VIZ_RUN)
+        for _ in range(12):
+            time.sleep(0.3)
+            st = self.viz_status()
+            if st["running"]:   # в Bluetooth-режиме полосы пишет tap, статус появится чуть позже
+                return st
+        out, _, _ = self.adb.shell(f"tail -5 {VIZ_DIR}/viz.log", check=False)
+        raise AdbError("визуализатор не запустился: " + strip_ansi(out).strip()[-300:])
+
+    # ---------- свои слова активации ----------
+    def _wakeword_installed(self, force=False):
+        """Версия установленного yam-пакета и признаки файлов; без API. Кэш — для частого опроса вкладки."""
+        now = time.time()
+        if not force and getattr(self, "_ww_info", None) and now - getattr(self, "_ww_info_at", 0.0) < 15:
+            return dict(self._ww_info)
+        out, _, _ = self.adb.shell(
+            f"v=$(ls -d {WAKE_PKG}/* 2>/dev/null | sort -V | tail -n 1); "
+            f"[ -n \"$v\" ] && {{ [ -L \"$v\" ] && basename \"$(readlink -f \"$v\")\" || basename \"$v\"; }}; "
+            f"[ -x {WAKE_BIN} ] && echo @bin; [ -f {WAKE_SHARE}/S97wakeword ] && echo @script; "
+            f"[ -f {WAKE_PID} ] && kill -0 $(cat {WAKE_PID}) 2>/dev/null && echo @pid; "
+            f"[ -f {WAKE_AUTOSTART} ] && echo @auto; true", check=False)
+        lines = [l.strip() for l in strip_ansi(out).splitlines() if l.strip()]
+        version = next((l for l in lines if not l.startswith("@")), None)
+        info = {"installed": bool(version or "@bin" in lines or "@script" in lines),
+                "version": version, "bin": "@bin" in lines, "script": "@script" in lines,
+                "pid": "@pid" in lines, "auto": "@auto" in lines}
+        self._ww_info, self._ww_info_at = dict(info), now
+        return info
+
+    def _wakeword_supported(self):
+        gl = getattr(self, "glagol", None)
+        platform = (gl.platform if gl else None) or GLAGOL_PLATFORM
+        return platform in WAKE_TARGETS, platform
+
+    def _wakeword_base(self):
+        """База HTTP API демона: adb forward на свободный порт, иначе прямой IP колонки."""
+        if not getattr(self, "_ww_port", None):
+            try:
+                self._ww_port = self.adb.forward(WAKE_PORT)
+            except (AdbError, OSError, subprocess.TimeoutExpired):
+                self._ww_port = None
+        if getattr(self, "_ww_port", None):
+            return f"http://127.0.0.1:{self._ww_port}"
+        gl = getattr(self, "glagol", None)
+        ip = (gl.host if gl else None) or ""
+        if not ip and self.adb.serial and ":" in self.adb.serial:
+            ip = self.adb.serial.split(":", 1)[0]
+        if not ip:
+            raise AdbError("нет связи с колонкой для API слов активации")
+        return f"http://{ip}:{WAKE_PORT}"
+
+    def _wakeword_api(self, path, method="GET", body=None, timeout=60):
+        """Запрос к API демона; возвращает (content-type, dict/bytes)."""
+        if not str(path).startswith("/api/") or ".." in path:
+            raise AdbError("плохой путь API слов активации")
+        base = self._wakeword_base()
+        data = json.dumps(body).encode() if body is not None else None
+        headers = {"Content-Type": "application/json"} if data else {}
+        req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw, ctype = r.read(), r.headers.get("Content-Type", "application/json")
+        except urllib.error.HTTPError as e:
+            raw = e.read()
+            try:
+                msg = (json.loads(raw) or {}).get("error") or ""
+            except ValueError:
+                msg = raw.decode("utf-8", "replace")[:300]
+            raise AdbError(msg.strip() or f"API слов активации: HTTP {e.code}") from None
+        except (urllib.error.URLError, OSError) as e:
+            self._ww_port = None      # возможно, adb forward отвалился — в следующий раз создадим заново
+            raise AdbError(f"API слов активации недоступен: {e}") from None
+        if ctype.startswith("application/json"):
+            try:
+                return ctype, json.loads(raw or b"{}")
+            except ValueError:
+                raise AdbError("API слов активации вернул не JSON") from None
+        return ctype, raw
+
+    def wakeword_status(self):
+        info = self._wakeword_installed()
+        supported, platform = self._wakeword_supported()
+        state, error = None, ""
+        if info["installed"]:
+            try:
+                _, state = self._wakeword_api("/api/state", timeout=5)
+            except AdbError as e:
+                error = str(e)
+        running = bool(state) or info["pid"]
+        if not running:
+            error = ""       # демон штатно остановлен — это не ошибка API
+        audio = (state or {}).get("audio") or {}
+        return {"installed": info["installed"], "version": info["version"], "running": running,
+                "supported": supported, "platform": platform, "audio": audio, "autostart": info["auto"],
+                "dry_run": bool(load_settings().get(WAKE_ACTIONS_KEY) or {}),
+                "words": (state or {}).get("words") or [], "hits": (state or {}).get("hits") or [],
+                "enroll": (state or {}).get("enroll"), "train": (state or {}).get("train") or {"active": False},
+                "station": (state or {}).get("station", ""), "error": error, "port": WAKE_PORT,
+                "support": WAKE_SUPPORT}
+
+    def wakeword_start(self):
+        info = self._wakeword_installed(force=True)
+        if not info["installed"]:
+            raise AdbError("пакет tangenx/wakeword не установлен")
+        run = (f"exec {WAKE_BIN} run -data {WAKE_DATA} -negatives {WAKE_SHARE}/negatives.bin "
+               f"-listen 127.0.0.1:{WAKE_PORT} >> {WAKE_LOG} 2>&1")
+        out, err, rc = self.adb.shell(
+            f"start-stop-daemon -K -p {WAKE_PID} 2>/dev/null; rm -f {WAKE_PID}; "
+            f"start-stop-daemon -S -b -m -N 10 -p {WAKE_PID} -x /bin/sh -- -c {shlex.quote(run)} 2>&1",
+            check=False, timeout=30)
+        if rc != 0:
+            raise AdbError(strip_ansi(out or err).strip()[-400:] or "не удалось запустить демон слов активации")
+        self._ww_info = None
+        for _ in range(20):
+            time.sleep(0.3)
+            st = self.wakeword_status()
+            if st["running"]:
+                return st
+        raise AdbError("демон слов активации не запустился")
+
+    def wakeword_stop(self):
+        out, err, rc = self.adb.shell(f"sh {WAKE_SHARE}/S97wakeword stop 2>&1", check=False, timeout=20)
+        if rc != 0:
+            raise AdbError(strip_ansi(out or err).strip()[-400:] or "не удалось остановить демон слов активации")
+        self._ww_port = None
+        self._ww_info = None
+        return self.wakeword_status()
+
+    def wakeword_autostart(self, on):
+        """Включить/выключить запуск демона хуком панели после перезагрузки."""
+        if on and not self._wakeword_installed(force=True)["installed"]:
+            raise AdbError("пакет tangenx/wakeword не установлен")
+        if on:
+            self.adb.shell(f"mkdir -p {WEB_DIR} && touch {WAKE_AUTOSTART}", check=False)
+            self._ensure_hook()
+        else:
+            self.adb.shell(f"rm -f {WAKE_AUTOSTART}", check=False)
+            self._drop_hook_if_unused()
+        self._ww_info = None
+        return self.wakeword_status()
+
+    def wakeword_install(self):
+        """Поставить/обновить yam-пакет tangenx/wakeword из реестра."""
+        self.yam2_install_pkg("tangenx/wakeword", yes=True)
+        self._ww_info = None
+        self._ww_port = None
+        self._wakeword_apply_dry_run()
+        return self.wakeword_status()
+
+    def wakeword_proxy(self, method, path, body=None, timeout=90):
+        """Прокси к API демона для вкладки: JSON и WAV отдаются как есть."""
+        method = str(method or "GET").upper()
+        if method not in ("GET", "POST", "DELETE"):
+            raise AdbError("метод не поддерживается")
+        ctype, data = self._wakeword_api(path, method, body, timeout=timeout)
+        return data, ctype
+
+    # ---------- маршрутизация слов по действиям ----------
+    def _wakeword_settings(self):
+        try:
+            raw = self.adb.read_bytes(WAKE_SETTINGS) or b"{}"
+            if not isinstance(raw, (str, bytes, bytearray)):
+                return {}
+            return json.loads(raw)
+        except (AdbError, OSError, ValueError):
+            return {}
+
+    def _wakeword_settings_write(self, settings):
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / "settings.json"
+            write_unix(f, json.dumps(settings, ensure_ascii=False, indent=1))
+            self.adb.shell(f"mkdir -p {WAKE_DATA}", check=False)
+            self.adb.push(f, WAKE_SETTINGS + ".new")
+        self.adb.shell(f"mv {WAKE_SETTINGS}.new {WAKE_SETTINGS}", check=False)
+
+    def _wakeword_restart(self):
+        self.adb.shell(f"sh {WAKE_SHARE}/S97wakeword restart 2>&1", check=False, timeout=30)
+        self._ww_port = None
+        self._ww_info = None
+        self._ww_last_hit = None
+        time.sleep(1)
+
+    def _wakeword_apply_dry_run(self):
+        """В режиме маршрутизации демон не должен сам будить Алису — это делает роутер."""
+        acts = load_settings().get(WAKE_ACTIONS_KEY) or {}
+        want = bool(acts)
+        st = self._wakeword_settings()
+        if bool(st.get("dry_run")) != want:
+            st["dry_run"] = want
+            self._wakeword_settings_write(st)
+            self._wakeword_restart()
+        return want
+
+    def wakeword_actions(self):
+        s = load_settings()
+        return {"actions": s.get(WAKE_ACTIONS_KEY) or {},
+                "scenes": self.scenes()["scenes"],
+                "dry_run": bool(self._wakeword_settings().get("dry_run"))}
+
+    def wakeword_actions_set(self, word, action, scene=None):
+        word = str(word or "").strip()
+        if not word:
+            raise AdbError("пустое слово")
+        action = str(action or "alice")
+        if action not in ("alice", "assistant", "scene", "none"):
+            raise AdbError("неизвестное действие")
+        scene = str(scene or "").strip() if action == "scene" else ""
+        if action == "scene" and scene not in {x["id"] for x in self.scenes()["scenes"]}:
+            raise AdbError("нет такого сценария")
+        s = load_settings()
+        acts = s.setdefault(WAKE_ACTIONS_KEY, {})
+        if action == "alice":
+            acts.pop(word, None)
+        else:
+            acts[word] = {"type": action, "scene": scene}
+        save_settings(s)
+        self._wakeword_apply_dry_run()
+        return self.wakeword_actions()
+
+    def wakeword_router_start(self):
+        if getattr(self, "_ww_router", None) and self._ww_router.is_alive():
+            return
+        self._ww_router_stop = threading.Event()
+        self._ww_router = threading.Thread(target=self._wakeword_router_loop, daemon=True, name="wakeword-router")
+        self._ww_router.start()
+
+    def _wakeword_fire(self, hit, acts):
+        word = str(hit.get("word") or "")
+        act = acts.get(word) or {"type": "alice"}
+        kind = act.get("type") or "alice"
+        if kind == "none":
+            return
+        if kind == "scene":
+            sid = act.get("scene")
+            if sid:
+                try:
+                    self.scene_run(sid)
+                    JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → сценарий {sid}", "info")
+                except (AdbError, subprocess.TimeoutExpired) as e:
+                    JOURNAL.add(f"слова активации: сценарий {sid} не запустился: {e}", "warn")
+            return
+        if kind == "assistant":
+            try:
+                self.assistant_command({"route": True})
+                JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → ассистент", "info")
+            except (AdbError, subprocess.TimeoutExpired) as e:
+                JOURNAL.add(f"слова активации: ассистент не принял слово: {e}", "warn")
+        try:
+            self._wakeword_api("/api/listen", "POST", timeout=3)
+            JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → Алиса слушает", "info")
+        except AdbError as e:
+            JOURNAL.add(f"слова активации: не удалось начать слушать: {e}", "warn")
+
+    def _wakeword_router_loop(self):
+        while not self._ww_router_stop.is_set():
+            try:
+                acts = load_settings().get(WAKE_ACTIONS_KEY) or {}
+                if not acts:
+                    self._ww_last_hit = None
+                    self._ww_router_stop.wait(2)
+                    continue
+                st = self.wakeword_status()
+                if not st["running"]:
+                    self._ww_router_stop.wait(2)
+                    continue
+                _, state = self._wakeword_api("/api/state", timeout=3)
+                hits = (state or {}).get("hits") or []
+                ids = [int(h.get("id") or 0) for h in hits]
+                if self._ww_last_hit is None:
+                    self._ww_last_hit = max(ids or [0])
+                else:
+                    if ids and max(ids) < self._ww_last_hit:
+                        self._ww_last_hit = max(ids)   # демон перезапускался, id сбросились
+                    for h in sorted(hits, key=lambda x: int(x.get("id") or 0)):
+                        hid = int(h.get("id") or 0)
+                        if hid <= self._ww_last_hit:
+                            continue
+                        self._ww_last_hit = hid
+                        try:
+                            self._wakeword_fire(h, acts)
+                        except Exception as e:  # noqa: BLE001
+                            JOURNAL.add(f"слова активации: действие не выполнено: {e}", "warn")
+                self._ww_router_stop.wait(0.3)
+            except Exception as e:  # noqa: BLE001
+                JOURNAL.add(f"слова активации: роутер: {e}", "warn")
+                self._ww_router_stop.wait(2)
+
     def footprint(self):
         """Всё постоянное, что панель ставит на колонку. Временное (/tmp) исчезает само после перезагрузки."""
         q = lambda path: f"[ -e {path} ] && echo 1 || echo 0"
@@ -3087,9 +3692,10 @@ echo @@BLUEZ
             f"[ -d {OVR_DIR}/sounds ] && du -sk {OVR_DIR}/sounds | cut -f1 || echo 0",
             f"find {OVR_DIR}/ledpatterns -type f 2>/dev/null | wc -l",
             f"find {MY_ANIM_DIR} -type f 2>/dev/null | wc -l",
-            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC), q(AGENT_BIN), q(BT_OFF)])
+            f"find {YAM2_SVC_DIR}/boot -type f 2>/dev/null | wc -l", q(YAM2), q(BTOUT_MAC), q(AGENT_BIN), q(BT_OFF),
+            q(VIZD), f"[ -d {VIZ_DIR} ] && du -sk {VIZ_DIR} | cut -f1 || echo 0", q(WAKE_AUTOSTART)])
         v = self.adb.shell(cmd, check=False)[0].split()
-        v = (v + ["0"] * 28)[:28]
+        v = (v + ["0"] * 31)[:31]
         b = [x == "1" for x in v]
         n = lambda x: int(x) if x.isdigit() else 0
         items = [
@@ -3108,6 +3714,10 @@ echo @@BLUEZ
             {"key": "btoff", "name": "Bluetooth выключен", "on": b[27], "detail": "и после перезагрузки"},
             {"key": "privacy", "name": "Блокировка аналитики", "on": b[15] or b[16], "detail": "свой /etc/hosts"},
             {"key": "assistant", "name": "Голосовой помощник", "on": b[17], "size_kb": n(v[18])},
+            {"key": "viz", "name": "Живой спектр с колонки", "on": b[28], "size_kb": n(v[29]),
+             "detail": "экспериментально: захват звука усилителя, не микрофона"},
+            {"key": "wakeword", "name": "Слова активации (автозапуск)", "on": b[30],
+             "detail": "демон tangenx/wakeword, стартует хуком панели"},
             {"key": "alarm", "name": "Будильник и сценарии", "on": b[6],
              "detail": f"будильников: {n(v[7].split('/')[0])}, сценариев: {n((v[7].split('/') + ['0'])[1])}", "size_kb": n(v[13])},
             {"key": "backup", "name": "Копии оригиналов", "on": b[8] or b[9] or b[10],
@@ -3130,7 +3740,9 @@ echo @@BLUEZ
             f"[ -f {BT_OFF} ] && {bt_power_sh(True)}; "            f"start-stop-daemon -K -q -p {AGENT_SD} 2>/dev/null; rm -f {AGENT_SD}; "
             f"grep -q ringing {ALARM_STATE} 2>/dev/null && echo stop > {ALARM_CMD} && sleep 3; "
             f"start-stop-daemon -K -p {ALARM_SD} 2>/dev/null; start-stop-daemon -K -p {ASSIST_SD} 2>/dev/null; "
-            f"start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
+            f"start-stop-daemon -K -p {VIZ_SD} 2>/dev/null; start-stop-daemon -K -p {BTOUT_SD} 2>/dev/null; "
+            f"[ -x {WAKE_SHARE}/S97wakeword ] && sh {WAKE_SHARE}/S97wakeword stop >/dev/null 2>&1; "
+            f"p=$(cat {BTOUT_FWD_SD} 2>/dev/null) && {{ {YAM2_KILL}; }}; "
             f"{LED_STOP_SH}; "   # LED-панель Станции 2: фоновый led-play
             f"grep -q ' /etc/asound.conf ' /proc/mounts && grep -q '{BTOUT_MARK}' /etc/asound.conf && "
             f"{{ umount /etc/asound.conf || umount -l /etc/asound.conf; ( {QUASAR}/q restart >/dev/null 2>&1 & ); }}; "
@@ -3148,7 +3760,7 @@ echo @@BLUEZ
         out, _, _ = self.adb.shell(
             f"b={ROOTKEEPER}.webpanel.bak; if [ -f $b ]; then "
             f"if [ \"$(md5sum < {ROOTKEEPER})\" = \"$(md5sum < $b)\" ]; then rm -f $b; echo same; else echo differs; fi; fi; "
-            f"rm -rf {WEB_DIR}; rm -f /tmp/webpanel_alarm* {ALARM_SD} /tmp/webpanel_assistant*; true", check=False)
+            f"rm -rf {WEB_DIR}; rm -f /tmp/webpanel_alarm* {ALARM_SD} /tmp/webpanel_assistant* /tmp/webpanel_viz*; true", check=False)
         self.ring_reset()
         res = self.footprint()
         if "differs" in out:
@@ -4017,6 +4629,8 @@ echo @@BLUEZ
     # ---------- yam 2: пакетный менеджер на колонке ----------
     # Платформа yam по device-tree — те же правила, что в install.sh yam (getprop есть не на всех колонках).
     # Порядок важен: у Лайт и Мини в compatible есть amlogic,axg, у Лайт 2 — тоже, поэтому axg — последним.
+    # yandex,station-midi — это Станция 2 (yandexmidi); cucumber — Станция Миди (cucumber), не наоборот.
+    # yandexstation_2 — Станция Макс: yam её платформу знает, но профиля панели пока нет.
     YAM2_PLATFORMS = ((r"station-mini2", "yandexmini_2"), (r"cucumber", "cucumber"), (r"yandex,station-midi", "yandexmidi"),
                       (r"prune", "plum"),
                       (r"orion", "orion"), (r"pickle", "pickle"), (r"station-mini3|bergamot", "bergamot"),
@@ -4210,9 +4824,20 @@ echo @@BLUEZ
             raise AdbError("адрес реестра не https")
         ts, data, src = getattr(self, "_yam2_cat", (0, None, None))
         if refresh or data is None or src != url or time.time() - ts > 600:
-            with urllib.request.urlopen(urllib.request.Request(url + "/index.json", headers={"User-Agent": "webpanel"}),
-                                        timeout=20) as r:
-                data = json.load(r)
+            last = None
+            for attempt in range(2):
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(url + "/index.json", headers={"User-Agent": "webpanel"}),
+                                                timeout=20) as r:
+                        data = json.load(r)
+                    break
+                except (urllib.error.URLError, OSError, ValueError) as e:
+                    last = getattr(e, "reason", e)
+                    if attempt == 0:
+                        time.sleep(0.5)
+            else:
+                raise AdbError("каталог YAM 2 недоступен из контейнера: " + str(last)
+                               + ". Проверьте доступ к " + url + " — в Docker/WSL2 часто мешает прокси или свои сертификаты")
             self._yam2_cat = (time.time(), data, url)
         plat = st["platform"]
         pkgs = [{k: p.get(k) for k in ("name", "summary", "latest", "homepage", "targets")}
@@ -4221,6 +4846,8 @@ echo @@BLUEZ
         for p in pkgs:
             t = p.get("targets") or []
             p["fits"] = not t or "any" in t or plat in t
+            if p["name"] == "tangenx/wakeword":
+                p["panel"] = WAKE_SUPPORT
         return {"configured": True, "packages": pkgs, "platform": plat, "url": url}
 
     def yam2_install_pkg(self, name, yes=False):
@@ -4545,12 +5172,10 @@ echo @@BLUEZ
                                         f"echo @@OUT; cat {BTOUT_MAC} 2>/dev/null; echo; cat {BTOUT_STATE} 2>/dev/null; echo; "
                                         f"p=$(cat {BTOUT_SD} 2>/dev/null) && kill -0 $p 2>/dev/null && echo watch; "
                                         # имя — последним: всё, что после @@NAME, считается именем
-                                        f"echo @@VOL; grep -q bt {BTOUT_STATE} 2>/dev/null && amixer -D bluealsa scontents 2>/dev/null | head -12; "
                                         f"echo @@LAST; cat {BTOUT_LAST} 2>/dev/null; [ -f {BT_OFF} ] && echo @@KEEPOFF; echo @@NAME; cat {BTOUT_NAME} 2>/dev/null; true",
                                         check=False, timeout=20)[0])
         out, _, outinfo = out.partition("@@OUT")
-        outinfo, _, vol = outinfo.partition("@@VOL")
-        vol, _, last = vol.partition("@@LAST")
+        outinfo, _, last = outinfo.partition("@@LAST")
         last, _, saved = last.partition("@@NAME")
         keep_off = "@@KEEPOFF" in last
         last = last.replace("@@KEEPOFF", "")
@@ -4574,29 +5199,60 @@ echo @@BLUEZ
             "powered": bool(adapter.get("Powered")), "keep_off": keep_off, "discoverable": bool(adapter.get("Discoverable")),
             "pairable": bool(adapter.get("Pairable")), "alias": adapter.get("Alias") or adapter.get("Name"),
             "pair_until": pair_until if pair_until and pair_until > time.time() else None,
-            "devices": devices, "out": {**self._btout_info(outinfo, devices, self._btout_saved_name), **self._btout_last(devices),
-                                        **self._btout_vol(vol)},
+            "devices": devices, "out": {**self._btout_info(outinfo, devices, self._btout_saved_name), **self._btout_last(devices)},
         }
 
-    @staticmethod
-    def _btout_vol(text):
-        """Громкость самой Bluetooth-колонки — регулятор bluealsa «<имя> A2DP» (0–127, показываем в %)."""
-        m = re.search(r"Simple mixer control '([^']*A2DP)',0.*?\[(\d+)%\]", text, re.S)
-        return {"volume": int(m.group(2)), "volume_ctl": m.group(1)} if m else {}
-
-    def btout_volume(self, level):
-        level = max(0, min(100, int(level)))
+    def _btout_volume_max(self):
+        """Громкость Bluetooth-колонки в bluealsa всегда 100 % (0 дБ): иначе получается три регулятора.
+        Остаются громкость Алисы и громкость на самой колонке."""
         out, _, _ = self.adb.shell("amixer -D bluealsa scontrols 2>/dev/null; true", check=False)
         m = re.search(r"Simple mixer control '([^']*A2DP)',0", strip_ansi(out))
         if not m:
-            raise AdbError("Bluetooth-колонка не подключена")
+            return
         mac = strip_ansi(self.adb.shell(f"cat {BTOUT_MAC} 2>/dev/null; true", check=False)[0]).strip()
         soft = (f"dbus-send --system --print-reply --dest=org.bluealsa /org/bluealsa/hci0/dev_{mac.replace(':', '_')}/a2dpsrc/sink "
                 f"org.freedesktop.DBus.Properties.Set string:org.bluealsa.PCM1 string:SoftVolume variant:boolean:true >/dev/null 2>&1; "
                 if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac) else "")
-        # многие колонки не слушают громкость по AVRCP — тогда приглушает сам bluealsa (SoftVolume)
-        self.adb.shell(f"{soft}amixer -D bluealsa sset {shlex.quote(m.group(1))} {level}% >/dev/null", check=False)
-        return {"volume": level}
+        self.adb.shell(f"{soft}amixer -D bluealsa sset {shlex.quote(m.group(1))} 100% >/dev/null", check=False)
+
+    def btout_eq_status(self):
+        """Текущий пресет эквалайзера и его АЧХ для графика (без записи на колонку)."""
+        s = load_settings()
+        preset = s.get("eq_preset") or "flat"
+        if preset not in EQ_PRESETS and preset != "custom":
+            preset = "flat"
+        custom = s.get("eq_custom") or [dict(b) for b in EQ_CUSTOM_DEFAULT]
+        freqs, db = eq_curve(preset, custom)
+        return {"preset": preset, "presets": [*EQ_PRESETS, "custom"], "custom": custom,
+                "freqs": [round(f, 1) for f in freqs], "db": db}
+
+    def btout_eq(self, preset=None, custom=None):
+        """Выбрать пресет (None — применить сохранённый) и положить коэффициенты для tap на колонке."""
+        s = load_settings()
+        if preset is None:
+            preset = s.get("eq_preset") or "flat"
+        preset = str(preset)
+        if preset not in EQ_PRESETS and preset != "custom":
+            raise AdbError("неизвестный пресет эквалайзера")
+        if preset == "custom":
+            custom = eq_custom_bands(custom if custom is not None else s.get("eq_custom"))
+            s["eq_custom"] = custom
+        else:
+            custom = s.get("eq_custom") or [dict(b) for b in EQ_CUSTOM_DEFAULT]
+        s["eq_preset"] = preset
+        save_settings(s)
+        filters = [eq_coeffs(b) for b in eq_filters(preset, custom)]
+        payload = {"enabled": bool(filters),
+                   "filters": [dict(zip(("b0", "b1", "b2", "a1", "a2"), c)) for c in filters]}
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / "eq.json"
+            write_unix(f, json.dumps(payload, ensure_ascii=False))
+            self.adb.shell(f"mkdir -p {VIZ_DIR}", check=False)
+            self.adb.push(f, EQ_FILE + ".new")
+        self.adb.shell(f"chmod 644 {EQ_FILE}.new; mv {EQ_FILE}.new {EQ_FILE}", check=False)
+        st = self.btout_eq_status()
+        st["preset"] = preset
+        return st
 
     def _btout_last(self, devices):
         mac = getattr(self, "_btout_last_mac", None)
@@ -4689,7 +5345,7 @@ echo @@BLUEZ
             "pcm.dmix_loop {\n  type dmix\n  ipc_key 1031\n  ipc_key_add_uid false\n  ipc_perm 0666\n"
             "  slave {\n    pcm \"hw:Loopback,0,0\"\n    channels 2\n    rate 48000\n    buffer_size 7680\n    period_size 960\n  }\n}\n")
         script = (BTOUT_WATCH.replace("__DIR__", BTOUT_DIR).replace("__STATE__", BTOUT_STATE).replace("__MARK__", BTOUT_MARK)
-                  .replace("__FWD__", BTOUT_FWD_SD))
+                  .replace("__FWD__", BTOUT_FWD_SD).replace("__VIZ__", VIZD))
         with tempfile.TemporaryDirectory() as td:
             write_unix(Path(td) / "conf", conf)
             write_unix(Path(td) / "sh", script)
@@ -4706,6 +5362,11 @@ echo @@BLUEZ
         restarted = self._btout_switch(mount=True)
         # сторож дальше следит за подключением (подмена уже стоит — он её не трогает, пока колонка на связи)
         self.adb.shell(f"start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}")
+        self._btout_volume_max()   # громкость BT-колонки в bluealsa — всегда 100 %
+        try:
+            self.btout_eq()        # сохранённый пресет эквалайзера — в tap
+        except Exception as e:     # noqa: BLE001 — без эквалайзера звук всё равно должен включиться
+            JOURNAL.add(f"Эквалайзер не применён: {e}", "warn")
         return {**self.bt_state(), "restarted": restarted}
 
     def btout_off(self):
@@ -5279,6 +5940,16 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             pass
 
+    def _wakeword_proxy(self, method, path, body=None):
+        """Прокси API слов активации: JSON и WAV отдаются как есть (WAV — с его Content-Type)."""
+        try:
+            data, ctype = self.panel.wakeword_proxy(method, path, body)
+        except (AdbError, subprocess.TimeoutExpired) as e:
+            return self._send(400, {"error": str(e)})
+        if isinstance(data, (dict, list)):
+            return self._send(200, data)
+        return self._send(200, data, ctype or "application/octet-stream")
+
     def _download(self, path):
         try:
             name, local, td = self.panel.fs_download(path)
@@ -5360,12 +6031,17 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         if u.path == "/api/term":
             return self._terminal(q)
+        if u.path == "/api/wakeword/proxy":
+            return self._wakeword_proxy("GET", q.get("path", ""))
         p = self.panel
         routes = {
             "/api/status": p.status,
             "/api/midi/hardware": p.midi_hardware,
             "/api/midi/tests": p.midi_tests,
             "/api/midi/tests/clock": p.midi_clock_tests,
+            "/api/wakeword/status": p.wakeword_status,
+            "/api/wakeword/actions": p.wakeword_actions,
+            "/api/mute": lambda: {"muted": bool(load_settings().get("mute_before")), "volume": p._volume_level()},
             "/api/sounds": p.sounds,
             "/api/sounds/custom": p.sounds_custom,
             "/api/patterns": p.patterns,
@@ -5410,10 +6086,12 @@ class Handler(BaseHTTPRequestHandler):
             "/api/footprint": p.footprint,
             "/api/privacy": p.privacy_status,
             "/api/assistant": p.assistant_status,
+            "/api/viz": p.viz_status,
             "/api/radio": p.radio_status,
             "/api/radio/search": lambda: p.radio_search(q.get("q", ""), q.get("country", "")),
             "/api/panel/version": lambda: self.updater.check(q.get("refresh") == "1"),
             "/api/bt": p.bt_state,
+            "/api/btout/eq": p.btout_eq_status,
             "/api/metrics": lambda: p.metrics.get(q.get("range", 3600)),
         }
         if u.path in routes:
@@ -5495,11 +6173,20 @@ class Handler(BaseHTTPRequestHandler):
             return self._handle(lambda: p.fs_upload(directory, name, body))
         d = self._json()
         self._jdata = d if isinstance(d, dict) else {}
+        if u.path == "/api/wakeword/proxy":
+            return self._wakeword_proxy(str(self._jdata.get("method", "POST")).upper(),
+                                        str(self._jdata.get("path", "")), self._jdata.get("body"))
         routes = {
             "/api/volume": lambda: p.set_volume(d),
             "/api/midi/tests/run": lambda: p.midi_test_run(d),
             "/api/midi/tests/observe": lambda: p.midi_test_observe(d),
             "/api/midi/tests/restore": p.midi_test_restore,
+            "/api/mute": lambda: p.set_mute(bool(d.get("on"))),
+            "/api/wakeword/install": p.wakeword_install,
+            "/api/wakeword/start": p.wakeword_start,
+            "/api/wakeword/stop": p.wakeword_stop,
+            "/api/wakeword/actions": lambda: p.wakeword_actions_set(d.get("word"), d.get("action"), d.get("scene")),
+            "/api/wakeword/autostart": lambda: p.wakeword_autostart(bool(d.get("on"))),
             "/api/play": lambda: p.play_system(d["name"]),
             "/api/sounds/reset": lambda: p.sound_reset(d["name"]),
             "/api/sounds/play-original": lambda: p.sound_play_original(d["name"]),
@@ -5552,7 +6239,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/btout/scan": lambda: p.btout_scan(d.get("seconds", 12)),
             "/api/btout/use": lambda: p.btout_use(d.get("mac")),
             "/api/btout/off": p.btout_off,
-            "/api/btout/volume": lambda: p.btout_volume(d.get("level", 50)),
+            "/api/btout/eq": lambda: p.btout_eq(d.get("preset"), d.get("bands")),
             "/api/system": lambda: p.system(d["action"]),
             "/api/fs/write": lambda: p.fs_write(d["path"], d["text"]),
             "/api/fs/delete": lambda: p.fs_delete(d["path"]),
@@ -5579,6 +6266,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/radio/check": lambda: p.radio_check(d.get("url")),
             "/api/radio/alice": lambda: p.radio_alice(d.get("name")),
             "/api/assistant/remove": p.assistant_remove,
+            "/api/viz": lambda: p.viz_set(bool(d.get("on"))),
             "/api/assistant/models": lambda: p.assistant_models(d),
             "/api/panel/update": lambda: self.updater.update(),
             "/api/metrics/clear": lambda: p.metrics.clear(),
@@ -5715,6 +6403,7 @@ class PanelUpdater:
 
 # Платформа в device-tree (compatible «yandex,plum», модель «Yandex Plum EVT2») → профиль колонки.
 # Имя хоста тут не годится: владелец мог его переименовать.
+# Станция 2 — station-midi/yandexmidi; Миди — cucumber/cucumber-dvt2. Макс пока не поддерживается.
 PLATFORM_MODELS = {"cucumber": "midi", "plum": "lite2", "prune": "lite2nc", "pickle": "mini3pro", "bergamot": "mini3",
                    "yandexmidi": "station2", "station-midi": "station2", "station-mini2": "mini2",
                    "station-micro": "lite", "yandexmicro": "lite"}
@@ -5987,6 +6676,7 @@ def main():
     panel.auth = glagol.YandexAuth(AUTH_FILE)
     host = device.rpartition(":")[0] if device and ":" in device else None
     panel.glagol = glagol.Glagol(panel.auth, host, None, GLAGOL_PLATFORM)
+    panel.wakeword_router_start()
     panel.ymusic = glagol.YandexMusic(panel.auth)
     panel.agent_attach()
     panel.conn = Connection(adb)
