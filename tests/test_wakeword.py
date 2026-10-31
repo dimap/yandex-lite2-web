@@ -147,7 +147,8 @@ class Autostart(unittest.TestCase):
             p.wakeword_autostart(True)
 
     def test_boot_hook_starts_daemon(self):
-        self.assertIn(f"sh {server.WAKE_SHARE}/S97wakeword start", server.BOOT_HOOK_SCRIPT)
+        self.assertIn(f"-listen 127.0.0.1:{server.WAKE_PORT}", server.BOOT_HOOK_SCRIPT)
+        self.assertIn(server.WAKE_BIN, server.BOOT_HOOK_SCRIPT)
         self.assertIn(server.WAKE_AUTOSTART, server.BOOT_HOOK_SCRIPT)
         self.assertIn(("слова активации", server.WAKE_AUTOSTART), server.Panel.HOOK_USERS)
 
@@ -160,8 +161,9 @@ class StartStop(unittest.TestCase):
             st = p.wakeword_start()
         self.assertTrue(st["running"])
         call = p.adb.shell.call_args[0][0]
-        self.assertIn(f"{server.WAKE_SHARE}/S97wakeword start", call)
-        p.adb.shell.assert_any_call(f"sh {server.WAKE_SHARE}/S97wakeword start 2>&1", check=False, timeout=30)
+        self.assertIn(server.WAKE_BIN, call)
+        self.assertIn(f"-listen 127.0.0.1:{server.WAKE_PORT}", call)
+        self.assertIn("start-stop-daemon -S", call)
 
     def test_start_requires_package(self):
         p = panel(shell=("", "", 0))

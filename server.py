@@ -512,7 +512,8 @@ BOOT_HOOK_SCRIPT = (
     f"[ -f {ASSIST_CONF} ] && [ -x {ASSISTD} ] && start-stop-daemon -S -b -m -p {ASSIST_SD} -x /bin/sh -- -c {shlex.quote(ASSIST_RUN)}\n"
     f"[ -f {BTOUT_MAC} ] && [ -f {BTOUT_SH} ] && start-stop-daemon -S -b -m -p {BTOUT_SD} -x /bin/sh -- {BTOUT_SH}\n"
     # свои слова активации: демон из yam-пакета, стартуем из /data (rootfs-init после OTA пропадает)
-    f"[ -f {WAKE_AUTOSTART} ] && [ -x {WAKE_SHARE}/S97wakeword ] && sh {WAKE_SHARE}/S97wakeword start >/dev/null 2>&1\n"
+    f"[ -f {WAKE_AUTOSTART} ] && [ -x {WAKE_BIN} ] && start-stop-daemon -S -b -m -N 10 -p {WAKE_PID} -x /bin/sh -- -c "
+    f"{shlex.quote(f'exec {WAKE_BIN} run -data {WAKE_DATA} -negatives {WAKE_SHARE}/negatives.bin -listen 127.0.0.1:{WAKE_PORT} >> {WAKE_LOG} 2>&1')}\n"
     f"{BT_OFF_BOOT}\n"
     f"[ -f {AGENT_TOKENS} ] && [ -x {AGENT_BIN} ] && start-stop-daemon -S -b -m -p {AGENT_SD} -x /bin/sh -- -c {shlex.quote(AGENT_RUN)}\n"
     # службы пакетов yam 2, отмеченные «при загрузке»
@@ -3400,8 +3401,12 @@ echo @@BLUEZ
         info = self._wakeword_installed(force=True)
         if not info["installed"]:
             raise AdbError("пакет tangenx/wakeword не установлен")
-        script = f"{WAKE_SHARE}/S97wakeword"
-        out, err, rc = self.adb.shell(f"sh {script} start 2>&1", check=False, timeout=30)
+        run = (f"exec {WAKE_BIN} run -data {WAKE_DATA} -negatives {WAKE_SHARE}/negatives.bin "
+               f"-listen 127.0.0.1:{WAKE_PORT} >> {WAKE_LOG} 2>&1")
+        out, err, rc = self.adb.shell(
+            f"start-stop-daemon -K -p {WAKE_PID} 2>/dev/null; rm -f {WAKE_PID}; "
+            f"start-stop-daemon -S -b -m -N 10 -p {WAKE_PID} -x /bin/sh -- -c {shlex.quote(run)} 2>&1",
+            check=False, timeout=30)
         if rc != 0:
             raise AdbError(strip_ansi(out or err).strip()[-400:] or "не удалось запустить демон слов активации")
         self._ww_info = None
@@ -3431,6 +3436,14 @@ echo @@BLUEZ
             self.adb.shell(f"rm -f {WAKE_AUTOSTART}", check=False)
             self._drop_hook_if_unused()
         self._ww_info = None
+        return self.wakeword_status()
+
+    def wakeword_install(self):
+        """Поставить/обновить yam-пакет tangenx/wakeword из реестра."""
+        self.yam2_install_pkg("tangenx/wakeword", yes=True)
+        self._ww_info = None
+        self._ww_port = None
+        self._wakeword_apply_dry_run()
         return self.wakeword_status()
 
     def wakeword_proxy(self, method, path, body=None, timeout=90):
@@ -3510,6 +3523,32 @@ echo @@BLUEZ
         self._ww_router = threading.Thread(target=self._wakeword_router_loop, daemon=True, name="wakeword-router")
         self._ww_router.start()
 
+    def _wakeword_assistant_off(self):
+        """Одноразовый ассистент: после ответа выключаем режим, чтобы следующие фразы не уходили модели."""
+        seen = False
+        for _ in range(120):
+            time.sleep(0.5)
+            try:
+                st = self.assistant_status()
+            except (AdbError, subprocess.TimeoutExpired):
+                return
+            state = st.get("state") or {}
+            if not state.get("mode"):
+                return
+            kind = state.get("state")
+            if kind in ("busy", "speaking"):
+                seen = True
+            if seen and kind == "idle":
+                try:
+                    self.assistant_command({"mode": False})
+                except (AdbError, subprocess.TimeoutExpired):
+                    pass
+                return
+        try:
+            self.assistant_command({"mode": False})
+        except (AdbError, subprocess.TimeoutExpired):
+            pass
+
     def _wakeword_fire(self, hit, acts):
         word = str(hit.get("word") or "")
         act = acts.get(word) or {"type": "alice"}
@@ -3529,6 +3568,8 @@ echo @@BLUEZ
             try:
                 self.assistant_command({"mode": True})
                 JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → ассистент", "info")
+                threading.Thread(target=self._wakeword_assistant_off, daemon=True,
+                                 name="ww-assistant-off").start()
             except (AdbError, subprocess.TimeoutExpired) as e:
                 JOURNAL.add(f"слова активации: ассистент не включился: {e}", "warn")
         try:
@@ -6065,6 +6106,7 @@ class Handler(BaseHTTPRequestHandler):
         routes = {
             "/api/volume": lambda: p.set_volume(d),
             "/api/mute": lambda: p.set_mute(bool(d.get("on"))),
+            "/api/wakeword/install": p.wakeword_install,
             "/api/wakeword/start": p.wakeword_start,
             "/api/wakeword/stop": p.wakeword_stop,
             "/api/wakeword/actions": lambda: p.wakeword_actions_set(d.get("word"), d.get("action"), d.get("scene")),

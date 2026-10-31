@@ -2243,6 +2243,7 @@
       <div class="ww-state-row">
         <span class="ww-dot" id="ww-dot"></span><span class="ww-state" id="ww-state">Проверяю…</span>
         <span class="ww-state-actions">
+          <button class="btn sm primary" id="ww-install" hidden>Установить пакет</button>
           <button class="btn sm" id="ww-start" hidden>Запустить демон</button>
           <button class="btn sm" id="ww-stop" hidden>Остановить демон</button>
         </span>
@@ -7542,6 +7543,7 @@ function wwRender() {
         ? 'Демон работает, маршрутизация включена: по слову панель сама решает — Алиса, ассистент или сценарий.'
         : 'Демон работает. Запись и обучение идут с микрофонов колонки — говорите рядом с ней.')
     : 'Демон установлен, но не запущен — нажмите «Запустить демон».';
+  $('#ww-install').hidden = ww.installed;
   $('#ww-start').hidden = !on || running;
   $('#ww-stop').hidden = !on || !running;
   $('#ww-autostart-row').hidden = !on;
@@ -7655,6 +7657,11 @@ async function wwActionsLoad() {
 }
 window.wwActionsLoad = wwActionsLoad;
 
+$('#ww-install').onclick = e => act(e.currentTarget, async () => {
+  await api('/api/wakeword/install', {});
+  await wwLoad();
+  await wwActionsLoad();
+}, 'Пакет установлен');
 $('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start', {}); wwRender(); wwLoad(); }, 'Демон запущен');
 $('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop', {}); wwRender(); wwLoad(); }, 'Демон остановлен');
 $('#ww-autostart').onchange = e => {
