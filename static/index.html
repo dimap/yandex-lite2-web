@@ -448,6 +448,8 @@
   .ww-conf span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
   .ww-conf b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--text-2); opacity: .6; }
   .ww-word-meta .meta { display: block; }
+  .ww-word-act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .ww-word-act .field { width: auto; min-width: 150px; }
   .ww-word-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
   .ww-word-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .ww-sens { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
@@ -4110,7 +4112,7 @@ function showTab() {
   }
   if (tab === 'console') setTimeout(() => { termConnect(); try { termFit?.fit(); } catch {} term?.focus(); }, 0);
   if (tab === 'boot' && !bootLoaded) { bootLoaded = true; loadBoot(); }
-  if (tab === 'wakeword' && window.wwLoad) window.wwLoad();
+  if (tab === 'wakeword') { if (window.wwLoad) window.wwLoad(); if (window.wwActionsLoad) window.wwActionsLoad(); }
   loadHook();
   if (tab === 'apps') { loadYam2(); loadYam(); }
   if (tab === 'alarm') loadAlarms();
@@ -7494,7 +7496,7 @@ voiceInput = bindVoiceInput(document, { store, ready: () => !!(online && mu.info
 </script>
 <script>
 // ---------- слова активации: тонкий клиент к API демона tangenx/wakeword ----------
-let ww = null, wwTimer = 0, wwSig = '', wwBusy = '';
+let ww = null, wwTimer = 0, wwSig = '', wwBusy = '', wwActions = null;
 const wwOn = () => !!(ww && ww.installed && ww.supported);
 const wwPct = x => Math.round(Math.max(0, Math.min(1, +x || 0)) * 100) + '%';
 
@@ -7536,7 +7538,9 @@ function wwRender() {
     ? 'Пакет tangenx/wakeword не установлен. Установите его в «Приложения» → YAM 2, затем вернитесь сюда.'
     : !ww.supported ? `Плагин не поддерживает эту модель (${ww.platform || '?'}).`
     : ww.error ? `Демон не отвечает: ${ww.error}`
-    : running ? 'Демон работает. Запись и обучение идут с микрофонов колонки — говорите рядом с ней.'
+    : running ? (ww.dry_run
+        ? 'Демон работает, маршрутизация включена: по слову панель сама решает — Алиса, ассистент или сценарий.'
+        : 'Демон работает. Запись и обучение идут с микрофонов колонки — говорите рядом с ней.')
     : 'Демон установлен, но не запущен — нажмите «Запустить демон».';
   $('#ww-start').hidden = !on || running;
   $('#ww-stop').hidden = !on || !running;
@@ -7554,8 +7558,10 @@ function wwRender() {
     : `микрофон ${a.channel || 'vqe_0'} · уровень ${db.toFixed(0)} дБ`;
 
   const words = ww.words || [];
-  const sig = JSON.stringify(words.map(w => [w.id, w.name, w.enabled, w.sensitivity, w.takes,
-    w.threshold, w.recall, w.false_per_h, w.false_clips]));
+  const wa = (wwActions && wwActions.actions) || {};
+  const scenes = (wwActions && wwActions.scenes) || [];
+  const sig = JSON.stringify([words.map(w => [w.id, w.name, w.enabled, w.sensitivity, w.takes,
+    w.threshold, w.recall, w.false_per_h, w.false_clips]), wa]);
   const dragging = document.activeElement && document.activeElement.closest('#ww-words')
     && document.activeElement.type === 'range';
   if (sig !== wwSig && !dragging) {
@@ -7563,12 +7569,22 @@ function wwRender() {
     $('#ww-words').innerHTML = words.length ? words.map(w => {
       const id = esc(w.id), sens = Math.round((+w.sensitivity || 0) * 100);
       const thr = Math.round(Math.min(0.99, Math.max(0.05, (+w.threshold || 0) - (+w.sensitivity || 0))) * 100);
+      const a = wa[w.id] || { type: 'alice' };
       return `<div class="ww-word">
         <div class="ww-word-head"><b class="ww-word-name">${esc(w.name)}</b>
           <label class="ww-toggle" title="Включить или выключить слово"><input type="checkbox" class="switch" data-ww-enable="${id}" ${w.enabled ? 'checked' : ''} aria-label="Слово «${esc(w.name)}» включено"></label></div>
         <div class="ww-conf" title="Уверенность сейчас; отметка — порог срабатывания"><span data-ww-meter="${id}" style="width:${wwPct(w.score)}"></span><b style="left:${thr}%"></b></div>
         <div class="ww-word-meta"><span class="meta">${w.takes || 0} записей · узнаёт ${wwPct(w.recall)} · ложных ≈ ${(+w.false_per_h || 0).toFixed(1)}/ч${w.false_clips ? ` · отмечено: ${w.false_clips}` : ''} · сейчас <span data-ww-score="${id}">${wwPct(w.score)}</span></span></div>
         ${(w.notes || []).length ? `<div class="meta">${w.notes.map(esc).join('<br>')}</div>` : ''}
+        <div class="ww-word-act"><label class="meta">действие</label>
+          <select class="field" data-ww-act="${id}">
+            <option value="alice" ${a.type === 'alice' ? 'selected' : ''}>Алиса</option>
+            <option value="assistant" ${a.type === 'assistant' ? 'selected' : ''}>Ассистент</option>
+            <option value="scene" ${a.type === 'scene' ? 'selected' : ''}>Сценарий</option>
+            <option value="none" ${a.type === 'none' ? 'selected' : ''}>Ничего</option>
+          </select>
+          ${a.type === 'scene' ? `<select class="field" data-ww-scene="${id}">${scenes.map(x => `<option value="${x.id}" ${x.id === a.scene ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>` : ''}
+        </div>
         <div class="ww-word-foot">
           <label class="ww-sens"><span>реже</span><input type="range" min="-30" max="30" step="5" value="${Math.max(-30, Math.min(30, sens))}" data-ww-sens="${id}"><span>чаще</span></label>
           <div class="ww-word-actions"><button class="btn sm" data-ww-retrain="${id}">Переобучить</button><button class="btn sm danger" data-ww-del="${id}">Удалить</button></div>
@@ -7632,6 +7648,13 @@ async function wwLoad() {
 }
 window.wwLoad = wwLoad;
 
+async function wwActionsLoad() {
+  try { wwActions = await api('/api/wakeword/actions'); } catch { wwActions = null; }
+  wwSig = '';
+  wwRender();
+}
+window.wwActionsLoad = wwActionsLoad;
+
 $('#ww-start').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/start', {}); wwRender(); wwLoad(); }, 'Демон запущен');
 $('#ww-stop').onclick = e => act(e.currentTarget, async () => { ww = await api('/api/wakeword/stop', {}); wwRender(); wwLoad(); }, 'Демон остановлен');
 $('#ww-autostart').onchange = e => {
@@ -7684,7 +7707,22 @@ $('#ww-cancel').onclick = e => act(e.currentTarget, async () => { await wwApi('/
 
 $('#ww-words').addEventListener('change', e => {
   const t = e.target;
-  if (t.dataset.wwEnable) {
+  if (t.dataset.wwAct) {
+    const word = t.dataset.wwAct, kind = t.value;
+    const scene = kind === 'scene' ? ((wwActions?.scenes || [])[0]?.id || '') : '';
+    act(null, async () => {
+      wwActions = await api('/api/wakeword/actions', { word, action: kind, scene });
+      wwSig = '';
+      await wwLoad();
+    });
+  } else if (t.dataset.wwScene) {
+    const word = t.dataset.wwScene, scene = t.value;
+    act(null, async () => {
+      wwActions = await api('/api/wakeword/actions', { word, action: 'scene', scene });
+      wwSig = '';
+      await wwLoad();
+    });
+  } else if (t.dataset.wwEnable) {
     act(null, async () => { await wwApi('/api/words/' + encodeURIComponent(t.dataset.wwEnable), 'POST', { enabled: t.checked }); await wwLoad(); });
   } else if (t.dataset.wwSens) {
     act(null, async () => { await wwApi('/api/words/' + encodeURIComponent(t.dataset.wwSens), 'POST', { sensitivity: (+t.value) / 100 }); await wwLoad(); });
@@ -7708,6 +7746,7 @@ $('#ww-hits').addEventListener('click', e => {
 });
 
 wwLoad();
+wwActionsLoad();
 </script>
 <script src="static/vendor/qrcode.js"></script>
 <script src="static/vendor/xterm/xterm.js"></script>

@@ -309,6 +309,8 @@ WAKE_PORT = 8780
 # targets из yam.yaml пакета: Макс (yandexstation_2), Стрит и Android-Станция не поддерживаются.
 WAKE_TARGETS = ("yandexmicro", "plum", "yandexmini", "yandexmini_2", "bergamot", "pickle",
                 "cucumber", "yandexmidi", "yandexstation", "orion")
+WAKE_SETTINGS = f"{WAKE_DATA}/settings.json"
+WAKE_ACTIONS_KEY = "wakeword_actions"
 
 # ---------- эквалайзер для Bluetooth-выхода ----------
 # Пресеты в виде полос (тип, частота, усиление дБ, добротность): tap на колонке получает готовые
@@ -1772,6 +1774,9 @@ class Panel:
         self.ffmpeg = shutil.which("ffmpeg")
         self._ww_info = None       # кэш «пакет установлен»: вкладка опрашивает статус часто
         self._ww_info_at = 0.0
+        self._ww_router = None
+        self._ww_router_stop = threading.Event()
+        self._ww_last_hit = None
 
     def _configure_glagol(self, device_id):
         # Glagol использует тип устройства из прошивки, а не профиль LED/часов панели.
@@ -3386,6 +3391,7 @@ echo @@BLUEZ
         audio = (state or {}).get("audio") or {}
         return {"installed": info["installed"], "version": info["version"], "running": running,
                 "supported": supported, "platform": platform, "audio": audio, "autostart": info["auto"],
+                "dry_run": bool(load_settings().get(WAKE_ACTIONS_KEY) or {}),
                 "words": (state or {}).get("words") or [], "hits": (state or {}).get("hits") or [],
                 "enroll": (state or {}).get("enroll"), "train": (state or {}).get("train") or {"active": False},
                 "station": (state or {}).get("station", ""), "error": error, "port": WAKE_PORT}
@@ -3434,6 +3440,136 @@ echo @@BLUEZ
             raise AdbError("метод не поддерживается")
         ctype, data = self._wakeword_api(path, method, body, timeout=timeout)
         return data, ctype
+
+    # ---------- маршрутизация слов по действиям ----------
+    def _wakeword_settings(self):
+        try:
+            raw = self.adb.read_bytes(WAKE_SETTINGS) or b"{}"
+            if not isinstance(raw, (str, bytes, bytearray)):
+                return {}
+            return json.loads(raw)
+        except (AdbError, OSError, ValueError):
+            return {}
+
+    def _wakeword_settings_write(self, settings):
+        with tempfile.TemporaryDirectory() as td:
+            f = Path(td) / "settings.json"
+            write_unix(f, json.dumps(settings, ensure_ascii=False, indent=1))
+            self.adb.shell(f"mkdir -p {WAKE_DATA}", check=False)
+            self.adb.push(f, WAKE_SETTINGS + ".new")
+        self.adb.shell(f"mv {WAKE_SETTINGS}.new {WAKE_SETTINGS}", check=False)
+
+    def _wakeword_restart(self):
+        self.adb.shell(f"sh {WAKE_SHARE}/S97wakeword restart 2>&1", check=False, timeout=30)
+        self._ww_port = None
+        self._ww_info = None
+        self._ww_last_hit = None
+        time.sleep(1)
+
+    def _wakeword_apply_dry_run(self):
+        """В режиме маршрутизации демон не должен сам будить Алису — это делает роутер."""
+        acts = load_settings().get(WAKE_ACTIONS_KEY) or {}
+        want = bool(acts)
+        st = self._wakeword_settings()
+        if bool(st.get("dry_run")) != want:
+            st["dry_run"] = want
+            self._wakeword_settings_write(st)
+            self._wakeword_restart()
+        return want
+
+    def wakeword_actions(self):
+        s = load_settings()
+        return {"actions": s.get(WAKE_ACTIONS_KEY) or {},
+                "scenes": self.scenes()["scenes"],
+                "dry_run": bool(self._wakeword_settings().get("dry_run"))}
+
+    def wakeword_actions_set(self, word, action, scene=None):
+        word = str(word or "").strip()
+        if not word:
+            raise AdbError("пустое слово")
+        action = str(action or "alice")
+        if action not in ("alice", "assistant", "scene", "none"):
+            raise AdbError("неизвестное действие")
+        scene = str(scene or "").strip() if action == "scene" else ""
+        if action == "scene" and scene not in {x["id"] for x in self.scenes()["scenes"]}:
+            raise AdbError("нет такого сценария")
+        s = load_settings()
+        acts = s.setdefault(WAKE_ACTIONS_KEY, {})
+        if action == "alice":
+            acts.pop(word, None)
+        else:
+            acts[word] = {"type": action, "scene": scene}
+        save_settings(s)
+        self._wakeword_apply_dry_run()
+        return self.wakeword_actions()
+
+    def wakeword_router_start(self):
+        if getattr(self, "_ww_router", None) and self._ww_router.is_alive():
+            return
+        self._ww_router_stop = threading.Event()
+        self._ww_router = threading.Thread(target=self._wakeword_router_loop, daemon=True, name="wakeword-router")
+        self._ww_router.start()
+
+    def _wakeword_fire(self, hit, acts):
+        word = str(hit.get("word") or "")
+        act = acts.get(word) or {"type": "alice"}
+        kind = act.get("type") or "alice"
+        if kind == "none":
+            return
+        if kind == "scene":
+            sid = act.get("scene")
+            if sid:
+                try:
+                    self.scene_run(sid)
+                    JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → сценарий {sid}", "info")
+                except (AdbError, subprocess.TimeoutExpired) as e:
+                    JOURNAL.add(f"слова активации: сценарий {sid} не запустился: {e}", "warn")
+            return
+        if kind == "assistant":
+            try:
+                self.assistant_command({"mode": True})
+                JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → ассистент", "info")
+            except (AdbError, subprocess.TimeoutExpired) as e:
+                JOURNAL.add(f"слова активации: ассистент не включился: {e}", "warn")
+        try:
+            self._wakeword_api("/api/listen", "POST", timeout=3)
+            JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → Алиса слушает", "info")
+        except AdbError as e:
+            JOURNAL.add(f"слова активации: не удалось начать слушать: {e}", "warn")
+
+    def _wakeword_router_loop(self):
+        while not self._ww_router_stop.is_set():
+            try:
+                acts = load_settings().get(WAKE_ACTIONS_KEY) or {}
+                if not acts:
+                    self._ww_last_hit = None
+                    self._ww_router_stop.wait(2)
+                    continue
+                st = self.wakeword_status()
+                if not st["running"]:
+                    self._ww_router_stop.wait(2)
+                    continue
+                _, state = self._wakeword_api("/api/state", timeout=3)
+                hits = (state or {}).get("hits") or []
+                ids = [int(h.get("id") or 0) for h in hits]
+                if self._ww_last_hit is None:
+                    self._ww_last_hit = max(ids or [0])
+                else:
+                    if ids and max(ids) < self._ww_last_hit:
+                        self._ww_last_hit = max(ids)   # демон перезапускался, id сбросились
+                    for h in sorted(hits, key=lambda x: int(x.get("id") or 0)):
+                        hid = int(h.get("id") or 0)
+                        if hid <= self._ww_last_hit:
+                            continue
+                        self._ww_last_hit = hid
+                        try:
+                            self._wakeword_fire(h, acts)
+                        except Exception as e:  # noqa: BLE001
+                            JOURNAL.add(f"слова активации: действие не выполнено: {e}", "warn")
+                self._ww_router_stop.wait(0.3)
+            except Exception as e:  # noqa: BLE001
+                JOURNAL.add(f"слова активации: роутер: {e}", "warn")
+                self._ww_router_stop.wait(2)
 
     def footprint(self):
         """Всё постоянное, что панель ставит на колонку. Временное (/tmp) исчезает само после перезагрузки."""
@@ -5790,6 +5926,7 @@ class Handler(BaseHTTPRequestHandler):
         routes = {
             "/api/status": p.status,
             "/api/wakeword/status": p.wakeword_status,
+            "/api/wakeword/actions": p.wakeword_actions,
             "/api/mute": lambda: {"muted": bool(load_settings().get("mute_before")), "volume": p._volume_level()},
             "/api/sounds": p.sounds,
             "/api/sounds/custom": p.sounds_custom,
@@ -5930,6 +6067,7 @@ class Handler(BaseHTTPRequestHandler):
             "/api/mute": lambda: p.set_mute(bool(d.get("on"))),
             "/api/wakeword/start": p.wakeword_start,
             "/api/wakeword/stop": p.wakeword_stop,
+            "/api/wakeword/actions": lambda: p.wakeword_actions_set(d.get("word"), d.get("action"), d.get("scene")),
             "/api/wakeword/autostart": lambda: p.wakeword_autostart(bool(d.get("on"))),
             "/api/play": lambda: p.play_system(d["name"]),
             "/api/sounds/reset": lambda: p.sound_reset(d["name"]),
@@ -6419,6 +6557,7 @@ def main():
     panel.auth = glagol.YandexAuth(AUTH_FILE)
     host = device.rpartition(":")[0] if device and ":" in device else None
     panel.glagol = glagol.Glagol(panel.auth, host, None, GLAGOL_PLATFORM)
+    panel.wakeword_router_start()
     panel.ymusic = glagol.YandexMusic(panel.auth)
     panel.agent_attach()
     panel.conn = Connection(adb)

@@ -187,3 +187,66 @@ class Proxy(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Routing(unittest.TestCase):
+    def setUp(self):
+        self.p = panel()
+        self.p.scenes = Mock(return_value={"scenes": [{"id": "s1", "name": "Свет"}]})
+        self.p._wakeword_apply_dry_run = Mock()
+        self.saved = {}
+        for target, effect in (("server.load_settings", lambda: dict(self.saved)),
+                               ("server.save_settings", lambda d: (self.saved.clear(), self.saved.update(d)))):
+            p = patch(target, side_effect=effect)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def test_alice_is_default_and_removed(self):
+        self.p.wakeword_actions_set("дипсик", "alice")
+        self.assertNotIn("дипсик", self.saved.get("wakeword_actions", {}))
+
+    def test_none_and_scene(self):
+        self.p.wakeword_actions_set("дипсик", "none")
+        self.assertEqual(self.saved["wakeword_actions"]["дипсик"], {"type": "none", "scene": ""})
+        self.p.wakeword_actions_set("дипсик", "scene", "s1")
+        self.assertEqual(self.saved["wakeword_actions"]["дипсик"], {"type": "scene", "scene": "s1"})
+        self.p.wakeword_actions_set("дипсик", "assistant")
+        self.assertEqual(self.saved["wakeword_actions"]["дипсик"], {"type": "assistant", "scene": ""})
+
+    def test_scene_validation(self):
+        with self.assertRaisesRegex(server.AdbError, "нет такого сценария"):
+            self.p.wakeword_actions_set("x", "scene", "nope")
+
+    def test_fire_actions(self):
+        self.p._wakeword_api = Mock()
+        self.p.scene_run = Mock()
+        self.p.assistant_command = Mock()
+        self.p._wakeword_fire({"word": "x", "name": "Икс"}, {"x": {"type": "alice"}})
+        self.p._wakeword_api.assert_called_once_with("/api/listen", "POST", timeout=3)
+        self.p._wakeword_api.reset_mock()
+        self.p._wakeword_fire({"word": "x"}, {"x": {"type": "none"}})
+        self.p._wakeword_api.assert_not_called()
+        self.p._wakeword_fire({"word": "x"}, {"x": {"type": "scene", "scene": "s1"}})
+        self.p.scene_run.assert_called_once_with("s1")
+        self.p._wakeword_api.assert_not_called()
+        self.p._wakeword_fire({"word": "x"}, {"x": {"type": "assistant"}})
+        self.p.assistant_command.assert_called_once_with({"mode": True})
+        self.p._wakeword_api.assert_called_once_with("/api/listen", "POST", timeout=3)
+
+    def test_apply_dry_run_writes_and_restarts(self):
+        p = panel()
+        p._wakeword_settings = Mock(return_value={"dry_run": False})
+        p._wakeword_settings_write = Mock()
+        p._wakeword_restart = Mock()
+        with patch("server.load_settings", return_value={"wakeword_actions": {"x": {"type": "none"}}}):
+            self.assertTrue(p._wakeword_apply_dry_run())
+        p._wakeword_settings_write.assert_called_once_with({"dry_run": True})
+        p._wakeword_restart.assert_called_once()
+
+    def test_status_dry_run(self):
+        self.saved["wakeword_actions"] = {"x": {"type": "none"}}
+        with patch.object(self.p, "_wakeword_installed",
+                          return_value={"installed": True, "version": "0.2.2", "pid": True, "auto": False}), \
+             patch.object(self.p, "_wakeword_api", return_value=("application/json", {"audio": {"ok": True}})):
+            st = self.p.wakeword_status()
+        self.assertTrue(st["dry_run"])
