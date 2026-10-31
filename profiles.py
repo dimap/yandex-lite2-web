@@ -1,6 +1,7 @@
 """Explicit hardware profiles. Lite 2 keeps its original implementation by default."""
 import os
 import json
+import re
 import shlex
 import tempfile
 import threading
@@ -11,13 +12,17 @@ from pathlib import Path
 # работает на модели, — впишите её в tested этой модели: предупреждение пропадёт. Новые функции — сюда же.
 # Работа с экраном (заставка, анимации и дисплей часов) — не здесь: у моделей разные экраны, её открывают флаги
 # clock/boot только после проверки.
-TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2", "btout", "btpower")
+TRIAL_FEATURES = ("assistant", "scenes", "alarm", "anims", "sounds", "say", "yam2", "btout", "btpower", "privacy")
 # ledpanel — LED-панель 88 диодов (/dev/fb0 через штатный led-play): есть только у Станции 2, проверено на устройстве.
 
 PROFILES = {
     # Лайт первого поколения (PR #6): дисплея нет, кольцо из трёх RGB-диодов micro:*:ring1–3 через /dev/fb0, как у Лайт 2.
     'lite': dict(name='Станция Лайт', platform='yandexmicro', led_prefix='micro', clock=False, boot=False, alarms=False,
                  light=True, tested=('alarm', 'sounds', 'say')),   # PR #6: хук, будильник, звуки; Issue #23: «Сказать»
+    # Own profile, with general trial functions; no borrowed LED/framebuffer layout.
+    'midi': dict(name='Станция Миди', platform='cucumber', clock=False, boot=False,
+                 alarms=False, light=False, logo=False, experimental=True,
+                 tested=('say',)),  # владелец подтвердил речь на factory-9, H3, 30 октября 2026
     'lite2': dict(name='Станция Лайт 2', platform='plum', clock=True, boot=True, alarms=True, light=True, privacy=True,
                   tested=TRIAL_FEATURES),
     # Lite 2 без сегментного дисплея (например, Prune): кольцо и остальное как у Lite 2.
@@ -89,18 +94,162 @@ MINI2_STOP_RING = ('for f in /tmp/webpanel_ring.pid /tmp/webpanel_ring.sd; do '
 
 
 def mini2_ring_script(rgb=None, leds='/sys/class/leds', state='/tmp/webpanel_ring.before'):
-    """Кольцо Мини 2 — 6 RGB без триггеров: Quasar сам пишет brightness. Перед своим цветом запоминаем
-    прежний, сброс возвращает его."""
+    """Six RGB zones; preserve brightness and active kernel triggers before writing."""
     names = ' '.join(f'mini2:{color}:ring{i}' for i in range(1, 7) for color in ('red', 'green', 'blue'))
-    lines = ['D=' + shlex.quote(leds), 'S=' + shlex.quote(state)]
+    lines = ['set -e', 'D=' + shlex.quote(leds), 'S=' + shlex.quote(state),
+             'N=' + shlex.quote(names),
+             'for n in $N; do test -r "$D/$n/brightness"; test -w "$D/$n/brightness"; test -w "$D/$n/trigger"; done']
     if rgb is not None:
-        lines.append(f'[ -s "$S" ] || for n in {names}; do echo "$n $(cat "$D/$n/brightness")"; done > "$S"')
+        lines += ['if [ ! -e "$S" ]; then', 'T="$S.$$"; trap \'rm -f "$T"\' 0',
+                  'for n in $N; do v=$(cat "$D/$n/brightness"); '
+                  't=$(sed -n \'s/.*\\[\\([^]]*\\)\\].*/\\1/p\' "$D/$n/trigger"); '
+                  'case "$v" in \'\'|*[!0-9]*) exit 1;; esac; [ "$v" -le 255 ]; '
+                  'case "$t" in \'\'|*[!a-zA-Z0-9_-]*) exit 1;; esac; '
+                  'printf "%s %s %s\\n" "$n" "$v" "$t"; done > "$T"',
+                  'mv "$T" "$S"', 'fi']
+    # Validate the complete snapshot before the first write. An interrupted or
+    # foreign snapshot must never become a partial restore or a shell command.
+    lines += ['if [ -e "$S" ]; then [ "$(wc -l < "$S")" -eq 18 ];',
+              'for n in $N; do row=$(awk -v n="$n" \'$1 == n && NF == 3 {print $2, $3}\' "$S"); '
+              'set -- $row; [ "$#" -eq 2 ]; '
+              'case "$1" in \'\'|*[!0-9]*) exit 1;; esac; [ "$1" -le 255 ]; '
+              'case "$2" in \'\'|*[!a-zA-Z0-9_-]*) exit 1;; esac; '
+              't=$2; case " $(cat "$D/$n/trigger") " in *" $t "*|*" [$t] "*) ;; *) exit 1;; esac; done; fi']
+    if rgb is not None:
         lines += [f'echo {max(0, min(255, int(value)))} > "$D/mini2:{color}:ring{i}/brightness"'
                   for i in range(1, 7) for color, value in zip(('red', 'green', 'blue'), rgb)]
     else:
-        lines.append('if [ -s "$S" ]; then while read n v; do echo "$v" > "$D/$n/brightness"; done < "$S"; '
-                     f'else for n in {names}; do echo 0 > "$D/$n/brightness"; done; fi; rm -f "$S"')
+        lines.append('if [ -e "$S" ]; then while read -r n v t; do echo "$v" > "$D/$n/brightness"; '
+                     'echo "$t" > "$D/$n/trigger"; done < "$S"; rm -f "$S"; fi')
     return '\n'.join(lines)
+
+
+def volume_map(config):
+    """Read firmware's complete Quasar 0..20 -> ALSA table; never borrow Lite 2's."""
+    value = config['volume_manager_settings']['platformToAlsaMap']
+    if isinstance(value, dict):
+        if set(value) != {str(i) for i in range(21)}:
+            raise ValueError('incomplete volume map')
+        value = [value[str(i)] for i in range(21)]
+    if (not isinstance(value, list) or len(value) != 21 or
+            any(type(v) is not int or not 0 <= v <= 255 for v in value) or
+            value != sorted(value) or value[0] != 0 or value[-1] == 0):
+        raise ValueError('invalid volume map')
+    return value
+
+
+def install_audio_adapter(s, discover_controls=False):
+    """Per-worker adapter; read actual firmware before an ALSA fallback/write."""
+    P = s.Panel
+    original_status, original_volume = P.status, P.set_volume
+
+    def device_volume_map(self):
+        out, _, _ = self.adb.shell(f'cat {s.QUASAR}/quasar.cfg')
+        try:
+            return volume_map(json.loads(out))
+        except (ValueError, TypeError, KeyError):
+            raise s.AdbError('Не удалось прочитать карту громкости этой колонки; подключите Glagol') from None
+
+    def status(self):
+        st = original_status(self)
+        music = self.glagol.info() if getattr(self, 'glagol', None) else {}
+        value = (music.get('state') or {}).get('volume') if music.get('connected') else None
+        if type(value) in (int, float) and 0 <= value <= 1:
+            st.update(vol_level=round(value * 100), volume_source='glagol')
+        else:
+            try:
+                table = device_volume_map(self)
+                raw = int(st.get('vol_master', ''))
+                st.update(vol_level=min(range(21), key=lambda i: abs(table[i] - raw)) * 5,
+                          volume_source='firmware')
+            except (s.AdbError, OSError, s.subprocess.TimeoutExpired, ValueError):
+                st.update(vol_level=None, volume_source='unavailable')
+        return st
+
+    def set_volume(self, data):
+        if discover_controls and 'level' in data and self.glagol.ws:
+            return original_volume(self, {'level': data['level']})
+        if 'level' in data and not self.glagol.ws:
+            table = device_volume_map(self)
+            level = round(max(0., min(100., float(data['level']))) / 5)
+            data = {k: v for k, v in data.items() if k != 'level'}
+            data['master'] = table[level]
+        if discover_controls:
+            data = dict(data)
+            commands = []
+            for key, control in (('master', 'Master Playback Volume'), ('bt', 'Bluetooth Master Playback Volume')):
+                if key not in data:
+                    continue
+                out, _, rc = self.adb.shell(f'amixer cget name={shlex.quote(control)}', check=False)
+                limits = re.search(r'type=INTEGER,access=([a-z-]+),values=(\d+),min=(\d+),max=(\d+)', out)
+                if (rc or not limits or not {'r', 'w'}.issubset(limits[1]) or
+                        not 1 <= int(limits[2]) <= 8 or not 0 <= int(limits[3]) <= int(limits[4]) <= 255):
+                    raise s.AdbError('Не удалось проверить ALSA-регулятор этой колонки: ' + control)
+                try:
+                    value = max(int(limits[3]), min(int(limits[4]), int(data[key])))
+                except (TypeError, ValueError, OverflowError):
+                    raise s.AdbError('Неверное значение громкости') from None
+                values = ','.join([str(value)] * int(limits[2]))
+                commands.append(f'amixer cset name={shlex.quote(control)} {values} >/dev/null')
+            if commands:
+                # All controls have been checked; stop at the first failed write.
+                self.adb.shell(' && '.join(commands))
+                return {'ok': True}
+        return original_volume(self, data)
+
+    P._device_volume_map, P.status, P.set_volume = device_volume_map, status, set_volume
+
+
+def install_boot_preflight(s):
+    """Check the known boot prerequisite before preparing files, not afterwards."""
+    P = s.Panel
+    # An orphan rootkeeper is not a boot route on these devices. A writable
+    # init.d is an independent candidate introduced by upstream 0.2.0.
+    P._boot_require_caller = True
+
+    # Do not gate removal/rollback. These methods can create files before _ensure_hook.
+    for method in ('alarms_save', 'scenes_save', 'alarm_sound_upload',
+                   'boot_sound_install', 'sound_replace', 'anim_install'):
+        original = getattr(P, method)
+        def guarded(self, *args, _original=original, _method=method, **kwargs):
+            self._boot_route()
+            if _method in ('alarms_save', 'scenes_save'):
+                self._device_volume_map()
+            return _original(self, *args, **kwargs)
+        setattr(P, method, guarded)
+    for method in ('boot_always', 'privacy_set'):
+        original = getattr(P, method)
+        def guarded_toggle(self, enabled, _original=original):
+            if enabled:
+                self._boot_route()
+            return _original(self, enabled)
+        setattr(P, method, guarded_toggle)
+
+
+def install_alarm_adapter(s, model):
+    """Generate the daemon with the device's volume table and known LED layout."""
+    def model_alarm_script(self):
+        table = self._device_volume_map()
+        script = s.alarm_script().decode('utf8')
+        cases = ' '.join(f'{i}) echo {table[i * 2]};;' for i in range(11))
+        script = re.sub(r'^alsa_of\(\).*$', 'alsa_of() { case "$1" in ' + cases + ' *) return 1;; esac; }',
+                        script, count=1, flags=re.M)
+        if model == 'mini2':
+            # Subshells keep helper variables away from the scene interpreter.
+            ring = ('ring() (\nset -- $(printf \'%b\' "$1" | od -An -tu1)\n'
+                    '[ "$#" -eq 3 ] || exit 1\nR=$3 G=$2 B=$1\n' +
+                    # The normal writer performs the atomic snapshot and validation.
+                    mini2_ring_script([0, 0, 0], state='/tmp/webpanel_alarm_ring.before').replace('echo 0 > "$D/mini2:red:', 'echo "$R" > "$D/mini2:red:')
+                    .replace('echo 0 > "$D/mini2:green:', 'echo "$G" > "$D/mini2:green:')
+                    .replace('echo 0 > "$D/mini2:blue:', 'echo "$B" > "$D/mini2:blue:') + '\n)\n' +
+                    'ring_release() (\n' + mini2_ring_script(state='/tmp/webpanel_alarm_ring.before') + '\n)\n')
+        else:
+            # No live Midi LED layout: avoid Lite 2 framebuffer/trigger writes.
+            ring = 'ring() { :; }\nring_release() { :; }\n'
+        start = script.index('FB_RING=')
+        end = script.index('# Ждём, что Алиса', start)
+        return (script[:start] + ring + '\n' + script[end:]).encode('utf8')
+    s.Panel._alarm_script = model_alarm_script
 
 
 def mini3pro_ring_script(rgb=None, leds='/sys/class/leds', state='/tmp/webpanel_ring.state'):
@@ -320,9 +469,11 @@ def install(s, model='lite2', auto=False):
     if not profile['clock']:
         for method in ('clock', 'display_set', 'play_clock', 'clock_frames'):
             setattr(P, method, unsupported)
+        if model == 'midi':
+            P.display_stop = unsupported
     # Хук в rootkeeper.sh (звук запуска, автозапуск будильника и ассистента) — только если файл есть или его
     # вызывает штатный onboot.sh, иначе _ensure_hook сам откажет. На Мини 3 оборудование не сверено — не трогаем.
-    if profile.get('experimental'):
+    if model == 'mini3':
         P._ensure_hook = unsupported
     if family != 'lite':    # официальный установщик старого yam знал Лайт (yandexmicro) и ставил его туда же, что на Лайт 2
         for method in ('yam_install_daemon', 'yam_update_daemon', 'yam_autostart'):
@@ -335,10 +486,19 @@ def install(s, model='lite2', auto=False):
     # Existing community YAM installations on the new profiles use this layout; Mini 2 keeps the Lite 2 one.
     old = s.YAM_DIR
     for name, value in list(vars(s).items()):
-        if family not in ('mini2', 'lite') and name.startswith('YAM') and isinstance(value, str):
+        if family not in ('mini2', 'lite', 'midi') and name.startswith('YAM') and isinstance(value, str):
             setattr(s, name, value.replace(old, '/data/local/yam'))
 
     def patterns(self):
+        if model == 'midi':
+            # General ring animation experiments use the device's own led_util.
+            # Clock patterns need the unverified Midi frame codec and stay gated.
+            out, _, _ = self.adb.shell(
+                f'find {s.PATTERNS["ring"]} -maxdepth 1 -type f -name "*.led" 2>/dev/null; '
+                f'echo "<<<"; find {s.MY_ANIM_DIR}/ring -maxdepth 1 -type f -name "*.led" 2>/dev/null; true')
+            stock, _, own = out.partition('<<<')
+            return {'ring': sorted([Path(x).name for x in stock.splitlines() if x.strip()] +
+                                   ['my/' + Path(x).name for x in own.splitlines() if x.strip()]), 'clock': []}
         if family not in ('mini3pro', 'mini2'):
             return {'ring': [], 'clock': []}
         out, _, _ = self.adb.shell(f'find {s.QUASAR}/ledpatterns/clock -maxdepth 1 -type f 2>/dev/null; true')
@@ -354,7 +514,7 @@ def install(s, model='lite2', auto=False):
     original_play = P.play_pattern
 
     def play_pattern(self, kind, name, seconds):
-        if kind == 'ring' and family == 'mini2':
+        if kind == 'ring' and (family == 'mini2' or model == 'midi'):
             return original_play(self, kind, name, seconds)
         if kind != 'clock' or model not in ('mini3pro', 'mini2'):
             return unsupported()
@@ -369,6 +529,8 @@ def install(s, model='lite2', auto=False):
                               + '/$n/trigger 2>/dev/null || echo led_ring_fb > ' + s.LEDS + '/$n/trigger 2>/dev/null; done; true')
 
     def leds(self):
+        if model == 'midi':
+            return {'v': None, 'ring': [], 'unverified': True}
         if family == 'lite':
             out, _, _ = self.adb.shell('cd /sys/class/leds; ' + '; '.join(f'cat {name}/brightness' for name in s.RING_LEDS))
             values = [int(value) for value in out.split() if value.isdigit()]
@@ -450,6 +612,8 @@ def install(s, model='lite2', auto=False):
     P.ring = ring
 
     def reset_ring(self):
+        if model == 'midi':
+            return unsupported()
         if family == 'mini3':
             return {'ok': True}
         if family == 'lite':
@@ -466,13 +630,28 @@ def install(s, model='lite2', auto=False):
     original_stop = P.stop_pattern
     def stop(self, kind=None):
         if kind in (None, 'ring'):
-            if family == 'mini2':
+            if family == 'mini2' or model == 'midi':
                 self.adb.shell(MINI2_STOP_RING)
-            self.ring_reset()
+            if profile['light']:
+                self.ring_reset()
         if kind in (None, 'clock') and profile['clock']:
             original_stop(self, 'clock')
         return {'ok': True}
     P.stop_pattern = stop
+
+    if family == 'mini2' or model == 'midi':
+        install_audio_adapter(s, discover_controls=model == 'midi')
+        install_boot_preflight(s)
+        install_alarm_adapter(s, model)
+    if model == 'midi':
+        original_my_save = P.my_anim_save
+        def my_anim_save(self, kind, *args, **kwargs):
+            if kind == 'clock':
+                return unsupported()
+            return original_my_save(self, kind, *args, **kwargs)
+        P.my_anim_save = my_anim_save
+        import midi
+        midi.install(s, profile)
 
     if family in ("station2", "mini3pro"):
         try:

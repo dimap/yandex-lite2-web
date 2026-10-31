@@ -1,11 +1,12 @@
 // MIT: approximate gallery-only bodies after Yandex's official specifications and product photos (see SOURCES.md).
 // Sizes are in millimetres and match the published width, depth and height. Hardware support is not implied.
+import {buildMidi} from './model-midi.js';
 const pal=(...items)=>Object.fromEntries(items.map(([key,label,color])=>[key,[label,color]]));
 const BLACK=pal(['black','Чёрный','#2f3036']);
 // Colour names follow the official "Расцветки" lists on alice.yandex.ru/support.
 const STATION=pal(['black','Чёрный','#2f3036'],['grey','Серый','#a9abb1'],['purple','Фиолетовый','#5b43b8']);
 const MAX=pal(['graphite','Графит','#34353b'],['beige','Бежевый','#cbbfad'],['green','Зелёный','#2f5a4b'],['turquoise','Бирюза','#3f8f8c'],['blue','Синий','#2f4a7a'],['bordo','Бордовый','#6b2834']);
-const MIDI=pal(['black','Чёрный','#2f3036'],['emerald','Изумруд','#1f9a86'],['grey','Серый','#9a9ca2'],['orange','Оранжевый','#e0a02a'],['crimson','Малиновый','#b8325a']);
+const MIDI=pal(['black','Чёрный','#41434b'],['emerald','Изумруд','#46b5b5'],['grey','Серый','#a2a4aa'],['orange','Оранжевый','#cf913c'],['crimson','Малиновый','#ad365c']);
 const MINI2=pal(['white','Белый','#dcdcdc'],['black','Чёрный','#34353b'],['red','Красный','#b0303c'],['blue','Синий','#2f56a8']);
 
 // Builders receive the studio kit: Three.js, shared materials and mesh helpers.
@@ -42,7 +43,7 @@ function curvedClock(kit,r,y){
   const arc=50/r,m=kit.mesh(new kit.T.CylinderGeometry(r,r,25,48,1,true,-arc/2,arc),new kit.T.MeshBasicMaterial({map:segClock(kit),transparent:true,depthWrite:false,toneMapped:false}),0,y);m.renderOrder=2;
 }
 // Square towers. H is the full published height; the body is what remains after the top and the base.
-// top: 'knob' — volume ring and light ring (Station, Max); 'plate' — glass plate over a contour light (Station 3, Midi).
+// top: 'knob' — volume ring and light ring (Station, Max); 'plate' — plate over a contour light (Station 3).
 function square(kit,{w,H,r,top='plate',display,glow=12,foot=0}){
   const {mesh,roundedBox,fabric,plastic,rubber,glass,ledMaterial}=kit,cap=top==='knob'?19:7,base=foot||6,h=H-cap-base,y0=(base-cap)/2;
   mesh(roundedBox(w,h,w,r,3),fabric,0,y0);
@@ -81,8 +82,9 @@ export const CONCEPTS={
   station3:{name:'Яндекс Станция 3',colors:STATION,build:kit=>{
     const s=square(kit,{w:132,H:201,r:30,glow:34,display:kit=>({w:60,h:60,map:dotClock(kit,21,12)}),foot:10}),{mesh,roundedBox,ledMaterial}=kit;
     mesh(roundedBox(84,5,2,2,.8),ledMaterial(),0,-201/2+28,-132/2-.6);return s;}},
-  // 96 × 96 × 110 mm; 45-segment display, contour light around the top glass.
-  midi:{name:'Яндекс Станция Миди',colors:MIDI,build:kit=>square(kit,{w:96,H:110,r:20,glow:6,display:kit=>({w:54,h:54,map:segClock(kit)})})},
+  // 96 × 96 × 110 mm; 45-segment display, contour light beneath a matte plastic top.
+  // Detailed knitted shell and plastic controls; live visual adapter, no baked demo clock.
+  midi:{name:'Яндекс Станция Миди',colors:MIDI,build:buildMidi},
   // 83 mm × 202 mm; usually lies on its side, the studio turns it after building. Button strip with the Alice button, strap loop.
   street:{name:'Яндекс Станция Стрит',lying:true,colors:pal(['black','Чёрный','#2c2d31'],['green','Зелёный','#a8a46a'],['orange','Оранжевый','#d9792f'],['purple','Фиолетовый','#6a55b8'],['grey','Серый','#b9bbbe']),build:kit=>{
     const {mesh,roundedBox,rubber,plastic,ledMaterial,T}=kit,R=41.5;cyl(kit,R,182,kit.fabric,0);cyl(kit,R+.4,10,rubber,-96);cyl(kit,R+.4,10,rubber,96);

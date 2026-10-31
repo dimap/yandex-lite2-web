@@ -44,13 +44,15 @@ class RootkeeperHook(unittest.TestCase):
                   "BOOT_CUSTOM": str(web / "boot.bin"), "SOUND_CUSTOM": str(web / "s"), "BOOT_ALWAYS": str(web / "a"),
                   "YAM_AUTOSTART": str(web / "y"), "ALARM_CONF": str(web / "al"), "HOSTS_CUSTOM": str(web / "h"),
                   "ASSIST_CONF": str(web / "as"), "INITD_DIR": str(self.root / "init.d"),
-                  "INITD_HOOK": str(self.root / "init.d" / "S99zwebpanel")}
+                  "INITD_HOOK": str(self.root / "init.d" / "S99zwebpanel"),
+                  "BOOT_MOUNTS": str(self.root / "mounts")}
         values["ROOTKEEPER_DROP_CREATED"] = server.ROOTKEEPER_DROP_CREATED.replace(server.ROOTKEEPER, str(keeper))
         for name, value in values.items():
             p = patch.object(server, name, value)
             p.start()
             self.addCleanup(p.stop)
         self.keeper, self.caller = keeper, caller
+        (self.root / "mounts").write_text("root / rootfs rw 0 0\n")
         self.initd = self.root / "init.d"
         self.initd.mkdir()
         self.initd.chmod(0o555)          # как на большинстве колонок: корень только для чтения

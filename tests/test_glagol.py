@@ -27,7 +27,7 @@ class GlagolIdentityTests(unittest.TestCase):
             "cat /system/vendor/quasar/quasar.cfg 2>/dev/null", check=False)
 
     def test_other_firmware_platforms_are_not_replaced_with_lite(self):
-        for platform in ("plum", "pickle", "yandexmidi", "bergamot", "yandexmini_2"):
+        for platform in ("plum", "pickle", "yandexmidi", "bergamot", "yandexmini_2", "cucumber"):
             with self.subTest(platform=platform):
                 panel = self.panel(json.dumps({"common": {"deviceType": platform}}))
                 panel._configure_glagol("test-device")

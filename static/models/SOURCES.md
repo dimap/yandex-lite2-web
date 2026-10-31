@@ -17,7 +17,17 @@
   The central Alice diffuser is driven by the native six RGB zones; their mean colour is an approximation.
   The photographs are not bundled.
 
-- Gallery placeholders (Max, Station 3, Midi, Street, Duo Max, Station, Mini 2 without clock, Mini gen 1,
+- Midi: original approximate MIT reconstruction in `model-midi.js`, based on the official
+  [96 × 96 × 110 mm specification](https://alice.yandex.ru/support/ru/station/meet/characteristics-midi)
+  and [product photographs](https://alice.yandex.ru/station-midi).
+  The fabric colour texture and display alpha mask are procedural. Materials use
+  MeshStandard/Basic without normal/bump maps, shadows or a ground plane.
+  No product photograph, reference photograph or third-party mesh is bundled.
+  The 36-value display API visualizes the mapped digits, colon and degree sign;
+  the complete native display has 45 white channels. Geometry and light interpolation
+  are approximations, not official CAD or a framebuffer codec.
+
+- Gallery placeholders (Max, Station 3, Street, Duo Max, Station, Mini 2 without clock, Mini gen 1,
   all TV Station models and Drops): simplified original shapes in model-concepts.js (MIT) after the
   manufacturer's public photographs. They only help future contributors start; hardware support is not implied.
   Lite 2 without clock reuses lite2.stl with the display off.
@@ -42,8 +52,8 @@ Mini 3 has a lower 102 × 60.5 mm body and central indicator; Mini 3 Pro has a
 perforated top, a large clock behind the fabric on the side and six RGB LEDs behind the central Alice
 diffuser; four official colours are selectable in the model settings. Station Lite is an 88 mm puck on a ribbed
 black base; the edge slots are decorative, only the Alice logo in the centre lights up (no clock). Details and colours are approximate.
-Product photographs are not bundled or used as textures. All models use lightweight
-materials with no shadows, ground plane, bump mapping or physical materials. Lite 2
+Product photographs are not bundled or used as textures. Models use lightweight materials without normal/bump maps or physical materials.
+There are no shadow maps or ground plane. Lite 2
 keeps the original main geometry, materials and lighting; colour, auto-rotation and view reset live in
 «Настроить» on the «Обзор» page. Three.js and all required assets are local.
 

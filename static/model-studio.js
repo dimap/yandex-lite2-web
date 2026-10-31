@@ -5,7 +5,7 @@ import {modelSettings} from './model-settings.js';
 import {CONCEPTS} from './model-concepts.js';
 import * as G from './clock-geometry.js';
 export function createModel(profile){
-const view=document.getElementById('model-view'),concept=CONCEPTS[profile.id],lite=profile.id==='lite',mini2=profile.id==='mini2',mini=lite||mini2||profile.id==='mini3pro'||profile.id==='mini3';
+const view=document.getElementById('model-view'),concept=CONCEPTS[profile.id],lite=profile.id==='lite',midi=profile.id==='midi',mini2=profile.id==='mini2',mini=lite||mini2||profile.id==='mini3pro'||profile.id==='mini3';
 view.setAttribute('role','group');view.setAttribute('aria-label','3D-модель: вращайте мышью или пальцем');view.classList.add('studio-view');
 // Preserve upstream visualizer canvas and the references held by its animation loop.
 // Лайт первого поколения: цвета как в её ledconfigs (purple, yellow, green, pink, red, beige).
@@ -48,8 +48,8 @@ function roundedBox(w,h,d,r,b=1){const geo=new T.ExtrudeGeometry(roundedShape(w-
 const ledMaterials=[],trimMaterials=[];   // trim: материалы в цвет пластика корпуса (перекрашиваются вместе с ним)
 function ledMaterial(){const m=new T.MeshStandardMaterial({color:'#181820',emissive:'#000000',emissiveIntensity:0,roughness:.28,metalness:.05});ledMaterials.push(m);return m;}
 function port(y,z){mesh(roundedBox(10,4,1.5,1.9,.3),rubber,0,y,z);mesh(roundedBox(6,1.5,1.8,.7,.2),new T.MeshStandardMaterial({color:'#727078',metalness:.7,roughness:.5}),0,y,z-.15);}
-let topY,baseY,clockSegments=[],display=null;
-if(concept)({topY,baseY}=concept.build({T,group,mesh,roundedBox,canvasTexture,fabric,plastic,rubber,glass,ledMaterial}));
+let topY,baseY,clockSegments=[],display=null,details={};
+if(concept){details=concept.build({T,group,mesh,roundedBox,canvasTexture,fabric,plastic,rubber,glass,ledMaterial,renderer,scene});({topY,baseY}=details);display=details.display||null;}
 else if(lite){
   // По фото: прямой цилиндр 88 мм с острым верхним краем (корпус ~44 мм) на чёрном основании ~12 мм,
   // которое сужается книзу и изрезано наклонными канавками.
@@ -211,6 +211,7 @@ if(mini&&!lite&&!mini2){
 }
 window.modelShow=values=>{if(display)display(values);else clockSegments.forEach((s,i)=>{s.visible=Number(values?.[i])>0;});dirty=true;};
 window.modelRing=leds=>{if(!leds?.length)return;
+  if(details.ring){details.ring(leds);dirty=true;return;}
   const lit=mini2&&leds.some(rgb=>rgb.some(v=>v>0));
   // Approximate the central diffuser's mixed hue; all six native zones contribute.
   if(mini2)leds=[[0,1,2].map(c=>leds.reduce((sum,rgb)=>sum+Math.max(0,Math.min(255,Number(rgb?.[c])||0)),0)/leds.length)];
@@ -227,7 +228,7 @@ paint(window.__deviceColor||fallback);
 if(concept?.lying)group.rotation.z=Math.PI/2;
 const bounds=concept&&new T.Box3().setFromObject(group).getBoundingSphere(new T.Sphere());
 if(bounds){controls.minDistance=bounds.radius*1.6;controls.maxDistance=bounds.radius*6;controls.maxPolarAngle=Math.PI;}
-function home(){if(bounds){camera.position.copy(bounds.center).add(new T.Vector3(.38,.42,1).setLength(bounds.radius*4.3));controls.target.copy(bounds.center);}
+function home(){if(bounds){camera.position.copy(bounds.center).add(new T.Vector3(.38,.42,1).setLength(bounds.radius*(midi?3.9:4.3)));controls.target.copy(bounds.center);}
   else{if(lite)camera.position.set(60,115,215);else camera.position.set(mini?55:240,mini?83:155,mini?258:420);controls.target.set(0,mini?-4:0,0);}controls.update();dirty=true;}home();
 modelSettings(profile.id,palette,{color:key=>{preference=key;paint(key||window.__deviceColor||fallback);},home,spin:value=>{controls.autoRotate=value;dirty=true;}});
 controls.addEventListener('change',()=>{dirty=true;});controls.addEventListener('start',()=>{view.classList.add('studio-used');});

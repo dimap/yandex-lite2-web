@@ -177,3 +177,11 @@ class DefaultAlarmSound(unittest.TestCase):
         self.assertEqual(panel(("x/b.wav", "x/a.wav"))._alarm_default_path(), "x/a.wav")
         with self.assertRaises(server.AdbError):
             panel(())._alarm_default_path()
+
+    def test_mini2_opus_and_midi_flat_sound_layouts(self):
+        # Names observed by read-only SSH on the two devices, 29 Oct 2026.
+        mini2 = panel(('common/notification_sound.opus', 'common/calls_ringing_incoming.mp3',
+                       'common/timer.opus'))
+        midi = panel(('notification_sound.mp3', 'calls_ringing_incoming.mp3', 'timer.wav'))
+        self.assertEqual(mini2._alarm_default_path(), 'common/timer.opus')
+        self.assertEqual(midi._alarm_default_path(), 'timer.wav')

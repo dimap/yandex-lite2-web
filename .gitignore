@@ -4,6 +4,9 @@
 .panel_settings.json
 .agent.json
 .metrics.json
+.midi_tests.json
+.midi_tests-*
+.midi-clock-reference*
 .radio_alice.json
 .radio_logos
 .radio_checks.json

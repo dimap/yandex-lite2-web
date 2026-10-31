@@ -412,6 +412,7 @@ HOOK_MARK = "# webpanel-boot-hook"
 # ассистент и службы успевают, а своя заставка и звук запуска могут не успеть.
 INITD_DIR = "/etc/init.d"
 INITD_HOOK = f"{INITD_DIR}/S99zwebpanel"
+BOOT_MOUNTS = "/proc/mounts"
 
 
 def initd_hook_script():
@@ -438,8 +439,36 @@ def initd_write():
 
 
 def initd_writable():
-    """sh: в init.d можно писать. Пробуем по-настоящему: test -w у busybox для root не видит, что раздел только для чтения."""
-    return f"{{ touch {INITD_DIR}/.webpanel_w 2>/dev/null && rm -f {INITD_DIR}/.webpanel_w; }}"
+    """Пробная запись только при установке, никогда при чтении статуса."""
+    template = shlex.quote(f"{INITD_DIR}/.webpanel_w.XXXXXX")
+    return f'(umask 077; probe=$(mktemp {template} 2>/dev/null) && rm -f "$probe")'
+
+
+def initd_available():
+    """Read-only prerequisite, not proof that an install or boot will succeed.
+
+    BusyBox test -w alone can report a read-only mount writable for root. Inspect
+    the most specific mount as well, including a bind mount covering init.d.
+    Unknown/missing mount metadata must fail closed.
+    """
+    directory = shlex.quote(INITD_DIR)
+    mounts = shlex.quote(BOOT_MOUNTS)
+    awk = r'''{ m=$2; gsub(/\\040/, " ", m);
+        if ((m=="/" || p==m || index(p,m "/")==1) && length(m)>=best) {
+            best=length(m); options=$4
+        }
+    } END { exit !(best && index("," options ",", ",rw,")) }'''
+    return (f"{{ [ -d {directory} ] && [ -w {directory} ] && "
+            f"awk -v p={directory} {shlex.quote(awk)} {mounts} 2>/dev/null; }}")
+
+
+def boot_route_script(require_caller=False):
+    """Select a candidate using reads; installation still verifies writes."""
+    keeper, caller = shlex.quote(ROOTKEEPER), shlex.quote(ROOTKEEPER_CALLER)
+    called = f"sed '/^[[:space:]]*#/d' {caller} 2>/dev/null | grep -F {keeper} >/dev/null"
+    rootkeeper = called if require_caller else f"[ -f {keeper} ] || {{ {called}; }}"
+    return (f"if {rootkeeper}; then echo rootkeeper; "
+            f"elif {initd_available()}; then echo initd; else exit 3; fi")
 
 
 def hook_active():
@@ -1999,6 +2028,30 @@ echo @@BLUEZ
         self.adb.shell(cmd + "; true")
         return {"ok": True}
 
+    def midi_hardware(self):
+        raise AdbError("Диагностика Cucumber доступна только в профиле Миди")
+
+    def midi_tests(self):
+        raise AdbError("Цветовые пробы доступны только в профиле Миди")
+
+    def midi_clock_tests(self):
+        return self.midi_tests()
+
+    def midi_test_run(self, data):
+        return self.midi_tests()
+
+    def midi_test_observe(self, data):
+        return self.midi_tests()
+
+    def midi_test_restore(self):
+        return self.midi_tests()
+
+    def logo(self, data):
+        raise AdbError("Управление отдельным логотипом не поддерживается этим профилем")
+
+    def logo_reset(self):
+        raise AdbError("Управление отдельным логотипом не поддерживается этим профилем")
+
     def ring_reset(self):
         """Отдать кольцо Алисе. Quasar рисует его через /dev/fb0 («YNDX LED ring», 3×1 BGR), а до светодиодов
         картинка доходит через LED-триггер led_ring_fb. Запись 0 в sysfs brightness снимает триггер (так устроено
@@ -2224,22 +2277,42 @@ echo @@BLUEZ
                 res["frames"] = decode_clock_pattern(".binscled.zst", self.adb.read_bytes(BOOT_CUSTOM))
         return res
 
-    def _ensure_hook(self, remount=False):
-        """Кладёт свежий хук и подключает его к rootkeeper.sh.
+    def _boot_route(self):
+        out, _, rc = self.adb.shell(
+            boot_route_script(getattr(self, "_boot_require_caller", False)), timeout=10, check=False)
+        route = out.strip()
+        if rc or route not in ("rootkeeper", "initd"):
+            raise AdbError("Автозапуск не подтверждён: нет подходящего rootkeeper.sh или доступной для записи /etc/init.d")
+        return route
 
-        rootkeeper.sh запускается из onboot.sh раньше, чем Quasar читает анимации и звуки, — это
-        единственная точка запуска при загрузке, которая живёт в /data. Перед правкой сохраняем копию.
-        remount — rootkeeper.sh нет, а /etc/init.d на корне только для чтения: положить туда свой
-        S99zwebpanel, на секунду перемонтировав корень в rw (только по явному действию пользователя).
+    def _ensure_hook(self, remount=False):
+        """Подключает свежий хук к поддерживаемой точке загрузки.
+
+        Профили с _boot_require_caller проверяют путь до автоматической записи.
+        remount требует явного действия владельца, как в upstream 0.2.2.
+        init.d запускается после Quasar и не доказывает работу заставки/звука.
         """
+        guarded = getattr(self, "_boot_require_caller", False)
+        route = None
+        if guarded:
+            try:
+                route = self._boot_route()
+            except AdbError:
+                if not remount:
+                    raise
+                # The explicit repair action may install init.d on a read-only
+                # root. An uncalled rootkeeper file is still not a valid route.
+                route = "initd"
         with tempfile.TemporaryDirectory() as td:
             write_unix(Path(td) / "hook", BOOT_HOOK_SCRIPT)
             self.adb.shell(f"mkdir -p {WEB_DIR}")
             self.adb.push(Path(td) / "hook", BOOT_HOOK)
         remount_branch = f"elif {with_root_rw(initd_write())}; then :; " if remount else ""
+        keeper_test = (f"[ {shlex.quote(route)} = rootkeeper ]" if route else
+                       f"[ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null")
         _, err, rc = self.adb.shell(
             f"chmod 755 {BOOT_HOOK}; "
-            f"if [ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null; then "
+            f"if {keeper_test}; then "
             f"[ -f {ROOTKEEPER} ] || {{ "
             f"printf '#!/bin/sh\\n# создан веб-панелью: штатный onboot.sh запускает этот файл, если он есть\\n' > {ROOTKEEPER} "
             f"&& chmod 755 {ROOTKEEPER} && touch {ROOTKEEPER_CREATED} || exit 4; }}; "
@@ -2272,7 +2345,7 @@ echo @@BLUEZ
         """Подключён ли хук, свежий ли он и нужен ли — для общей плашки «не переживёт перезагрузку»."""
         out, _, _ = self.adb.shell(
             f"{self._hook_users_script()}; {hook_active()} && echo hook; grep -q '{HOOK_MARK}' {INITD_HOOK} 2>/dev/null && echo initd; "
-            f"{{ [ -f {ROOTKEEPER} ] || grep -q {ROOTKEEPER} {ROOTKEEPER_CALLER} 2>/dev/null || {initd_writable()}; }} && echo possible; "
+            f"( {boot_route_script(getattr(self, '_boot_require_caller', False))} ) >/dev/null && echo possible; "
             f"md5sum {BOOT_HOOK} 2>/dev/null; true", check=False)
         out = strip_ansi(out)
         flags = set(out.split())
@@ -3496,15 +3569,19 @@ echo @@BLUEZ
                     raise AdbError(f"нет такого звука: {path}")
                 self._alarm_wav(self.adb.read_bytes(f"{SOUNDS_DIR}/{path}"), dev)
 
+    def _alarm_script(self):
+        return alarm_script()
+
     def _alarm_write(self, conf, lines, extra=""):
         """Пишет конфиг (будильников или сценариев), свежий скрипт демона и часовой пояс, чистит звуки, которые
         больше никому не нужны, и перезапускает демон. alarms.conf создаётся всегда: по нему хук запускает демон."""
+        daemon = self._alarm_script()
         tz_name, tz_data = self._pc_tz()
         with tempfile.TemporaryDirectory() as td:
             td = Path(td)
             write_unix(td / "conf", "".join(l + "\n" for l in lines))
             self.adb.push(td / "conf", conf + ".new")
-            (td / "alarmd").write_bytes(alarm_script())
+            (td / "alarmd").write_bytes(daemon)
             self.adb.push(td / "alarmd", ALARMD)
             if tz_data:
                 (td / "tz").write_bytes(tz_data)
@@ -5273,6 +5350,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, self.panel.conn.info())
         if u.path == "/api/conn/find":
             return self._handle(self._conn_find)
+        if u.path == "/api/midi/tests":
+            # The saved owner observations remain readable without the speaker.
+            return self._handle(self.panel.midi_tests)
         if self._offline(u.path):
             return
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
@@ -5281,6 +5361,9 @@ class Handler(BaseHTTPRequestHandler):
         p = self.panel
         routes = {
             "/api/status": p.status,
+            "/api/midi/hardware": p.midi_hardware,
+            "/api/midi/tests": p.midi_tests,
+            "/api/midi/tests/clock": p.midi_clock_tests,
             "/api/sounds": p.sounds,
             "/api/sounds/custom": p.sounds_custom,
             "/api/patterns": p.patterns,
@@ -5412,6 +5495,9 @@ class Handler(BaseHTTPRequestHandler):
         self._jdata = d if isinstance(d, dict) else {}
         routes = {
             "/api/volume": lambda: p.set_volume(d),
+            "/api/midi/tests/run": lambda: p.midi_test_run(d),
+            "/api/midi/tests/observe": lambda: p.midi_test_observe(d),
+            "/api/midi/tests/restore": p.midi_test_restore,
             "/api/play": lambda: p.play_system(d["name"]),
             "/api/sounds/reset": lambda: p.sound_reset(d["name"]),
             "/api/sounds/play-original": lambda: p.sound_play_original(d["name"]),
@@ -5419,6 +5505,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/pattern": lambda: p.play_pattern(d["kind"], d["name"], d.get("seconds", 5)),
             "/api/pattern/stop": lambda: p.stop_pattern(d.get("kind")),
             "/api/ring": lambda: p.ring(d),
+            "/api/logo": lambda: p.logo(d),
+            "/api/logo/reset": p.logo_reset,
             "/api/led": lambda: p.led(d),
             "/api/agent/install": p.agent_install,
             "/api/agent/remove": p.agent_remove,
@@ -5507,7 +5595,7 @@ class PanelUpdater:
     """Проверка новых релизов панели на GitHub и обновление — в зависимости от того, как панель установлена:
     zip (Windows-сборка, Download ZIP) — скачать релиз и заменить файлы панели; git — git pull --ff-only;
     docker — только подсказать команду (образ изнутри не обновить)."""
-    FILES = ("server.py", "access.py", "agent.py", "glagol.py", "profiles.py", "managed_yam.py", "multi.py", "pyadb.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
+    FILES = ("server.py", "access.py", "agent.py", "glagol.py", "profiles.py", "midi.py", "managed_yam.py", "multi.py", "pyadb.py", "speakers.example.json", "VERSION", "LICENSE", "README.md", "CONTRIBUTION.md", "start.bat", "start.sh", "start.command",
              "Dockerfile", "docker-compose.yml")
     DIRS = ("static", "device")
     OBSOLETE = ("3d", "tools", "docs")  # папки прежних версий: модель переехала в static/models, остальное не нужно
@@ -5625,7 +5713,7 @@ class PanelUpdater:
 
 # Платформа в device-tree (compatible «yandex,plum», модель «Yandex Plum EVT2») → профиль колонки.
 # Имя хоста тут не годится: владелец мог его переименовать.
-PLATFORM_MODELS = {"plum": "lite2", "prune": "lite2nc", "pickle": "mini3pro", "bergamot": "mini3",
+PLATFORM_MODELS = {"cucumber": "midi", "plum": "lite2", "prune": "lite2nc", "pickle": "mini3pro", "bergamot": "mini3",
                    "yandexmidi": "station2", "station-midi": "station2", "station-mini2": "mini2",
                    "station-micro": "lite", "yandexmicro": "lite"}
 
@@ -5859,7 +5947,7 @@ def main():
                     help="где хранить токен, пароль, сертификаты и историю (по умолчанию — рядом с server.py) [PANEL_DATA_DIR]")
     ap.add_argument("--open", action="store_true", help="открыть панель в браузере после запуска")
     ap.add_argument("--model", choices=[*profiles.PROFILES, "auto"], default=env("PANEL_MODEL", "auto"),
-                    help="профиль колонки: lite2, lite, mini3pro, mini3, mini2, station2 или auto — определить по плате [PANEL_MODEL]")
+                    help="профиль колонки: lite2, lite, mini3pro, mini3, mini2, station2, midi или auto — определить по плате [PANEL_MODEL]")
     args = ap.parse_args()
     for stream in (sys.stdout, sys.stderr):   # консоль Windows: русский текст не должен ронять сервер
         try:

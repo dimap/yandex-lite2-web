@@ -1,5 +1,11 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'../static/index.html'),'utf8');
+// A syntax error anywhere in the main shell prevents connection handling and
+// every widget from starting; extracting individual functions misses this.
+for(const match of html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)){
+  if(/src=|type=["'](?:module|importmap)/.test(match[1])||!match[2].trim())continue;
+  new vm.Script(match[2],{filename:'static/index.html',lineOffset:html.slice(0,match.index).split('\n').length-1});
+}
 const source=html.slice(html.indexOf('async function loadPanelVersion'),html.indexOf('\nloadPanelVersion().catch'));
 const elements={},storage={},requests=[];
 const node=id=>elements[id]||=( {style:{},hidden:true,classList:{toggle(){}},setAttribute(){}} );
@@ -37,3 +43,20 @@ vm.runInContext('let panelVer=null;'+source,c);
   assert(node('#upd-state').textContent.includes('проверено'));
   console.log('Update banner, dismissal, explicit confirmation, version wait, error and refresh feedback cases passed');
 })().catch(e=>{console.error(e);process.exitCode=1});
+
+// An unavailable model volume must not be displayed as zero or enable an unknown scale.
+const volumeNodes={};
+const volumeContext={$:id=>volumeNodes[id]||=( {} )};
+vm.createContext(volumeContext);
+vm.runInContext(html.slice(html.indexOf('function showLevel('),html.indexOf('let volTimer;')),volumeContext);
+for(const value of [null,undefined,NaN]){
+  volumeContext.value=value;vm.runInContext('showLevel(value)',volumeContext);
+  assert.equal(volumeNodes['#vol-big'].textContent,'—');
+  assert.equal(volumeNodes['#vol-master'].disabled,true);
+}
+for(const value of [0,40]){
+  volumeContext.value=value;vm.runInContext('showLevel(value)',volumeContext);
+  assert.equal(volumeNodes['#vol-big'].textContent,value);
+  assert.equal(volumeNodes['#vol-master'].disabled,false);
+}
+console.log('Unknown volume, zero volume and reconnected scale cases passed');

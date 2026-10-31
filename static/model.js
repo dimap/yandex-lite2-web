@@ -36,7 +36,21 @@ if(tried('btpower'))note('[data-widget="bt"]','Выключатель Bluetooth 
 if(tried('yam2'))note('#y2-card','yam 2 через панель на этой модели не проверялся: установка, каталог и службы пакетов. Напишите в Issues, заработало ли.');
 if(tried('btout')){const r=document.getElementById('bt-out-row');if(r){const p=document.createElement('p');p.className='hint untested-note';p.textContent='Звук через Bluetooth-колонку на этой модели не проверялся — напишите в Issues, заработало ли.';r.after(p);}}
 if(tried('say'))note('[data-widget="say"]','На этой модели не тестировалось — напишите в Issues, заработало ли.');
+if(tried('privacy')){
+  const message=document.createElement('p');message.className='hint untested-note';
+  message.textContent='Блокировка аналитики на этой модели не проверена. Нужен подтверждённый штатный хук загрузки.';
+  document.querySelector('#privacy-row .set-label')?.append(message);
+}
 const view=document.getElementById('model-view');
+if(profile.id==='midi'){
+  window.__midiLiveDisplay=true;
+  const {mountMidiControls}=await import('./midi.js');mountMidiControls(profile);
+  const {mountMidiTests}=await import('./midi-tests.js');mountMidiTests(profile);
+  const {mountMidiClockTests}=await import('./midi-clock-tests.js');mountMidiClockTests(profile);
+  const message=document.createElement('p');message.className='hint untested-note';
+  message.textContent='3D-модель Миди — реконструкция по фото. Доступные функции и результаты проверок показаны в карточках.';
+  view.after(message);
+}
 const loading=document.createElement('p');loading.className='studio-caption';loading.textContent='Ожидаю данные колонки…';view.append(loading);
 let status;
 for(;;){
@@ -44,6 +58,7 @@ for(;;){
     const response=await PanelContext.fetch('/api/status');
     if(response.ok){const value=await response.json();if(value.hostname||value.hardware_model){status=value;break;}}
   }catch{}
+  if(profile.id==='midi'){status={};break;}
   await new Promise(resolve=>setTimeout(resolve,2000));
 }
 const visual=rendererProfile(profile,status);
@@ -65,8 +80,6 @@ const hide=element=>element?.setAttribute('data-profile-hidden','');
 if(!profile.clock)hide(document.querySelector('[data-widget="clock"]'));
 if(!profile.light)hide(document.querySelector('[data-widget="light"]'));
 if(profile.bt_volume===false)hide(document.querySelector('.vol-bt'));
-// Блокировка аналитики держится на хуке загрузки, а не на дисплее: «Лайт 2 без часов» тоже умеет.
-if(!profile.privacy)hide(document.getElementById('privacy-row'));
 if(profile.id!=='lite2'){
   hide(document.getElementById('pat-play'));
   document.querySelectorAll('[data-k="clock"]').forEach(e=>{if(!profile.clock)hide(e);});

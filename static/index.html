@@ -2670,7 +2670,7 @@ async function refreshStatus() {
     tilesFromStatus(s);
 
     if (!volDragging) {
-      const [m, b] = [+s.vol_level || 0, +s.vol_bt || 0];
+      const [m, b] = [s.vol_level, +s.vol_bt || 0];
       showLevel(m);
       if (!btVolOut()) { $('#vol-bt').max = 255; $('#vol-bt').value = b; $('#vol-bt-v').textContent = pct(b); }
     }
@@ -2700,8 +2700,10 @@ setInterval(updateSub, 1000);
 // ---------- громкость ----------
 // Динамик — в уровнях Алисы 0–10 (как на колонке), Bluetooth — сырой микшер 0–255.
 function showLevel(level) {
-  $('#vol-master').value = Math.round(level);
-  $('#vol-big').textContent = Math.round(level);
+  const known = level != null && Number.isFinite(+level);
+  $('#vol-master').disabled = !known;
+  if (known) $('#vol-master').value = Math.round(level);
+  $('#vol-big').textContent = known ? Math.round(level) : '—';
 }
 let volTimer;
 for (const [id, key] of [['#vol-master', 'level'], ['#vol-bt', 'bt']]) {
@@ -2877,7 +2879,10 @@ function clockSVG(v, { thumb = false } = {}) {
 
 // Геометрия дисплея и вывод на 3D-модель (модуль модели подключается отдельно и задаёт window.modelShow).
 window.clockGeom = { segShapes, DIGIT_X, SEGS, X_DH, X_DL, X_DM, X_DEG };
-const toModel = v => window.modelShow?.(v);
+const toModel = v => {
+  window.modelShow?.(v);
+  if(window.__midiLiveDisplay && Array.isArray(v)) $('#clock-preview').innerHTML=clockSVG(v);
+};
 const toRing = leds => window.modelRing?.(leds);
 
 // Проигрывание кадров в браузере (предпросмотр); флаг 1 у кадра — начало цикла.
@@ -3006,7 +3011,7 @@ function clockFrame() {
   if (dispMode === 'timer') { const s = timerSeconds(); return textToFrame(`${pad2(Math.min(99, Math.floor(s / 60)))}:${pad2(s % 60)}`, br); }
   return textToFrame($('#clock-text').value || pcTime(), br, clockExtras());
 }
-function clockPreview() { const el = $('#clock-preview'); clearTimeout(el._anim); el._until = 0; el.innerHTML = clockSVG(clockFrame()); }
+function clockPreview() { if(window.__midiLiveDisplay)return; const el = $('#clock-preview'); clearTimeout(el._anim); el._until = 0; el.innerHTML = clockSVG(clockFrame()); }
 ['#clock-text', '#x-dh', '#x-dl', '#x-dm', '#x-degree', '#timer-val'].forEach(s => $(s).addEventListener('input', clockPreview));
 $('#clock-br').oninput = e => { $('#clock-br-v').textContent = e.target.value; clockPreview(); };
 $$('#disp-mode button').forEach(b => b.onclick = () => {
@@ -3075,9 +3080,11 @@ async function pollLeds() {
   try {
     if (!document.hidden && !$('#tab-overview').hidden) {
       const s = await api('/api/clock/state');
-      if (Date.now() >= ($('#clock-preview')._until || 0)) toModel(s.v);
-      if (Date.now() >= ringAnimUntil) toRing(s.ring);
-      ringLit = s.ring.some(c => c.some(x => x > 0));
+      if (Array.isArray(s.v) && Date.now() >= ($('#clock-preview')._until || 0)) toModel(s.v);
+      if (Array.isArray(s.ring) && s.ring.length) {
+        if (Date.now() >= ringAnimUntil) toRing(s.ring);
+        ringLit = s.ring.some(c => c.some(x => x > 0));
+      }
     }
   } catch {}
   setTimeout(pollLeds, ringLit ? 400 : 1500);   // пока кольцо светится (например, Алиса слушает), чаще
@@ -3097,8 +3104,8 @@ async function liveLeds() {
         const v = r.v;
         if (isSpectrum(v)) window.__spectrum = { bands: [0, 1, 2, 3].map(p => (v[p * 8] + v[p * 8 + 3] + v[p * 8 + 6]) / 756), t: performance.now() };
         if (Date.now() >= ($('#clock-preview')._until || 0)) toModel(v);
-        if (Date.now() >= ringAnimUntil) toRing(r.ring);
       }
+      if (Array.isArray(r.ring) && r.ring.length && Date.now() >= ringAnimUntil) toRing(r.ring);
     } catch {}
   }
   // Эквалайзер Quasar держит на часах ~15 с после старта трека, потом снова часы: пока он есть — 10 раз

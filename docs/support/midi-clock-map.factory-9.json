@@ -1,0 +1,627 @@
+{
+  "version": 1,
+  "model": "midi",
+  "platform": "cucumber",
+  "firmware": "0.9.1.3.2572674166.20240919.factory-9",
+  "validated_on": "2026-10-30",
+  "test": "H10",
+  "status": "all_channel_locations_observed",
+  "channel_count": 45,
+  "renderer_tested": false,
+  "notes": [
+    "All locations were marked by the owner after a bounded physical probe and verified restoration.",
+    "Extra-element shape classes are interpretations of the owner reference photo, not measured masks or a framebuffer codec.",
+    "The bounded diagnostic renderer passed four frames in H11. renderer_tested remains false for the full normal clock adapter; runtime hardware flags are unchanged."
+  ],
+  "reference": {
+    "width": 1922,
+    "height": 2560,
+    "crop": {
+      "x": 0.19,
+      "y": 0.44,
+      "width": 0.64,
+      "height": 0.18
+    }
+  },
+  "channels": [
+    {
+      "node": "cucumber:white:clock-a1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 1,
+      "segment": "A",
+      "shape": "horizontal",
+      "description": "Цифра 1: верхняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-a2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 2,
+      "segment": "A",
+      "shape": "horizontal",
+      "description": "Цифра 2: верхняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-a3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 3,
+      "segment": "A",
+      "shape": "horizontal",
+      "description": "Цифра 3: верхняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-a4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 4,
+      "segment": "A",
+      "shape": "horizontal",
+      "description": "Цифра 4: верхняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-b1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 1,
+      "segment": "B",
+      "shape": "vertical",
+      "description": "Цифра 1: верхняя правая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-b2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 2,
+      "segment": "B",
+      "shape": "vertical",
+      "description": "Цифра 2: верхняя правая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-b3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 3,
+      "segment": "B",
+      "shape": "vertical",
+      "description": "Цифра 3: верхняя правая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-b4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 4,
+      "segment": "B",
+      "shape": "vertical",
+      "description": "Цифра 4: верхняя правая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-c1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 1,
+      "segment": "C",
+      "shape": "vertical",
+      "description": "Цифра 1: нижняя правая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-c2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 2,
+      "segment": "C",
+      "shape": "vertical",
+      "description": "Цифра 2: нижняя правая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-c3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 3,
+      "segment": "C",
+      "shape": "vertical",
+      "description": "Цифра 3: нижняя правая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-c4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 4,
+      "segment": "C",
+      "shape": "vertical",
+      "description": "Цифра 4: нижняя правая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-d1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 1,
+      "segment": "D",
+      "shape": "horizontal",
+      "description": "Цифра 1: нижняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-d2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 2,
+      "segment": "D",
+      "shape": "horizontal",
+      "description": "Цифра 2: нижняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-d3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 3,
+      "segment": "D",
+      "shape": "horizontal",
+      "description": "Цифра 3: нижняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-d4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 4,
+      "segment": "D",
+      "shape": "horizontal",
+      "description": "Цифра 4: нижняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-deg",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "degree",
+      "shape": "ring",
+      "description": "Знак градуса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-e1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 1,
+      "segment": "E",
+      "shape": "vertical",
+      "description": "Цифра 1: нижняя левая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-e2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 2,
+      "segment": "E",
+      "shape": "vertical",
+      "description": "Цифра 2: нижняя левая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-e3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 3,
+      "segment": "E",
+      "shape": "vertical",
+      "description": "Цифра 3: нижняя левая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-e4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 4,
+      "segment": "E",
+      "shape": "vertical",
+      "description": "Цифра 4: нижняя левая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-f1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 1,
+      "segment": "F",
+      "shape": "vertical",
+      "description": "Цифра 1: верхняя левая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-f2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 2,
+      "segment": "F",
+      "shape": "vertical",
+      "description": "Цифра 2: верхняя левая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-f3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 3,
+      "segment": "F",
+      "shape": "vertical",
+      "description": "Цифра 3: верхняя левая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-f4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 4,
+      "segment": "F",
+      "shape": "vertical",
+      "description": "Цифра 4: верхняя левая вертикальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-g1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 1,
+      "segment": "G",
+      "shape": "horizontal",
+      "description": "Цифра 1: средняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-g2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 2,
+      "segment": "G",
+      "shape": "horizontal",
+      "description": "Цифра 2: средняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-g3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 3,
+      "segment": "G",
+      "shape": "horizontal",
+      "description": "Цифра 3: средняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-g4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "kind": "digit_segment",
+      "digit": 4,
+      "segment": "G",
+      "shape": "horizontal",
+      "description": "Цифра 4: средняя горизонтальная полоса",
+      "shape_evidence": "owner_selected_named_segment"
+    },
+    {
+      "node": "cucumber:white:clock-h1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.4182,
+        "y": 0.214,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "central_bar",
+      "shape": "horizontal",
+      "row": "top",
+      "side": "left",
+      "description": "Центр: верхняя левая горизонтальная полоска"
+    },
+    {
+      "node": "cucumber:white:clock-h2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.5303,
+        "y": 0.1923,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "central_bar",
+      "shape": "horizontal",
+      "row": "top",
+      "side": "right",
+      "description": "Центр: верхняя правая горизонтальная полоска"
+    },
+    {
+      "node": "cucumber:white:clock-l1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.4304,
+        "y": 0.807,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "central_bar",
+      "shape": "horizontal",
+      "row": "bottom",
+      "side": "left",
+      "description": "Центр: нижняя левая горизонтальная полоска"
+    },
+    {
+      "node": "cucumber:white:clock-l2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.5344,
+        "y": 0.8342,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "central_bar",
+      "shape": "horizontal",
+      "row": "bottom",
+      "side": "right",
+      "description": "Центр: нижняя правая горизонтальная полоска"
+    },
+    {
+      "node": "cucumber:white:clock-m1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.4223,
+        "y": 0.5133,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "central_bar",
+      "shape": "horizontal",
+      "row": "middle",
+      "side": "left",
+      "description": "Центр: средняя левая горизонтальная полоска"
+    },
+    {
+      "node": "cucumber:white:clock-m2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.5344,
+        "y": 0.4915,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "central_bar",
+      "shape": "horizontal",
+      "row": "middle",
+      "side": "right",
+      "description": "Центр: средняя правая горизонтальная полоска"
+    },
+    {
+      "node": "cucumber:white:clock-p1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.1309,
+        "y": 0.3881,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "upper",
+      "column": 1,
+      "description": "Верхний точечный элемент, внутри цифры 1"
+    },
+    {
+      "node": "cucumber:white:clock-p2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.3102,
+        "y": 0.3718,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "upper",
+      "column": 2,
+      "description": "Верхний точечный элемент, внутри цифры 2"
+    },
+    {
+      "node": "cucumber:white:clock-p3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.4773,
+        "y": 0.3555,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "upper",
+      "column": 3,
+      "description": "Верхний точечный элемент, центр между цифрами 2 и 3"
+    },
+    {
+      "node": "cucumber:white:clock-p4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.6505,
+        "y": 0.3446,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "upper",
+      "column": 4,
+      "description": "Верхний точечный элемент, внутри цифры 3"
+    },
+    {
+      "node": "cucumber:white:clock-p5",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.8298,
+        "y": 0.3501,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "upper",
+      "column": 5,
+      "description": "Верхний точечный элемент, внутри цифры 4"
+    },
+    {
+      "node": "cucumber:white:clock-q1",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.1268,
+        "y": 0.6819,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "lower",
+      "column": 1,
+      "description": "Нижний точечный элемент, внутри цифры 1"
+    },
+    {
+      "node": "cucumber:white:clock-q2",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.3061,
+        "y": 0.671,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "lower",
+      "column": 2,
+      "description": "Нижний точечный элемент, внутри цифры 2"
+    },
+    {
+      "node": "cucumber:white:clock-q3",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.4854,
+        "y": 0.6928,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "lower",
+      "column": 3,
+      "description": "Нижний точечный элемент, центр между цифрами 2 и 3"
+    },
+    {
+      "node": "cucumber:white:clock-q4",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.6485,
+        "y": 0.6765,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "lower",
+      "column": 4,
+      "description": "Нижний точечный элемент, внутри цифры 3"
+    },
+    {
+      "node": "cucumber:white:clock-q5",
+      "location_evidence": "owner_observation",
+      "restored": true,
+      "photo_point": {
+        "x": 0.8298,
+        "y": 0.6656,
+        "reference": "7372317ae821cce700f1963607a70187f648d0424569df6361a098f739b0ad3f"
+      },
+      "shape_evidence": "reference_photo_interpretation",
+      "kind": "dot",
+      "shape": "dot",
+      "row": "lower",
+      "column": 5,
+      "description": "Нижний точечный элемент, внутри цифры 4"
+    }
+  ],
+  "diagnostic_renderer_validation": {
+    "test": "H11",
+    "status": "passed",
+    "scope": "four_diagnostic_frames_only",
+    "trial_id": "c847ed0174c6ba5d21a9fcf4",
+    "observed_at": "2026-10-30T18:17:07.563718+03:00",
+    "display_texts": [
+      "0123",
+      "4567",
+      "8901",
+      "12:34"
+    ],
+    "brightness_percent": 60,
+    "owner_observation": "matched",
+    "white_channels_restored": 45,
+    "rgb_channels_unchanged": 90,
+    "initial_mismatch": false,
+    "normal_clock_enabled": false,
+    "remaining": [
+      "every digit in every position",
+      "brightness range",
+      "degree",
+      "clock modes",
+      "animations"
+    ]
+  }
+}
