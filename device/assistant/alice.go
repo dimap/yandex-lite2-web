@@ -40,7 +40,9 @@ func (a *aliceCLI) ensure() error {
 	}
 	a.cmd, a.in = cmd, in
 	go cmd.Wait() // заполняет ProcessState: следующий вызов запустит CLI заново
-	time.Sleep(1500 * time.Millisecond)
+	// Пауза как в server.py say(): если начать писать раньше, CLI не успевает подняться
+	// и первая же строка теряется — Алиса вместо текста отвечает «мда».
+	time.Sleep(2 * time.Second)
 	return nil
 }
 
@@ -75,7 +77,29 @@ func (a *aliceCLI) PausePlayer() error { return a.send("o") }
 func (a *aliceCLI) Cancel() error { return a.send("c") }
 
 // Say — Алиса читает текст своим голосом («Окей, повторяю: …»).
-func (a *aliceCLI) Say(text string) error { return a.send("q", "Повтори за мной: "+text) }
+// Say — текстовый запрос «Повтори за мной». После ответа выходим из CLI ('x'), как это делает
+// панель в server.py say(): если держать сессию открытой, следующий 'q' Алиса уже не считает
+// новым запросом и вместо чтения текста отвечает «мда»/«браво».
+func (a *aliceCLI) Say(text string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.ensure(); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(a.in, "q\n"); err != nil {
+		a.cmd.Process.Kill()
+		return err
+	}
+	time.Sleep(500 * time.Millisecond)
+	if _, err := io.WriteString(a.in, "Повтори за мной: "+text+"\n"); err != nil {
+		a.cmd.Process.Kill()
+		return err
+	}
+	time.Sleep(3 * time.Second)
+	io.WriteString(a.in, "x\n")
+	a.in.Close()
+	return nil
+}
 
 func (a *aliceCLI) Close() {
 	a.mu.Lock()
