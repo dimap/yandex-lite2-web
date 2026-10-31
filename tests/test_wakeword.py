@@ -232,7 +232,7 @@ class Routing(unittest.TestCase):
         self.p.scene_run.assert_called_once_with("s1")
         self.p._wakeword_api.assert_not_called()
         self.p._wakeword_fire({"word": "x"}, {"x": {"type": "assistant"}})
-        self.p.assistant_command.assert_called_once_with({"mode": True})
+        self.p.assistant_command.assert_called_once_with({"route": True})
         self.p._wakeword_api.assert_called_once_with("/api/listen", "POST", timeout=3)
 
     def test_apply_dry_run_writes_and_restarts(self):

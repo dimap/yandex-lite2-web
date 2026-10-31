@@ -3523,32 +3523,6 @@ echo @@BLUEZ
         self._ww_router = threading.Thread(target=self._wakeword_router_loop, daemon=True, name="wakeword-router")
         self._ww_router.start()
 
-    def _wakeword_assistant_off(self):
-        """Одноразовый ассистент: после ответа выключаем режим, чтобы следующие фразы не уходили модели."""
-        seen = False
-        for _ in range(120):
-            time.sleep(0.5)
-            try:
-                st = self.assistant_status()
-            except (AdbError, subprocess.TimeoutExpired):
-                return
-            state = st.get("state") or {}
-            if not state.get("mode"):
-                return
-            kind = state.get("state")
-            if kind in ("busy", "speaking"):
-                seen = True
-            if seen and kind == "idle":
-                try:
-                    self.assistant_command({"mode": False})
-                except (AdbError, subprocess.TimeoutExpired):
-                    pass
-                return
-        try:
-            self.assistant_command({"mode": False})
-        except (AdbError, subprocess.TimeoutExpired):
-            pass
-
     def _wakeword_fire(self, hit, acts):
         word = str(hit.get("word") or "")
         act = acts.get(word) or {"type": "alice"}
@@ -3566,12 +3540,10 @@ echo @@BLUEZ
             return
         if kind == "assistant":
             try:
-                self.assistant_command({"mode": True})
+                self.assistant_command({"route": True})
                 JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → ассистент", "info")
-                threading.Thread(target=self._wakeword_assistant_off, daemon=True,
-                                 name="ww-assistant-off").start()
             except (AdbError, subprocess.TimeoutExpired) as e:
-                JOURNAL.add(f"слова активации: ассистент не включился: {e}", "warn")
+                JOURNAL.add(f"слова активации: ассистент не принял слово: {e}", "warn")
         try:
             self._wakeword_api("/api/listen", "POST", timeout=3)
             JOURNAL.add(f"слова активации: «{hit.get('name') or word}» → Алиса слушает", "info")
