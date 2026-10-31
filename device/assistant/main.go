@@ -207,7 +207,7 @@ func (d *Daemon) ask(question, source string) {
 // aplay) — текст читает Алиса, чтобы ответ и голосовые ошибки всё равно прозвучали.
 func (d *Daemon) speak(ctx context.Context, c Config, text string) (byAlice bool, err error) {
 	if c.TTS.Provider != "openai" {
-		return true, d.aliceSay(text)
+		return true, d.aliceSay(ctx, text)
 	}
 	voiceErr := func() error {
 		wav, err := speech(ctx, c.TTS, c.LLM.Proxy, text)
@@ -231,14 +231,14 @@ func (d *Daemon) speak(ctx context.Context, c Config, text string) (byAlice bool
 		return false, voiceErr // ответ отменили новым вопросом — Алисе читать нечего
 	}
 	log.Printf("озвучка ассистента не сработала (%v) — читаю голосом Алисы", voiceErr)
-	return true, d.aliceSay(text)
+	return true, d.aliceSay(ctx, text)
 }
 
-func (d *Daemon) aliceSay(text string) error {
+func (d *Daemon) aliceSay(ctx context.Context, text string) error {
 	d.mu.Lock()
 	d.sayAt, d.ours, d.wokeUser = time.Now(), false, false
 	d.mu.Unlock()
-	return d.alice.Say(forSpeech(text, sayLimit))
+	return d.alice.Say(ctx, forSpeech(text, sayLimit))
 }
 
 // notifyError — ошибку ассистента (сеть, ключ, пустой ответ) слышно голосом: в панели она видна,

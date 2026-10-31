@@ -7,6 +7,8 @@ package main
 //   onAliceStateChanged: SPEAKING, outputSpeech='…'
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -19,31 +21,82 @@ import (
 const quasar = "/system/vendor/quasar"
 
 // aliceCLI держит один maind --cli открытым: так отмена срабатывает за доли секунды, а не за время запуска.
+type cliTiming struct {
+	start, line, speech, exit time.Duration
+}
+
+var defaultCLITiming = cliTiming{2 * time.Second, 500 * time.Millisecond, 3 * time.Second, time.Second}
+
 type aliceCLI struct {
-	mu  sync.Mutex
-	cmd *exec.Cmd
-	in  io.WriteCloser
+	mu           sync.Mutex
+	cmd          *exec.Cmd
+	in           io.WriteCloser
+	done         chan struct{}
+	sayMu        sync.Mutex
+	speechMu     sync.Mutex
+	speechCancel context.CancelFunc
+	// Подмена процесса и задержек нужна тестам протокола без maind и колонки.
+	command func(context.Context) *exec.Cmd
+	timing  *cliTiming
+}
+
+func (a *aliceCLI) delays() cliTiming {
+	if a.timing != nil {
+		return *a.timing
+	}
+	return defaultCLITiming
+}
+
+func (a *aliceCLI) newCommand(ctx context.Context) *exec.Cmd {
+	if a.command != nil {
+		return a.command(ctx)
+	}
+	cmd := exec.CommandContext(ctx, quasar+"/maind", "--cli")
+	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+quasar+"/libs")
+	return cmd
+}
+
+// Только под a.mu. Wait завершается до обнуления состояния; ProcessState не читаем.
+func (a *aliceCLI) discard() {
+	if a.in != nil {
+		a.in.Close()
+	}
+	if a.cmd != nil {
+		a.cmd.Process.Kill()
+		<-a.done
+	}
+	a.cmd, a.in, a.done = nil, nil, nil
 }
 
 func (a *aliceCLI) ensure() error {
-	if a.cmd != nil && a.cmd.ProcessState == nil {
-		return nil
+	if a.cmd != nil {
+		select {
+		case <-a.done:
+			a.discard()
+		default:
+			return nil
+		}
 	}
-	cmd := exec.Command(quasar+"/maind", "--cli")
-	cmd.Env = append(os.Environ(), "LD_LIBRARY_PATH="+quasar+"/libs")
+	cmd := a.newCommand(context.Background())
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return err
 	}
 	if err = cmd.Start(); err != nil {
+		in.Close()
 		return err
 	}
-	a.cmd, a.in = cmd, in
-	go cmd.Wait() // заполняет ProcessState: следующий вызов запустит CLI заново
-	// Пауза как в server.py say(): если начать писать раньше, CLI не успевает подняться
-	// и первая же строка теряется — Алиса вместо текста отвечает «мда».
-	time.Sleep(2 * time.Second)
-	return nil
+	done := make(chan struct{})
+	a.cmd, a.in, a.done = cmd, in, done
+	go func() { cmd.Wait(); close(done) }()
+	time.Sleep(a.delays().start)
+	select {
+	case <-done:
+		a.discard()
+		return fmt.Errorf("CLI Алисы завершился при запуске")
+	default:
+		return nil
+	}
 }
 
 func (a *aliceCLI) send(lines ...string) error {
@@ -54,61 +107,115 @@ func (a *aliceCLI) send(lines ...string) error {
 	}
 	for i, line := range lines {
 		if i > 0 {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(a.delays().line)
 		}
 		if _, err := io.WriteString(a.in, line+"\n"); err != nil {
-			a.cmd.Process.Kill()
+			a.discard()
 			return err
 		}
 	}
 	return nil
 }
 
-// Warm запускает CLI заранее: на отмену у нас около секунды, а сам запуск CLI занимает полторы.
-func (a *aliceCLI) Warm() error { return a.send() }
-
-// Listen открывает микрофон Алисы, как будто её позвали: так продолжают беседу без «Алисы».
-func (a *aliceCLI) Listen() error { return a.send("s") }
-
-// PausePlayer ставит на паузу плеер Алисы («Моя волна», треки) — перед своим радио.
+// Управляющий CLI остаётся прогретым даже после озвучки.
+func (a *aliceCLI) Warm() error        { return a.send() }
+func (a *aliceCLI) Listen() error      { return a.send("s") }
 func (a *aliceCLI) PausePlayer() error { return a.send("o") }
 
-// Cancel — то же, что «Алиса, хватит»: обрывает текущий диалог и ответ из облака.
-func (a *aliceCLI) Cancel() error { return a.send("c") }
+func (a *aliceCLI) cancelSpeech() {
+	a.speechMu.Lock()
+	defer a.speechMu.Unlock()
+	if a.speechCancel != nil {
+		a.speechCancel()
+	}
+}
 
-// Say — Алиса читает текст своим голосом («Окей, повторяю: …»).
-// Say — текстовый запрос «Повтори за мной». После ответа выходим из CLI ('x'), как это делает
-// панель в server.py say(): если держать сессию открытой, следующий 'q' Алиса уже не считает
-// новым запросом и вместо чтения текста отвечает «мда»/«браво».
-func (a *aliceCLI) Say(text string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if err := a.ensure(); err != nil {
+func (a *aliceCLI) Cancel() error {
+	a.cancelSpeech()
+	return a.send("c")
+}
+
+func cliPause(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return ctx.Err()
+	}
+}
+
+// Каждый текст получает собственную CLI-сессию. Паузы озвучки не блокируют
+// Cancel/Listen и прерываются при отмене вопроса; прежний текст не уйдёт позднее.
+func (a *aliceCLI) Say(ctx context.Context, text string) error {
+	a.sayMu.Lock()
+	defer a.sayMu.Unlock()
+	ctx, cancel := context.WithCancel(ctx)
+	a.speechMu.Lock()
+	a.speechCancel = cancel
+	a.speechMu.Unlock()
+	defer func() {
+		cancel()
+		a.speechMu.Lock()
+		a.speechCancel = nil
+		a.speechMu.Unlock()
+	}()
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if _, err := io.WriteString(a.in, "q\n"); err != nil {
-		a.cmd.Process.Kill()
+	cmd := a.newCommand(ctx)
+	in, err := cmd.StdinPipe()
+	if err != nil {
 		return err
 	}
-	time.Sleep(500 * time.Millisecond)
-	if _, err := io.WriteString(a.in, "Повтори за мной: "+text+"\n"); err != nil {
-		a.cmd.Process.Kill()
+	if err = cmd.Start(); err != nil {
+		in.Close()
 		return err
 	}
-	time.Sleep(3 * time.Second)
-	io.WriteString(a.in, "x\n")
-	a.in.Close()
-	return nil
+	done := make(chan struct{})
+	var waitErr error
+	go func() { waitErr = cmd.Wait(); close(done) }()
+	defer func() { in.Close(); cmd.Process.Kill(); <-done }()
+	timing := a.delays()
+	if err = cliPause(ctx, timing.start); err != nil {
+		return err
+	}
+	if _, err = io.WriteString(in, "q\n"); err != nil {
+		return err
+	}
+	if err = cliPause(ctx, timing.line); err != nil {
+		return err
+	}
+	if _, err = io.WriteString(in, "Повтори за мной: "+text+"\n"); err != nil {
+		return err
+	}
+	if err = cliPause(ctx, timing.speech); err != nil {
+		return err
+	}
+	if _, err = io.WriteString(in, "x\n"); err != nil {
+		return err
+	}
+	if err = in.Close(); err != nil {
+		return err
+	}
+	timer := time.NewTimer(timing.exit)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-done:
+		return waitErr
+	case <-timer.C:
+		return fmt.Errorf("CLI Алисы не завершился после озвучки")
+	}
 }
 
 func (a *aliceCLI) Close() {
+	a.cancelSpeech()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.cmd != nil && a.cmd.ProcessState == nil {
-		io.WriteString(a.in, "x\n")
-		time.Sleep(300 * time.Millisecond)
-		a.cmd.Process.Kill()
-	}
+	a.discard()
 }
 
 // logEvent — то, что нам нужно из строки журнала.
