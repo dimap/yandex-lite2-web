@@ -1061,14 +1061,6 @@ class Connection:
             return "", "adb get-state: таймаут"
         return p.stdout.decode().strip(), p.stderr.decode().strip()
 
-    def _reachable(self):
-        host, _, port = self.adb.serial.rpartition(":")
-        try:
-            socket.create_connection((host, int(port)), timeout=1.5).close()
-            return True
-        except OSError:
-            return False
-
     def _alive(self):
         """adb get-state верит в старое TCP-соединение: после резкого выключения колонки он ещё долго
         отвечает «device». Поэтому проверяем по-настоящему — короткой командой на колонке."""
@@ -1111,11 +1103,9 @@ class Connection:
                 self._sleep(3)
                 continue
             state, err = self._adb_state()
-            if state == "device" and network and not self._reachable():
-                self.note(f"{self.adb.serial} пропала из сети", "warn")
-                self._drop()
-                state = ""
-            elif state == "device" and not self._alive():
+            # голый TCP-коннект к 5555 оставлял на adbd сокеты в CLOSE_WAIT и забивал его;
+            # живость проверяем через сам adb: get-state и короткую shell-команду
+            if state == "device" and not self._alive():
                 self.note("adb числит колонку подключённой, но она не отвечает — сбрасываем соединение", "warn")
                 self._drop()
                 state = ""
@@ -1126,10 +1116,9 @@ class Connection:
                 self._set("online")
                 self._sleep(3)
                 continue
-            if not network or not self._reachable():
+            if not network:
                 if self.state != "waiting":
-                    self.note(f"{self.adb.serial} не отвечает по сети" if network
-                              else f"Устройство не найдено: {err or state}", "warn")
+                    self.note(f"Устройство не найдено: {err or state}", "warn")
                 self.attempts = 0
                 self._set("waiting")
                 self._sleep(3)
