@@ -425,7 +425,9 @@
   .eq-band input[type=range] { width: 100%; margin: 0; }
   .eq-band .eq-gv { text-align: right; font-size: 12px; color: var(--muted); }
   .eq-custom .hint { margin: 2px 0 0; }
-  .app-panel { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+  .app-panel { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin-top: 5px; min-width: 0; }
+  .app-panel .badge { align-self: flex-start; max-width: 100%; white-space: normal; line-height: 1.25; }
+  .app-panel .meta { overflow-wrap: anywhere; }
   .app-panel .warn { color: var(--warn); }
   .ww-state-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .ww-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
@@ -5071,7 +5073,8 @@ function renderYam2() {
       <div class="app-top"><b>${esc(p.name)}</b><span class="mono">${esc(p.latest)}</span></div>
       <p>${esc(p.summary)}</p>
       ${sup ? `<div class="app-panel">
-        <span class="badge ok">${esc(sup.note)}</span>
+        <span class="badge ok">Интеграция с панелью</span>
+        <span class="meta">вкладка «${esc(sup.tab || 'Активация')}»</span>
         <span class="meta">Проверено: ${sup.tested.map(t => esc(nm(t))).join(', ')}</span>
         ${sup.untested.length ? `<span class="meta">Не тестировалось: ${sup.untested.map(t => esc(nm(t))).join(', ')}</span>` : ''}
         ${sup.unsupported.length ? `<span class="meta">Не поддерживается: ${sup.unsupported.map(t => esc(nm(t))).join(', ')}</span>` : ''}

@@ -310,7 +310,7 @@ WAKE_PORT = 8780
 # что известно про пакет: README плагина + живая проверка на Лайт 2
 WAKE_SUPPORT = {
     "tab": "Активация",
-    "note": "Есть интеграция с панелью: вкладка «Активация»",
+    "note": "Интеграция с панелью",
     "tested": ["plum", "pickle", "yandexmidi", "yandexmini_2", "bergamot"],
     "untested": ["yandexmicro", "yandexmini", "cucumber"],
     "unsupported": ["yandexstation", "orion"],
