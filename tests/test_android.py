@@ -26,5 +26,13 @@ class Restart(unittest.TestCase):
                 u.update()
 
 
+class Packaging(unittest.TestCase):
+    def test_midi_runtime_is_in_android_assets(self):
+        root = Path(__file__).resolve().parents[1]
+        gradle = (root / 'android/app/build.gradle.kts').read_text()
+        files = gradle.split('val panelFiles = listOf(', 1)[1].split(')', 1)[0]
+        self.assertIn('"midi.py"', files)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -37,6 +37,17 @@ class MidiTransportTests(unittest.TestCase):
         self.assertTrue(all(source not in c.args[0][-1] for c in run.call_args_list))
         self.assertIn('rm -f', run.call_args_list[-1].args[0][-1])
 
+    def test_multiline_source_is_sent_as_unix_bytes(self):
+        source = "echo 'проба'\n" * 400
+        pushed = []
+        self.adb.push = Mock(side_effect=lambda local, remote, **kw: pushed.append(Path(local).read_bytes()))
+        with patch.object(self.s.subprocess, 'run', side_effect=self.remote), \
+                patch.object(self.s, 'write_unix', wraps=self.s.write_unix) as write:
+            self.adb.shell(source)
+        write.assert_called_once()
+        self.assertEqual(pushed, [source.encode('utf-8')])
+        self.assertNotIn(b'\r', pushed[0])
+
     def test_remote_failure_is_not_reported_as_success_and_still_cleans_up(self):
         self.remote_failure = True
         self.adb.push = Mock()

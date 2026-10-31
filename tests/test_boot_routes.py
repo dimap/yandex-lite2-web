@@ -95,6 +95,20 @@ class BootRoutes(unittest.TestCase):
                 self.assertEqual(list(initd.iterdir()), [])
                 self.assertFalse(p.hook_status()['possible'])
 
+    def test_installed_hook_is_reusable_on_read_only_root(self):
+        for model in ('mini2', 'midi'):
+            with self.subTest(model=model):
+                s, p, adb, _ = self.fixture(model, writable=False)
+                Path(s.INITD_HOOK).write_text(s.initd_hook_script())
+                original = Path(s.INITD_HOOK).read_bytes()
+                self.assertEqual(p._boot_route(), 'initd')
+                with patch.object(s, 'initd_writable', return_value='false'), \
+                        patch.object(s, 'with_root_rw', side_effect=AssertionError('remount')):
+                    p._ensure_hook()
+                self.assertEqual(Path(s.INITD_HOOK).read_bytes(), original)
+                self.assertTrue(p.hook_status()['possible'])
+                self.assertTrue(p.hook_status()['hook'])
+
     def test_explicit_remount_keeps_upstream_opt_in_without_running_mount(self):
         for model in ('mini2', 'midi'):
             with self.subTest(model=model):

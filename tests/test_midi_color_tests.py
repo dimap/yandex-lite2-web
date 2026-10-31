@@ -666,5 +666,20 @@ class ColorSession(unittest.TestCase):
         self.assertFalse(self.panel.midi_tests()['blocked'])
 
 
+class PortableClockMap(unittest.TestCase):
+    def test_logical_colon_positions_work_without_the_authors_photo(self):
+        report = display_report_fixture()
+        for trial in report['trials']:
+            for suffix, position in (('-p3', 'colon-top'), ('-q3', 'colon-bottom')):
+                if trial['segment'].endswith(suffix):
+                    trial.pop('photo_point', None)
+                    trial['position'] = position
+        _, colon = midi.clock_display_layout(report)
+        self.assertEqual(colon, ['cucumber:white:clock-p3', 'cucumber:white:clock-q3'])
+        trial['state'] = 'failed'
+        with self.assertRaises(ValueError):
+            midi.clock_display_layout(report)
+
+
 if __name__ == '__main__':
     unittest.main()

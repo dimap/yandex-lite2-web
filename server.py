@@ -468,6 +468,7 @@ def boot_route_script(require_caller=False):
     called = f"sed '/^[[:space:]]*#/d' {caller} 2>/dev/null | grep -F {keeper} >/dev/null"
     rootkeeper = called if require_caller else f"[ -f {keeper} ] || {{ {called}; }}"
     return (f"if {rootkeeper}; then echo rootkeeper; "
+            f"elif grep -q {shlex.quote(HOOK_MARK)} {shlex.quote(INITD_HOOK)} 2>/dev/null; then echo initd; "
             f"elif {initd_available()}; then echo initd; else exit 3; fi")
 
 
@@ -2319,6 +2320,7 @@ echo @@BLUEZ
             f"[ -f {ROOTKEEPER}.webpanel.bak ] || cp {ROOTKEEPER} {ROOTKEEPER}.webpanel.bak; "
             f"grep -q '{HOOK_MARK}' {ROOTKEEPER} || "
             f"sed -i '1a [ -x {BOOT_HOOK} ] && {BOOT_HOOK} {HOOK_MARK}' {ROOTKEEPER}; "
+            f"elif grep -q {shlex.quote(HOOK_MARK)} {shlex.quote(INITD_HOOK)} 2>/dev/null; then :; "
             f"elif {initd_writable()}; then {initd_write()}; "
             + remount_branch +
             f"else exit 3; fi", check=False)

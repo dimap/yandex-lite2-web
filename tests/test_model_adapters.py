@@ -64,6 +64,12 @@ class AudioAdapter(unittest.TestCase):
     def setUp(self):
         self.s = fresh_server()
         self.s.Panel.status = lambda p: {'vol_master': '102', 'vol_level': 30}
+        self.settings = {}
+        for target, effect in (("load_settings", lambda: dict(self.settings)),
+                               ("save_settings", lambda value: (self.settings.clear(), self.settings.update(value)))):
+            mock = patch.object(self.s, target, side_effect=effect)
+            mock.start()
+            self.addCleanup(mock.stop)
         profiles.install(self.s, 'mini2')
         self.adb = Mock()
         self.p = self.s.Panel(self.adb)
@@ -81,6 +87,18 @@ class AudioAdapter(unittest.TestCase):
         self.assertEqual(self.p.status()['vol_level'], 40)
         self.p.set_volume({'level': 35})
         self.assertIn('89,89', self.adb.shell.call_args.args[0])
+
+    def test_mute_volume_reader_uses_the_same_device_map(self):
+        config = self.adb.shell.return_value
+        self.adb.shell.side_effect = [config, (": values=102,102", "", 0)]
+        self.assertEqual(self.p._volume_level(), 40)
+
+    def test_positive_level_clears_mute_but_zero_retains_saved_volume(self):
+        self.settings["mute_before"] = .4
+        self.p.set_volume({"level": 0})
+        self.assertEqual(self.settings["mute_before"], .4)
+        self.p.set_volume({"level": 35})
+        self.assertNotIn("mute_before", self.settings)
 
     def test_missing_map_is_not_replaced_with_lite2_and_never_writes(self):
         self.adb.shell.return_value = ('{}', '', 0)

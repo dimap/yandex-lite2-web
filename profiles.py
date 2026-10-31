@@ -150,23 +150,38 @@ def install_audio_adapter(s, discover_controls=False):
         except (ValueError, TypeError, KeyError):
             raise s.AdbError('Не удалось прочитать карту громкости этой колонки; подключите Glagol') from None
 
-    def status(self):
-        st = original_status(self)
+    def read_volume(self, raw=None):
         music = self.glagol.info() if getattr(self, 'glagol', None) else {}
         value = (music.get('state') or {}).get('volume') if music.get('connected') else None
         if type(value) in (int, float) and 0 <= value <= 1:
-            st.update(vol_level=round(value * 100), volume_source='glagol')
+            return round(value * 100), 'glagol'
         else:
             try:
                 table = device_volume_map(self)
-                raw = int(st.get('vol_master', ''))
-                st.update(vol_level=min(range(21), key=lambda i: abs(table[i] - raw)) * 5,
-                          volume_source='firmware')
-            except (s.AdbError, OSError, s.subprocess.TimeoutExpired, ValueError):
-                st.update(vol_level=None, volume_source='unavailable')
+                if raw is None:
+                    out, _, _ = self.adb.shell("amixer cget name='Master Playback Volume' 2>/dev/null; true", check=False)
+                    match = re.search(r": values=(\d+)", s.strip_ansi(out))
+                    raw = match[1] if match else None
+                raw = int(raw)
+                return min(range(21), key=lambda i: abs(table[i] - raw)) * 5, 'firmware'
+            except (s.AdbError, OSError, s.subprocess.TimeoutExpired, ValueError, TypeError):
+                return None, 'unavailable'
+
+    def status(self):
+        st = original_status(self)
+        level, source = read_volume(self, st.get('vol_master'))
+        st.update(vol_level=level, volume_source=source)
+        if 'muted' in st:
+            st['muted'] = bool(s.load_settings().get('mute_before')) and level == 0
         return st
 
     def set_volume(self, data):
+        # Keep the public level until the common mute bookkeeping is complete.
+        # This also works on the 0.2.2 base, where mute has not been added yet.
+        if 'level' in data and round(max(0., min(100., float(data['level']))) / 5) > 0:
+            settings = s.load_settings()
+            if settings.pop('mute_before', None) is not None:
+                s.save_settings(settings)
         if discover_controls and 'level' in data and self.glagol.ws:
             return original_volume(self, {'level': data['level']})
         if 'level' in data and not self.glagol.ws:
@@ -198,6 +213,7 @@ def install_audio_adapter(s, discover_controls=False):
         return original_volume(self, data)
 
     P._device_volume_map, P.status, P.set_volume = device_volume_map, status, set_volume
+    P._volume_level = lambda self: read_volume(self)[0]
 
 
 def install_boot_preflight(s):

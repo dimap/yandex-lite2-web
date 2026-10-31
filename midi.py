@@ -376,10 +376,11 @@ def clock_display_layout(report):
             latest[prefix+'deg'].get('position') != 'degree'):
         raise ValueError('Нужна полная подтверждённая карта H10 для этой прошивки')
     colon = []
-    for suffix, x, y in (('p3', .4773, .3555), ('q3', .4854, .6928)):
+    for suffix, position, x, y in (('p3', 'colon-top', .4773, .3555), ('q3', 'colon-bottom', .4854, .6928)):
         name = prefix+suffix
-        if latest[name].get('photo_point') != {'x':x, 'y':y, 'reference':DISPLAY_TEST_REFERENCE}:
-            raise ValueError('Положение точек двоеточия не подтверждено по принятому фото H10')
+        if (latest[name].get('position') != position and
+                latest[name].get('photo_point') != {'x':x, 'y':y, 'reference':DISPLAY_TEST_REFERENCE}):
+            raise ValueError('Подтвердите верхнюю и нижнюю точки двоеточия на схеме дисплея')
         colon.append(name)
     return digit_nodes, colon
 
@@ -912,7 +913,7 @@ def install(s, profile):
         try:
             with tempfile.TemporaryDirectory() as directory:
                 source = Path(directory) / 'command.sh'
-                source.write_text(command, encoding='utf-8')
+                s.write_unix(source, command)
                 source.chmod(0o600)
                 self.push(source, remote, timeout=timeout)
             return original_shell(self, 'sh ' + shlex.quote(remote), timeout, check)
