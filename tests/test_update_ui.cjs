@@ -48,7 +48,8 @@ vm.runInContext('let panelVer=null;'+source,c);
 const volumeNodes={};
 const volumeContext={$:id=>volumeNodes[id]||=( {} )};
 vm.createContext(volumeContext);
-vm.runInContext(html.slice(html.indexOf('function showLevel('),html.indexOf('let volTimer;')),volumeContext);
+const volumeStart=html.indexOf('function showLevel(');
+vm.runInContext(html.slice(volumeStart,html.indexOf('\n}',volumeStart)+2),volumeContext);
 for(const value of [null,undefined,NaN]){
   volumeContext.value=value;vm.runInContext('showLevel(value)',volumeContext);
   assert.equal(volumeNodes['#vol-big'].textContent,'—');

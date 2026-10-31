@@ -100,6 +100,20 @@ class AudioAdapter(unittest.TestCase):
         self.p.set_volume({"level": 35})
         self.assertNotIn("mute_before", self.settings)
 
+    def test_integrated_mute_round_trip_without_glagol(self):
+        if not hasattr(self.p, 'set_mute'):
+            self.skipTest('requires main with mute support')
+        def shell(command, **kwargs):
+            if 'quasar.cfg' in command:
+                return json.dumps({'volume_manager_settings': {'platformToAlsaMap': self.table}}), '', 0
+            return ': values=102,102', '', 0
+        self.adb.shell.side_effect = shell
+        self.assertEqual(self.p.set_mute(True), {'muted': True, 'volume': 0})
+        self.assertEqual(self.settings['mute_before'], .4)
+        self.assertEqual(self.p.set_mute(False), {'muted': False, 'volume': 40})
+        self.assertNotIn('mute_before', self.settings)
+        self.assertIn('102,102', self.adb.shell.call_args.args[0])
+
     def test_missing_map_is_not_replaced_with_lite2_and_never_writes(self):
         self.adb.shell.return_value = ('{}', '', 0)
         self.assertIsNone(self.p.status()['vol_level'])
