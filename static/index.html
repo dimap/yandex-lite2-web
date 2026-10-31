@@ -425,6 +425,8 @@
   .eq-band input[type=range] { width: 100%; margin: 0; }
   .eq-band .eq-gv { text-align: right; font-size: 12px; color: var(--muted); }
   .eq-custom .hint { margin: 2px 0 0; }
+  .app-panel { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+  .app-panel .warn { color: var(--warn); }
   .ww-state-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .ww-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
   .ww-dot.on { background: #1f9d55; }
@@ -2236,7 +2238,8 @@
 
   <main id="tab-wakeword" data-page hidden>
     <header class="page-head">
-      <div><h1>Активация</h1><div class="sub">Свои слова для колонки. Запись и обучение идут на её микрофонах — говорите у колонки.</div></div>
+      <div><h1>Активация</h1><div class="sub">Свои слова для колонки. Запись и обучение идут на её микрофонах — говорите у колонки.</div>
+        <div class="sub" id="ww-support"></div></div>
     </header>
     <section class="card">
       <div class="card-head"><h2>Состояние</h2></div>
@@ -5063,9 +5066,18 @@ function renderYam2() {
   $('#y2-catalog').innerHTML = list.length ? list.map(p => {
     const have = inst[p.name];
     const action = !p.fits ? '' : !have ? 'Установить' : vcmp(p.latest, have.version) > 0 ? `Обновить с ${esc(have.version)}` : '';
+    const sup = p.panel, nm = t => (sup && sup.names && sup.names[t]) || t;
     return `<div class="app${have ? ' installed' : ''}${p.fits ? '' : ' other'}">
       <div class="app-top"><b>${esc(p.name)}</b><span class="mono">${esc(p.latest)}</span></div>
       <p>${esc(p.summary)}</p>
+      ${sup ? `<div class="app-panel">
+        <span class="badge ok">${esc(sup.note)}</span>
+        <span class="meta">Проверено: ${sup.tested.map(t => esc(nm(t))).join(', ')}</span>
+        ${sup.untested.length ? `<span class="meta">Не тестировалось: ${sup.untested.map(t => esc(nm(t))).join(', ')}</span>` : ''}
+        ${sup.unsupported.length ? `<span class="meta">Не поддерживается: ${sup.unsupported.map(t => esc(nm(t))).join(', ')}</span>` : ''}
+        ${sup.untested.includes(c.platform) || sup.unsupported.includes(c.platform)
+          ? `<span class="meta warn">Ваша станция (${esc(nm(c.platform))}) — ${sup.unsupported.includes(c.platform) ? 'не поддерживается' : 'не тестировалась'}; на свой риск</span>` : ''}
+      </div>` : ''}
       ${p.fits ? '' : `<span class="meta">не для ${esc(c.platform)}: ${esc((p.targets || []).join(', '))}</span>`}
       <div class="row">${action ? `<button class="btn sm${have ? '' : ' primary'}" data-name="${esc(p.name)}">${action}</button>`
         : have ? '<span class="badge ok">установлено</span>' : ''}
@@ -7549,6 +7561,19 @@ function wwRender() {
   $('#ww-autostart-row').hidden = !on;
   $('#ww-autostart').checked = !!ww.autostart;
   $('#ww-words-card').hidden = !on || !running;
+
+  const sup = ww.support || {};
+  const nm = t => (sup.names || {})[t] || t;
+  const tested = (sup.tested || []).map(nm).join(', ');
+  const unt = (sup.untested || []).map(nm).join(', ');
+  const unsup = (sup.unsupported || []).map(nm).join(', ');
+  const cur = ww.platform || '';
+  let supText = `Проверено: ${tested || '—'}.`;
+  if (unt) supText += ` Не тестировалось: ${unt}.`;
+  if (unsup) supText += ` Не поддерживается: ${unsup}.`;
+  if ((sup.untested || []).includes(cur)) supText += ` Ваша станция (${nm(cur)}) не тестировалась — на свой риск.`;
+  else if ((sup.unsupported || []).includes(cur)) supText += ` Ваша станция (${nm(cur)}) не поддерживается.`;
+  $('#ww-support').textContent = supText;
 
   const a = ww.audio || {};
   $('#ww-audio').hidden = !on || !running;

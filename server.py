@@ -307,6 +307,18 @@ WAKE_LOG = "/tmp/wakeword.log"
 WAKE_AUTOSTART = f"{WEB_DIR}/wakeword.autostart"   # маркер: поднимать демон хуком панели после загрузки
 WAKE_PORT = 8780
 # targets из yam.yaml пакета: Макс (yandexstation_2), Стрит и Android-Станция не поддерживаются.
+# что известно про пакет: README плагина + живая проверка на Лайт 2
+WAKE_SUPPORT = {
+    "tab": "Активация",
+    "note": "Есть интеграция с панелью: вкладка «Активация»",
+    "tested": ["plum", "pickle", "yandexmidi", "yandexmini_2", "bergamot"],
+    "untested": ["yandexmicro", "yandexmini", "cucumber"],
+    "unsupported": ["yandexstation", "orion"],
+    "names": {"plum": "Лайт 2", "pickle": "Станция 2", "yandexmidi": "Станция 2",
+              "yandexmini_2": "Мини 2", "bergamot": "Мини 3", "yandexmicro": "Микро",
+              "yandexmini": "Мини", "cucumber": "Миди", "yandexstation": "Станция 1",
+              "orion": "Макс"},
+}
 WAKE_TARGETS = ("yandexmicro", "plum", "yandexmini", "yandexmini_2", "bergamot", "pickle",
                 "cucumber", "yandexmidi", "yandexstation", "orion")
 WAKE_SETTINGS = f"{WAKE_DATA}/settings.json"
@@ -3395,7 +3407,8 @@ echo @@BLUEZ
                 "dry_run": bool(load_settings().get(WAKE_ACTIONS_KEY) or {}),
                 "words": (state or {}).get("words") or [], "hits": (state or {}).get("hits") or [],
                 "enroll": (state or {}).get("enroll"), "train": (state or {}).get("train") or {"active": False},
-                "station": (state or {}).get("station", ""), "error": error, "port": WAKE_PORT}
+                "station": (state or {}).get("station", ""), "error": error, "port": WAKE_PORT,
+                "support": WAKE_SUPPORT}
 
     def wakeword_start(self):
         info = self._wakeword_installed(force=True)
@@ -4753,6 +4766,8 @@ echo @@BLUEZ
         for p in pkgs:
             t = p.get("targets") or []
             p["fits"] = not t or "any" in t or plat in t
+            if p["name"] == "tangenx/wakeword":
+                p["panel"] = WAKE_SUPPORT
         return {"configured": True, "packages": pkgs, "platform": plat, "url": url}
 
     def yam2_install_pkg(self, name, yes=False):
