@@ -328,12 +328,14 @@ WAKE_ACTIONS_KEY = "wakeword_actions"
 # Пресеты в виде полос (тип, частота, усиление дБ, добротность): tap на колонке получает готовые
 # коэффициенты биквадов и применяет их к потоку, который идёт в Bluetooth-колонку.
 EQ_FILE = f"{VIZ_DIR}/eq.json"
+# Бас в слышимом небольшими колонками диапазоне; пресеты различаются и по середине.
 EQ_PRESETS = {
     "flat": (),
-    "rock": (("lowshelf", 100, 5.0), ("peaking", 800, -3.0, 1.0), ("highshelf", 8000, 3.0)),
-    "electronic": (("lowshelf", 70, 6.0), ("peaking", 2500, 3.0, 1.0), ("highshelf", 10000, 3.0)),
-    "vocal": (("peaking", 2500, 4.0, 1.0), ("lowshelf", 120, -3.0), ("highshelf", 6000, 2.0)),
-    "night": (("lowshelf", 80, 5.0), ("highshelf", 6000, -4.0)),
+    "rock": (("lowshelf", 150, 8.0), ("peaking", 750, -4.0, 0.8), ("highshelf", 4500, 5.0)),
+    "electronic": (("lowshelf", 120, 9.0), ("peaking", 450, -3.0, 0.9),
+                   ("peaking", 2800, 4.0, 0.9), ("highshelf", 6500, 5.0)),
+    "vocal": (("lowshelf", 180, -6.0), ("peaking", 2200, 6.0, 0.8), ("highshelf", 5500, 3.0)),
+    "night": (("lowshelf", 140, 6.0), ("highshelf", 3500, -7.0)),
 }
 EQ_CUSTOM_DEFAULT = ({"f": 60, "g": 0}, {"f": 230, "g": 0}, {"f": 910, "g": 0},
                      {"f": 3600, "g": 0}, {"f": 14000, "g": 0})
@@ -3658,7 +3660,7 @@ echo @@BLUEZ
                     self._ww_last_hit = max(ids or [0])
                 else:
                     if ids and max(ids) < self._ww_last_hit:
-                        self._ww_last_hit = max(ids)   # демон перезапускался, id сбросились
+                        self._ww_last_hit = 0   # демон перезапускался: новые события ещё не обработаны
                     for h in sorted(hits, key=lambda x: int(x.get("id") or 0)):
                         hid = int(h.get("id") or 0)
                         if hid <= self._ww_last_hit:
@@ -4860,6 +4862,8 @@ echo @@BLUEZ
             if not yes and ("rerun with --yes" in out or "requires --yes" in out):
                 return {"need_yes": True, "text": out[-1200:]}
             raise AdbError("yam: " + (out[-800:] or f"код {rc}"))
+        if bare == "tangenx/wakeword":
+            self._ww_info = None   # вкладка должна увидеть установку сразу, без 15-секундного кэша
         for sid in running:          # обновлённый пакет: службы перезапускаем уже с новой версией
             self._yam2_svc_stop(sid)
             self._yam2_svc_start(sid)
@@ -4879,6 +4883,8 @@ echo @@BLUEZ
                 self._yam2_svc_stop(s["id"])
                 self.adb.shell(f"rm -f {YAM2_SVC_DIR}/{s['id']}.sh {YAM2_SVC_DIR}/boot/{s['id']}", check=False)
         out = self._yam2_check(["remove", name], timeout=120)
+        if name == "tangenx/wakeword":
+            self._ww_info = None
         # каталоги etc/var/run пакета создавала панель — пустые убираем, с данными оставляем (вдруг поставят снова)
         ns, pkg = name.split("/")
         _, paths = self._yam2_paths()
@@ -5242,6 +5248,15 @@ echo @@BLUEZ
         s["eq_preset"] = preset
         save_settings(s)
         filters = [eq_coeffs(b) for b in eq_filters(preset, custom)]
+        # Запас до фильтров: учитываем суммарную АЧХ, в том числе перекрывающиеся
+        # свои полосы. Масштабируем числитель первого биквада — работает и со старым vizd.
+        _, response = eq_curve(preset, custom, points=1024)
+        peak_db = max(response)
+        preamp_db = -(peak_db + 0.5) if peak_db > 0 else 0.0
+        if filters and preamp_db:
+            gain = 10 ** (preamp_db / 20)
+            b0, b1, b2, a1, a2 = filters[0]
+            filters[0] = (b0 * gain, b1 * gain, b2 * gain, a1, a2)
         payload = {"enabled": bool(filters),
                    "filters": [dict(zip(("b0", "b1", "b2", "a1", "a2"), c)) for c in filters]}
         with tempfile.TemporaryDirectory() as td:

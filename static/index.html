@@ -1524,6 +1524,7 @@
             <div class="bt-eq-head"><b>Эквалайзер</b><select class="field" id="bt-eq" aria-label="Пресет эквалайзера"></select></div>
             <canvas id="bt-eq-curve" width="360" height="96" aria-label="АЧХ эквалайзера"></canvas>
             <div class="eq-custom" id="bt-eq-custom" hidden></div>
+            <p class="hint">При усилении частот громкость может снижаться для запаса от перегрузки. Сравнивайте пресеты на одинаковой слышимой громкости.</p>
           </div>
         </section>
 
@@ -3701,7 +3702,7 @@ function buildEqCustom() {
       <span class="meta">Гц</span>
       <input type="range" class="eq-g" min="-12" max="12" step="1" value="0" aria-label="Усиление ${i + 1}, дБ">
       <span class="mono eq-gv">0 дБ</span></div>`).join('')
-    + '<p class="hint">Сильное усиление может перегрузить звук — убавьте громкость.</p>';
+    + '<p class="hint">Перекрывающиеся полосы складываются. Для более заметного эффекта попробуйте также убавить соседние частоты.</p>';
   box.addEventListener('input', e => {
     const band = e.target.closest('.eq-band');
     if (!band) return;
@@ -5113,6 +5114,7 @@ async function yam2Pkg(btn, action, name, yes) {
     return;
   }
   toast(action === 'install' ? 'Установлен: ' + name : 'Удалён: ' + name);
+  if (name.split('@')[0] === 'tangenx/wakeword' && window.wwLoad) await window.wwLoad();
   await loadYam2Packages();
 }
 async function yam2Svc(el, id, action, stopLegacy) {

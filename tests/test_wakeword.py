@@ -252,3 +252,54 @@ class Routing(unittest.TestCase):
              patch.object(self.p, "_wakeword_api", return_value=("application/json", {"audio": {"ok": True}})):
             st = self.p.wakeword_status()
         self.assertTrue(st["dry_run"])
+
+
+class RouterRestart(unittest.TestCase):
+    def run_hits(self, last, snapshots):
+        p = panel()
+        p._ww_last_hit = last
+        p._ww_router_stop = Mock()
+        p._ww_router_stop.is_set.side_effect = [False] * len(snapshots) + [True]
+        p.wakeword_status = Mock(return_value={"running": True})
+        p._wakeword_api = Mock(side_effect=[
+            ("application/json", {"hits": [{"id": i, "word": "x"} for i in ids]})
+            for ids in snapshots])
+        p._wakeword_fire = Mock()
+        with patch("server.load_settings", return_value={"wakeword_actions": {"x": {"type": "none"}}}):
+            p._wakeword_router_loop()
+        return [call.args[0]["id"] for call in p._wakeword_fire.call_args_list]
+
+    def test_restart_delivers_new_hits_once_in_order(self):
+        self.assertEqual(self.run_hits(42, [[2, 1], [1, 2], [2, 3]]), [1, 2, 3])
+
+    def test_restart_with_empty_history_then_first_hit(self):
+        self.assertEqual(self.run_hits(42, [[], [1], [1]]), [1])
+
+    def test_panel_start_skips_history_but_delivers_next_hit(self):
+        self.assertEqual(self.run_hits(None, [[1, 2], [2, 3], [3]]), [3])
+
+    def test_running_daemon_does_not_repeat_hits(self):
+        self.assertEqual(self.run_hits(2, [[1, 2], [3, 2], [3]]), [3])
+
+
+class PackageNavigation(unittest.TestCase):
+    def test_catalog_install_invalidates_cached_missing_package(self):
+        for name in ("tangenx/wakeword", "tangenx/wakeword@1.2.3"):
+            with self.subTest(name=name):
+                p = panel()
+                p._ww_info = {"installed": False}
+                p._yam2_services_raw = Mock(return_value=[])
+                p._yam2 = Mock(return_value=("installed", 0))
+                p.yam2_install_pkg(name)
+                self.assertIsNone(p._ww_info)
+                self.assertTrue(p._wakeword_installed()["installed"])
+
+    def test_failed_install_keeps_cached_state(self):
+        p = panel()
+        cached = {"installed": False}
+        p._ww_info = cached
+        p._yam2_services_raw = Mock(return_value=[])
+        p._yam2 = Mock(return_value=("failed", 1))
+        with self.assertRaises(server.AdbError):
+            p.yam2_install_pkg("tangenx/wakeword")
+        self.assertIs(p._ww_info, cached)

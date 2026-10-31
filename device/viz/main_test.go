@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"math"
+	"reflect"
 	"testing"
 )
 
@@ -141,6 +143,58 @@ func TestFFTMatchesDirectSum(t *testing.T) {
 	for k := range a.re {
 		if mag := math.Hypot(a.re[k], a.im[k]); math.Abs(mag-1) > 1e-9 {
 			t.Fatalf("бин %d: %v", k, mag)
+		}
+	}
+}
+
+// Произвольные границы чтений не должны менять звук, включая состояние фильтра.
+func TestSplitPCMThroughEqualizer(t *testing.T) {
+	input := make([]byte, 400)
+	for i := range input {
+		input[i] = byte(i * 17)
+	}
+	for _, enabled := range []bool{false, true} {
+		newEQ := func() *equalizer {
+			e := &equalizer{}
+			if enabled {
+				e.filters = []biquad{{b0: 0.5, b1: 0.25, a1: -0.1}}
+			}
+			return e
+		}
+		want, _ := newEQ().Process(input)
+		for size := 1; size <= 19; size++ {
+			var frames pcmFrames
+			eq := newEQ()
+			var got []byte
+			for off := 0; off < len(input); off += size {
+				end := off + size
+				if end > len(input) {
+					end = len(input)
+				}
+				chunk := frames.push(input[off:end])
+				out, _ := eq.Process(chunk)
+				got = append(got, out...)
+			}
+			if !bytes.Equal(got, want) || frames.n != 0 {
+				t.Fatalf("enabled=%v chunk=%d: output differs", enabled, size)
+			}
+		}
+	}
+}
+
+func TestSpectrumPreservesSplitFrames(t *testing.T) {
+	input := []byte{1, 0, 3, 0, 5, 0, 7, 0, 9, 0, 11, 0}
+	for size := 1; size <= len(input); size++ {
+		s := newStream()
+		for off := 0; off < len(input); off += size {
+			end := off + size
+			if end > len(input) {
+				end = len(input)
+			}
+			s.feed(input[off:end])
+		}
+		if !reflect.DeepEqual(s.hopBuf, []int16{2, 6, 10}) {
+			t.Fatalf("chunk=%d: samples %v", size, s.hopBuf)
 		}
 	}
 }

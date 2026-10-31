@@ -226,8 +226,28 @@ func (a *analyzer) bands(samples []int16) (out [bandsCount]float64, rms, peak fl
 	return out, rms, peak
 }
 
+// pcmFrames сохраняет неполный стереокадр между чтениями pipe.
+// Размер чтения не обязан быть кратен четырём, даже если источник пишет полные кадры.
+type pcmFrames struct {
+	tail [4]byte
+	n    int
+}
+
+func (p *pcmFrames) push(data []byte) []byte {
+	if p.n > 0 {
+		joined := make([]byte, p.n+len(data))
+		copy(joined, p.tail[:p.n])
+		copy(joined[p.n:], data)
+		data = joined
+	}
+	end := len(data) / 4 * 4
+	p.n = copy(p.tail[:], data[end:])
+	return data[:end]
+}
+
 // stream копит моно-отсчёты и раз в 50 мс пишет полосы. Один код и для захвата кодека, и для Bluetooth-тапа.
 type stream struct {
+	frames    pcmFrames
 	a         *analyzer
 	history   []int16
 	hopBuf    []int16
@@ -240,6 +260,7 @@ func newStream() *stream {
 
 // feed разбирает PCM (16 бит, стерео) и пишет статус.
 func (s *stream) feed(data []byte) {
+	data = s.frames.push(data)
 	for i := 0; i+4 <= len(data); i += 4 {
 		l := int32(int16(binary.LittleEndian.Uint16(data[i:])))
 		r := int32(int16(binary.LittleEndian.Uint16(data[i+2:])))
@@ -309,6 +330,7 @@ func runTap(ctx context.Context) error {
 	s := newStream()
 	eq := &equalizer{path: eqFile}
 	eq.Reload()
+	var frames pcmFrames
 	buf := make([]byte, 16384)
 	active, lastFlag, lastEq := false, time.Time{}, time.Time{}
 	defer os.Remove(btFlag)
@@ -319,7 +341,7 @@ func runTap(ctx context.Context) error {
 				eq.Reload()
 				lastEq = time.Now()
 			}
-			data := buf[:n]
+			data := frames.push(buf[:n])
 			if out, ok := eq.Process(data); ok {
 				data = out
 			}
