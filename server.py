@@ -2787,7 +2787,20 @@ echo @@BLUEZ
         with tempfile.TemporaryDirectory() as td:
             f = Path(td) / "config.json"
             write_unix(f, json.dumps(cfg, ensure_ascii=False, indent=1))
-            self.adb.push(f, ASSIST_CONF + ".new")
+            try:
+                self.adb.push(f, ASSIST_CONF + ".new")
+            except Exception:
+                self.adb.shell(f"rm -f {ASSIST_CONF}.new", check=False)
+                raise
+        # push мог оборваться и оставить пустой .new: не ставим его вместо рабочего конфига
+        out, _, _ = self.adb.shell(f"cat {ASSIST_CONF}.new 2>/dev/null; true", check=False)
+        try:
+            saved = json.loads(strip_ansi(out).strip() or "{}")
+        except ValueError:
+            saved = None
+        if not isinstance(saved, dict) or not saved:
+            self.adb.shell(f"rm -f {ASSIST_CONF}.new", check=False)
+            raise AdbError("конфиг помощника не записался на колонку — оставил прежний")
         self.adb.shell(f"chmod 600 {ASSIST_CONF}.new; mv {ASSIST_CONF}.new {ASSIST_CONF}")
 
     @staticmethod

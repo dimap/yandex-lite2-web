@@ -82,6 +82,9 @@ func loadConfig(path string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
+	if strings.TrimSpace(string(b)) == "" {
+		return c, nil
+	}
 	if err = json.Unmarshal(b, &c); err != nil {
 		return defaults(), err
 	}

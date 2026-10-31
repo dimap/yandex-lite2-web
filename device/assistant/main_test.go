@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -271,5 +272,19 @@ func TestFindScene(t *testing.T) {
 	}
 	if sc, ok := findScene(conf, "в будни", mon); !ok || sc.name != "Будни" {
 		t.Errorf("%+v %v", sc, ok)
+	}
+}
+
+func TestLoadConfigEmptyFile(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(p, []byte(" \n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := loadConfig(p)
+	if err != nil {
+		t.Fatalf("пустой конфиг не должен быть ошибкой: %v", err)
+	}
+	if len(c.Triggers) == 0 || c.Mode.TimeoutMin != 10 {
+		t.Fatal("для пустого конфига не подставились defaults")
 	}
 }
